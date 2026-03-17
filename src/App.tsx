@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
+import { useLogto } from '@logto/react';
 import Onboarding from './screens/Onboarding';
+import Callback from './screens/Callback';
 import ChatList from './screens/ChatList';
 import ChatRoom from './screens/ChatRoom';
 import Dashboard from './screens/Dashboard';
@@ -20,7 +22,7 @@ import { useIOSPWA } from './hooks/useIOSPWA';
 import { cn } from './lib/utils';
 import { MessageCircle, LayoutDashboard, Search as SearchIcon, User, Settings } from 'lucide-react';
 
-export type Screen = 'onboarding' | 'chats' | 'chat_room' | 'dashboard' | 'profile' | 'search' | 'preferences' | 'pairing';
+export type Screen = 'onboarding' | 'callback' | 'chats' | 'chat_room' | 'dashboard' | 'profile' | 'search' | 'preferences' | 'pairing';
 
 const STORAGE_KEY_USER_ID = 'openclaw.userId';
 const STORAGE_KEY_USER_NAME = 'openclaw.userName';
@@ -50,6 +52,7 @@ export function setUserName(name: string) {
 
 const SCREEN_TO_PATH: Record<Screen, string> = {
   onboarding: '/',
+  callback: '/callback',
   chats: '/chats',
   chat_room: '/chat',  // + /:chatId
   dashboard: '/dashboard',
@@ -90,11 +93,24 @@ const SIDEBAR_NAV_ITEMS = [
 function AppShell() {
   const location = useLocation();
   const routerNavigate = useNavigate();
+  const { isAuthenticated, isLoading: isAuthLoading } = useLogto();
 
-  // 根据 localStorage 判断是否已登录过
-  const hasUserId = !!localStorage.getItem(STORAGE_KEY_USER_ID);
+  // Handle /callback route
+  if (location.pathname === '/callback') {
+    return <Callback />;
+  }
+
+  // Show loading while Logto initializes
+  if (isAuthLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[100dvh] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0]">
+        <div className="w-10 h-10 border-4 border-[#67B88B] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   const initialFromUrl = pathToScreen(location.pathname);
-  const initialScreen: Screen = hasUserId ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
+  const initialScreen: Screen = isAuthenticated ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
 
   const [currentScreen, setCurrentScreen] = useState<Screen>(initialScreen);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(initialFromUrl.chatId ?? null);
@@ -141,9 +157,15 @@ function AppShell() {
   });
 
   const renderScreen = () => {
+    // Redirect unauthenticated users to onboarding (except callback)
+    if (!isAuthenticated && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
+      return <Onboarding onGetStarted={() => navigate('chats')} />;
+    }
     switch (currentScreen) {
       case 'onboarding':
         return <Onboarding onGetStarted={() => navigate('chats')} />;
+      case 'callback':
+        return <Callback />;
       case 'chats':
         return <ChatList onOpenChat={(agentId) => navigate('chat_room', agentId)} onAddServer={() => navigate('pairing')} />;
       case 'chat_room':

@@ -1,15 +1,16 @@
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, Moon, ChevronRight, LogOut, Bell, Smartphone, User, Server, Plus, Trash2, Check, Pencil, X } from 'lucide-react';
+import { useLogto, type IdTokenClaims } from '@logto/react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
-import { getUserName } from '../App';
 import { getConnections, removeConnection, updateConnection, getActiveConnectionId, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
 import * as channel from '../services/clawChannel';
 
 export default function Profile({ onNavigate }: { onNavigate: (screen: string) => void }) {
-  const userName = getUserName();
+  const { signOut, getIdTokenClaims } = useLogto();
+  const [userClaims, setUserClaims] = useState<IdTokenClaims | null>(null);
   const [connections, setConnections] = useState<ServerConnection[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ServerConnection | null>(null);
@@ -24,6 +25,12 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    void getIdTokenClaims().then((claims) => {
+      if (claims) setUserClaims(claims);
+    });
+  }, [getIdTokenClaims]);
 
   const handleRemove = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -71,12 +78,16 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
       <h1 className="text-3xl font-bold tracking-tight mb-8">Profile</h1>
 
       <div className="flex items-center gap-5 mb-8">
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#67B88B] to-[#4a9a70] flex items-center justify-center text-white shadow-md border-2 border-white">
-          <User size={36} />
+        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#67B88B] to-[#4a9a70] flex items-center justify-center text-white shadow-md border-2 border-white overflow-hidden">
+          {userClaims?.picture ? (
+            <img src={userClaims.picture} alt="avatar" className="w-full h-full object-cover" />
+          ) : (
+            <User size={36} />
+          )}
         </div>
         <div>
-          <h2 className="text-xl font-bold">{userName}</h2>
-          <p className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50 text-sm">OpenClaw User</p>
+          <h2 className="text-xl font-bold">{userClaims?.name || userClaims?.username || 'OpenClaw User'}</h2>
+          <p className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50 text-sm">{userClaims?.email || 'Signed in via Logto'}</p>
         </div>
       </div>
 
@@ -172,7 +183,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
           <SettingItem icon={Settings} label="Preferences" onClick={() => onNavigate('preferences')} />
         </Card>
 
-        <Button variant="destructive" className="w-full" onClick={() => { localStorage.clear(); window.location.reload(); }}>
+        <Button variant="destructive" className="w-full" onClick={() => { signOut(window.location.origin); }}>
           <LogOut size={20} />
           Log Out
         </Button>
