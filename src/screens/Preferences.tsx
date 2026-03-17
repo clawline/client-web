@@ -1,0 +1,90 @@
+import { motion } from 'motion/react';
+import { ChevronLeft, Save, User, Sliders } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Card } from '../components/ui/card';
+import { getUserName, setUserName } from '../App';
+
+export default function Preferences({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="flex flex-col h-full bg-[#F8FAFB] dark:bg-[#1a1b2e]">
+      {/* Header */}
+      <div className="px-4 py-4 sticky top-0 bg-[#F8FAFB]/80 dark:bg-[#1a1b2e]/80 backdrop-blur-xl z-20 flex items-center justify-between">
+        <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="p-2 -ml-2 text-[#2D3436] dark:text-[#e2e8f0]">
+          <ChevronLeft size={28} />
+        </motion.button>
+        <h2 className="font-semibold text-[17px]">Preferences</h2>
+        <div className="w-10" />
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-6 py-4 pb-32 space-y-8 max-w-xl mx-auto w-full">
+        
+        <section>
+          <h3 className="text-sm font-semibold text-[#2D3436]/50 dark:text-[#e2e8f0]/50 mb-4 uppercase tracking-wider flex items-center gap-2">
+            <User size={16} /> Personal Info
+          </h3>
+          <Card className="p-5 space-y-4">
+            <div>
+              <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1.5">Display Name</label>
+              <Input
+                defaultValue={getUserName()}
+                onChange={(e) => setUserName(e.target.value)}
+              />
+            </div>
+          </Card>
+        </section>
+
+        <section>
+          <h3 className="text-sm font-semibold text-[#2D3436]/50 dark:text-[#e2e8f0]/50 mb-4 uppercase tracking-wider flex items-center gap-2">
+            <Sliders size={16} /> AI Configuration
+          </h3>
+          <Card className="p-5 space-y-5">
+            <div>
+              <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1.5">Default Model</label>
+              <div className="relative">
+                <select className="w-full appearance-none bg-[#F8FAFB] dark:bg-[#1a1b2e] border border-[#EDF2F0] dark:border-[#2d3748] rounded-[16px] px-4 py-3 text-[15px] text-[#2D3436] dark:text-[#e2e8f0] focus:outline-none focus:ring-2 focus:ring-[#67B88B]/20 transition-all">
+                  <option>Claude 3.5 Sonnet</option>
+                  <option>GPT-4o</option>
+                  <option>Gemini 1.5 Pro</option>
+                </select>
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#2D3436]/40 dark:text-[#e2e8f0]/40">
+                  ▼
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <div className="flex justify-between mb-1.5">
+                <label className="text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70">Creativity (Temperature)</label>
+                <span className="text-[13px] font-bold text-[#67B88B]">0.7</span>
+              </div>
+              <input 
+                type="range" 
+                min="0" max="1" step="0.1" defaultValue="0.7"
+                className="w-full accent-[#67B88B]"
+              />
+              <div className="flex justify-between text-[11px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 mt-1">
+                <span>Precise</span>
+                <span>Creative</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1.5">Custom System Prompt</label>
+              <textarea 
+                rows={3}
+                placeholder="E.g., Always answer in TypeScript..."
+                className="w-full bg-[#F8FAFB] dark:bg-[#1a1b2e] border border-[#EDF2F0] dark:border-[#2d3748] rounded-[16px] px-4 py-3 text-[15px] text-[#2D3436] dark:text-[#e2e8f0] focus:outline-none focus:ring-2 focus:ring-[#67B88B]/20 transition-all resize-none placeholder:text-[#2D3436]/35 dark:placeholder:text-[#e2e8f0]/35"
+              ></textarea>
+            </div>
+          </Card>
+        </section>
+
+        <Button size="lg" className="w-full">
+          <Save size={20} />
+          Save Preferences
+        </Button>
+      </div>
+    </div>
+  );
+}
