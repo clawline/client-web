@@ -62,4 +62,3 @@ export function ChannelForm({ channel, onSave, onClose }: Props) {
     </form>
   );
 }
-commit change and push to RemotePlayback
