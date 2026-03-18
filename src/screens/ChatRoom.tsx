@@ -852,23 +852,40 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
             <Image size={22} />
           </motion.button>
 
-          {/* More button - toggle additional icons */}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={() => setShowMoreIcons(!showMoreIcons)}
-            className={`p-2 transition-colors ${showMoreIcons ? 'text-[#67B88B]' : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}`}
-          >
-            <MoreHorizontal size={22} />
-          </motion.button>
+          {/* More button - toggles to X when expanded */}
+          <AnimatePresence mode="popLayout">
+            {!showMoreIcons ? (
+              <motion.button
+                key="more"
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setShowMoreIcons(true)}
+                className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+              >
+                <MoreHorizontal size={22} />
+              </motion.button>
+            ) : (
+              <motion.button
+                key="close"
+                initial={{ rotate: -90, opacity: 0 }}
+                animate={{ rotate: 0, opacity: 1 }}
+                exit={{ rotate: 90, opacity: 0 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setShowMoreIcons(false)}
+                className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              >
+                <X size={20} />
+              </motion.button>
+            )}
+          </AnimatePresence>
 
           {/* Additional icons - shown when more is clicked */}
           <AnimatePresence>
             {showMoreIcons && (
               <>
                 <motion.button
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: 'auto', opacity: 1 }}
-                  exit={{ width: 0, opacity: 0 }}
+                  initial={{ width: 0, opacity: 0, scale: 0.8 }}
+                  animate={{ width: 'auto', opacity: 1, scale: 1 }}
+                  exit={{ width: 0, opacity: 0, scale: 0.8 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowSlashMenu(false); setReactingToMsgId(null); }}
                   className={`p-2 transition-colors ${showEmojiPicker && !reactingToMsgId ? 'text-[#67B88B]' : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}`}
@@ -876,9 +893,9 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
                   <Smile size={22} />
                 </motion.button>
                 <motion.button
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: 'auto', opacity: 1 }}
-                  exit={{ width: 0, opacity: 0 }}
+                  initial={{ width: 0, opacity: 0, scale: 0.8 }}
+                  animate={{ width: 'auto', opacity: 1, scale: 1 }}
+                  exit={{ width: 0, opacity: 0, scale: 0.8 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={handleFilePick}
                   className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
