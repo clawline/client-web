@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, Moon, ChevronRight, LogOut, Bell, Smartphone, User, Server, Plus, Trash2, Check, Pencil, X } from 'lucide-react';
-import { useLogto, type IdTokenClaims } from '@logto/react';
+import { useAuth } from '../hooks/useAuth';
+import type { IdTokenClaims } from '@logto/react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
@@ -9,7 +10,7 @@ import { getConnections, removeConnection, updateConnection, getActiveConnection
 import * as channel from '../services/clawChannel';
 
 export default function Profile({ onNavigate }: { onNavigate: (screen: string) => void }) {
-  const { signOut, getIdTokenClaims } = useLogto();
+  const { signOut, getIdTokenClaims } = useAuth();
   const [userClaims, setUserClaims] = useState<IdTokenClaims | null>(null);
   const [connections, setConnections] = useState<ServerConnection[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);

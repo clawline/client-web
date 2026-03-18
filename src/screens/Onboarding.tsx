@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, Github, Mail, MessageSquare, Server, Zap, Shield } from 'lucide-react';
-import { useLogto } from '@logto/react';
+import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
 
 const SLIDES = [
@@ -40,7 +40,7 @@ export default function Onboarding({ onGetStarted }: { onGetStarted: () => void 
   const touchStartX = useRef(0);
   const touchDelta = useRef(0);
   const autoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const { signIn, isAuthenticated } = useLogto();
+  const { signIn, isAuthenticated } = useAuth();
 
   const handleGetStarted = () => {
     if (isAuthenticated) {
