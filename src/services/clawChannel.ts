@@ -1,4 +1,4 @@
-const DEFAULT_WS_URL = 'ws://wolf-sg.southeastasia.cloudapp.azure.com:18080/ws';
+const DEFAULT_WS_URL = 'wss://gateway.clawlines.net/client';
 const MAX_RECONNECT_ATTEMPTS = 6;
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
