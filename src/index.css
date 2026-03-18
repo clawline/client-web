@@ -124,3 +124,12 @@ input, select, textarea {
 * {
   scrollbar-width: none;
 }
+
+/* Explicit scrollbar-hide utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

@@ -65,11 +65,18 @@ const slashCommands = [
 const EMOJI_LIST = ['👍', '❤️', '😂', '🔥', '✨', '👀', '💯', '🚀'];
 
 const QUICK_COMMANDS = [
-  { label: '/status', emoji: '📊' },
-  { label: '/models', emoji: '🤖' },
-  { label: '/help', emoji: '❓' },
-  { label: '/new', emoji: '✨' },
-  { label: '/reset', emoji: '🔄' },
+  { label: '/status', emoji: '📊', desc: 'Session status' },
+  { label: '/models', emoji: '🤖', desc: 'List models' },
+  { label: '/help', emoji: '❓', desc: 'Show help' },
+  { label: '/new', emoji: '✨', desc: 'New session' },
+  { label: '/reset', emoji: '🔄', desc: 'Reset context' },
+];
+
+// Context-aware suggestions shown after bot messages
+const CONTEXT_SUGGESTIONS = [
+  { label: 'Explain more', emoji: '💡' },
+  { label: 'Summarize', emoji: '📝' },
+  { label: 'Try again', emoji: '🔄' },
 ];
 
 function formatTime(ts?: number) {
@@ -814,22 +821,52 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
           )}
         </AnimatePresence>
 
-        {/* Quick command chips */}
-        {!showSlashMenu && !showEmojiPicker && !inputValue && (
-          <div className="flex gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide">
-            {QUICK_COMMANDS.map((cmd) => (
-              <motion.button
-                key={cmd.label}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => quickSend(cmd.label)}
-                className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-[12px] font-medium text-gray-600 dark:text-gray-300 hover:border-[#67B88B] hover:text-[#67B88B] transition-colors"
-              >
-                <span>{cmd.emoji}</span>
-                {cmd.label}
-              </motion.button>
-            ))}
-          </div>
-        )}
+        {/* Dynamic suggestions area */}
+        <AnimatePresence mode="popLayout">
+          {/* Context suggestions after last bot message */}
+          {!inputValue && messages.length > 0 && messages[messages.length - 1]?.sender === 'ai' && !showSlashMenu && !showEmojiPicker && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="flex gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
+            >
+              {CONTEXT_SUGGESTIONS.map((sug) => (
+                <motion.button
+                  key={sug.label}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setInputValue(sug.label)}
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-full text-[12px] font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  <span>{sug.emoji}</span>
+                  {sug.label}
+                </motion.button>
+              ))}
+            </motion.div>
+          )}
+
+          {/* Default quick commands when input empty and no context */}
+          {!inputValue && (messages.length === 0 || messages[messages.length - 1]?.sender === 'user') && !showSlashMenu && !showEmojiPicker && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
+            >
+              {QUICK_COMMANDS.map((cmd) => (
+                <motion.button
+                  key={cmd.label}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => quickSend(cmd.label)}
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-[12px] font-medium text-gray-600 dark:text-gray-300 hover:border-[#67B88B] hover:text-[#67B88B] transition-colors"
+                >
+                  <span>{cmd.emoji}</span>
+                  {cmd.label}
+                </motion.button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Edit bar */}
         {editingMsg && (
@@ -870,66 +907,53 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
           )}
         </AnimatePresence>
 
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full p-2 flex items-center gap-2 shadow-lg shadow-black/5">
-          {/* Image button - always visible */}
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full p-2 flex items-center gap-1 shadow-lg shadow-black/5 relative">
+          {/* Action menu toggle (+ button) */}
           <motion.button
             whileTap={{ scale: 0.9 }}
-            onClick={handleImagePick}
-            className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+            onClick={() => setShowMoreIcons(!showMoreIcons)}
+            className={`p-2 rounded-full transition-colors ${showMoreIcons ? 'bg-[#67B88B]/10 text-[#67B88B]' : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}`}
           >
-            <Image size={22} />
+            <Plus size={22} />
           </motion.button>
 
-          {/* More button - toggles to X when expanded */}
-          <AnimatePresence mode="popLayout">
-            {!showMoreIcons ? (
-              <motion.button
-                key="more"
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setShowMoreIcons(true)}
-                className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-              >
-                <MoreHorizontal size={22} />
-              </motion.button>
-            ) : (
-              <motion.button
-                key="close"
-                initial={{ rotate: -90, opacity: 0 }}
-                animate={{ rotate: 0, opacity: 1 }}
-                exit={{ rotate: 90, opacity: 0 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setShowMoreIcons(false)}
-                className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-              >
-                <X size={20} />
-              </motion.button>
-            )}
-          </AnimatePresence>
-
-          {/* Additional icons - shown when more is clicked */}
+          {/* Action menu popover */}
           <AnimatePresence>
             {showMoreIcons && (
               <>
-                <motion.button
-                  initial={{ width: 0, opacity: 0, scale: 0.8 }}
-                  animate={{ width: 'auto', opacity: 1, scale: 1 }}
-                  exit={{ width: 0, opacity: 0, scale: 0.8 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowSlashMenu(false); setReactingToMsgId(null); }}
-                  className={`p-2 transition-colors ${showEmojiPicker && !reactingToMsgId ? 'text-[#67B88B]' : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}`}
+                <motion.div
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-20"
+                  onClick={() => setShowMoreIcons(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute bottom-full left-0 mb-2 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl p-2 flex flex-col gap-1 min-w-[140px]"
                 >
-                  <Smile size={22} />
-                </motion.button>
-                <motion.button
-                  initial={{ width: 0, opacity: 0, scale: 0.8 }}
-                  animate={{ width: 'auto', opacity: 1, scale: 1 }}
-                  exit={{ width: 0, opacity: 0, scale: 0.8 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={handleFilePick}
-                  className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-                >
-                  <Paperclip size={20} />
-                </motion.button>
+                  <button
+                    onClick={() => { handleImagePick(); setShowMoreIcons(false); }}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <Image size={18} />
+                    Image
+                  </button>
+                  <button
+                    onClick={() => { handleFilePick(); setShowMoreIcons(false); }}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <Paperclip size={18} />
+                    File
+                  </button>
+                  <button
+                    onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowMoreIcons(false); }}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <Smile size={18} />
+                    Emoji
+                  </button>
+                </motion.div>
               </>
             )}
           </AnimatePresence>
@@ -940,10 +964,10 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
             type="text"
             value={inputValue}
             onChange={handleInputChange}
-            onFocus={() => { setShowMoreIcons(false); setShowEmojiPicker(false); }}
+            onFocus={() => { setShowEmojiPicker(false); }}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Message..."
-            className="flex-1 bg-transparent border-none focus:outline-none text-[15px] py-2 text-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+            className="flex-1 bg-transparent border-none focus:outline-none text-[15px] py-2 px-2 text-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
           />
 
           {/* Voice button when no text, Send button when has text */}
