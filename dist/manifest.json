@@ -1,7 +1,7 @@
 {
-  "name": "OpenClaw",
-  "short_name": "OpenClaw",
-  "description": "Intelligent development companion - Chat with OpenClaw agents",
+  "name": "Clawline",
+  "short_name": "Clawline",
+  "description": "Web client for OpenClaw agents - Chat with AI assistants",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F8FAFB",
