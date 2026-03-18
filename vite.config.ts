@@ -17,7 +17,6 @@ export default defineConfig(({mode}) => {
     },
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
-      allowedHosts: ['dev.dora.restry.cn'],
     },
     build: {
       rollupOptions: {

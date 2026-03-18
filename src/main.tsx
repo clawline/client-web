@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import ErrorBoundary from './components/ErrorBoundary.tsx';
-import { AuthProvider } from './hooks/useAuth.tsx';
+import SafeLogtoProvider from './components/SafeLogtoProvider.tsx';
 import App from './App.tsx';
 import './index.css';
 
@@ -18,9 +18,9 @@ const logtoConfig = {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <AuthProvider config={logtoConfig}>
+      <SafeLogtoProvider config={logtoConfig}>
         <App />
-      </AuthProvider>
+      </SafeLogtoProvider>
     </ErrorBoundary>
   </StrictMode>,
 );

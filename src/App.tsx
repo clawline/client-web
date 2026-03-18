@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { useAuth } from './hooks/useAuth';
+import { useLogto } from '@logto/react';
 import Onboarding from './screens/Onboarding';
 import Callback from './screens/Callback';
 import ChatList from './screens/ChatList';
@@ -93,7 +93,7 @@ const SIDEBAR_NAV_ITEMS = [
 function AppShell() {
   const location = useLocation();
   const routerNavigate = useNavigate();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading } = useLogto();
 
   // ── All hooks MUST be called before any conditional return ──
   // (React Rules of Hooks — Error #310 fix)

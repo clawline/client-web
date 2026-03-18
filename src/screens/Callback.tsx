@@ -1,9 +1,9 @@
-import { useAuthCallback } from '../hooks/useAuth';
+import { useHandleSignInCallback } from '@logto/react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Callback() {
   const navigate = useNavigate();
-  const { isLoading, error } = useAuthCallback(() => {
+  const { isLoading, error } = useHandleSignInCallback(() => {
     navigate('/chats', { replace: true });
   });
 
