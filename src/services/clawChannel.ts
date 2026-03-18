@@ -35,6 +35,15 @@ export type AgentInfo = {
   model?: string;
 };
 
+export type ConversationSummary = {
+  chatId: string;
+  agentId?: string;
+  senderName?: string;
+  lastMessage?: string;
+  timestamp?: number;
+  unreadCount?: number;
+};
+
 type StatusListener = (status: ConnectionStatus) => void;
 type MessageListener = (packet: InboundPacket) => void;
 

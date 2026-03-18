@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge';
 import { cn } from '../lib/utils';
 import { getActiveConnection } from '../services/connectionStore';
 import * as channel from '../services/clawChannel';
-import type { AgentInfo } from '../services/clawChannel';
+import type { AgentInfo, ConversationSummary } from '../services/clawChannel';
 import { getUserId } from '../App';
 
 function loadCachedAgents(): AgentInfo[] {
@@ -15,6 +15,30 @@ function loadCachedAgents(): AgentInfo[] {
     const raw = localStorage.getItem('openclaw.agentList');
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
+}
+
+function formatRelativeTime(ts?: number): string {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function getLastMessagePreview(agentId: string, connId: string): { text: string; timestamp?: number } | null {
+  try {
+    const raw = localStorage.getItem(`openclaw.messages.${agentId}.${connId}`);
+    if (!raw) return null;
+    const msgs = JSON.parse(raw) as Array<{ text?: string; timestamp?: number; sender?: string }>;
+    if (msgs.length === 0) return null;
+    const last = msgs[msgs.length - 1];
+    return { text: last?.text ?? '', timestamp: last?.timestamp };
+  } catch { return null; }
 }
 
 export default function ChatList({ onOpenChat, onAddServer, compact, activeAgentId }: { onOpenChat: (agentId: string) => void; onAddServer: () => void; compact?: boolean; activeAgentId?: string | null }) {
@@ -169,6 +193,11 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
           </div>
         ) : filtered.length > 0 ? filtered.map((agent, index) => {
           const isActive = compact && activeAgentId === agent.id;
+          const connId = activeConn?.id ?? '';
+          const lastMsg = getLastMessagePreview(agent.id, connId);
+          const preview = lastMsg?.text
+            ? (lastMsg.text.length > 50 ? lastMsg.text.slice(0, 50) + '…' : lastMsg.text)
+            : (agent.model || `Agent: ${agent.id}`);
           return (
           <motion.div
             key={agent.id}
@@ -192,13 +221,18 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
               {agent.identityEmoji || <Bot size={compact ? 18 : 24} />}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <h3 className={cn("font-semibold truncate", compact ? "text-[14px]" : "text-[16px]")}>{agent.name}</h3>
-                {agent.isDefault && (
-                  <Badge className="text-[10px]">default</Badge>
+              <div className="flex items-center justify-between gap-2 mb-0.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h3 className={cn("font-semibold truncate", compact ? "text-[14px]" : "text-[16px]")}>{agent.name}</h3>
+                  {agent.isDefault && (
+                    <Badge className="text-[10px] shrink-0">default</Badge>
+                  )}
+                </div>
+                {lastMsg?.timestamp && (
+                  <span className="text-[11px] text-[#2D3436]/30 dark:text-[#e2e8f0]/30 shrink-0">{formatRelativeTime(lastMsg.timestamp)}</span>
                 )}
               </div>
-              <p className={cn("text-[#2D3436]/40 dark:text-[#e2e8f0]/40 truncate", compact ? "text-[12px]" : "text-[13px]")}>{agent.model || `Agent: ${agent.id}`}</p>
+              <p className={cn("text-[#2D3436]/40 dark:text-[#e2e8f0]/40 truncate", compact ? "text-[12px]" : "text-[13px]")}>{preview}</p>
             </div>
           </motion.div>
           );

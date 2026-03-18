@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip } from 'lucide-react';
+import { ChevronLeft, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Brain } from 'lucide-react';
 import Markdown from 'react-markdown';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
@@ -60,6 +60,7 @@ const slashCommands = [
   { id: 'verbose', icon: FileText, label: '/verbose', desc: 'Control extra debug and tool output' },
   { id: 'reasoning', icon: MessageSquare, label: '/reasoning', desc: 'Control reasoning message output' },
   { id: 'compact', icon: LayoutDashboard, label: '/compact', desc: 'Compact the current conversation context' },
+  { id: 'memory', icon: Brain, label: '/memory', desc: 'View agent long-term memory context' },
   { id: 'stop', icon: Square, label: '/stop', desc: 'Stop the running task in this session' },
 ];
 
@@ -312,7 +313,15 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
     if (!file) return;
     e.target.value = '';
     const dataUrl = await fileToDataUrl(file);
-    const userMsg: Message = { id: Date.now().toString(), sender: 'user', text: `📎 ${file.name}`, timestamp: Date.now() };
+    const isImage = file.type.startsWith('image/');
+    const userMsg: Message = {
+      id: Date.now().toString(),
+      sender: 'user',
+      text: isImage ? '' : `📎 ${file.name}`,
+      mediaType: isImage ? 'image' : 'file',
+      mediaUrl: dataUrl,
+      timestamp: Date.now(),
+    };
     setMessages((prev) => [...prev, userMsg]);
     try {
       channel.sendFile({ content: file.name, mediaUrl: dataUrl, mimeType: file.type, fileName: file.name, agentId: agentId || undefined });
@@ -322,6 +331,12 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
   const handleSend = () => {
     if (editingMsg) { handleSaveEdit(); return; }
     if (!inputValue.trim()) return;
+    if (inputValue.trim() === '/memory') {
+      setShowMemory(true);
+      setInputValue('');
+      setShowSlashMenu(false);
+      return;
+    }
     const userMsg: Message = {
       id: Date.now().toString(),
       sender: 'user',
@@ -350,6 +365,12 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
   };
 
   const quickSend = (text: string) => {
+    if (text.trim() === '/memory') {
+      setShowMemory(true);
+      setShowSlashMenu(false);
+      setInputValue('');
+      return;
+    }
     const userMsg: Message = { id: Date.now().toString(), sender: 'user', text, timestamp: Date.now() };
     setMessages((prev) => [...prev, userMsg]);
     try {
@@ -621,7 +642,7 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
                         </div>
                       ) : null;
                     })()}
-                    {/* Message content (Image, Voice, Text/Markdown) */}
+                    {/* Message content (Image, Voice, File, Text/Markdown) */}
                     {(msg.mediaType === 'image' && msg.mediaUrl) ? (
                       <div className="bg-transparent border-none p-0">
                         <img src={msg.mediaUrl} alt="Message attachment" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover" />
@@ -633,6 +654,16 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
                           <audio src={msg.mediaUrl} controls className="h-8 w-full max-w-[240px]" />
                         </div>
                         {msg.text && <p className="text-[13px] opacity-80 px-1">{msg.text}</p>}
+                      </div>
+                    ) : msg.mediaType === 'file' && msg.mediaUrl ? (
+                      <div className="flex items-center gap-3 bg-[#F8FAFB] dark:bg-[#131420] p-3 rounded-xl border border-gray-100 dark:border-gray-700 min-w-[200px]">
+                        <div className="w-10 h-10 rounded-lg bg-[#5B8DEF]/10 flex items-center justify-center text-[#5B8DEF] shrink-0">
+                          <FileText size={20} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[14px] font-medium truncate">{msg.text || 'File'}</p>
+                          <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-[12px] text-[#5B8DEF] hover:underline">Download</a>
+                        </div>
                       </div>
                     ) : isUser ? (
                       <p className="whitespace-pre-wrap break-words">{msg.text}</p>
@@ -676,13 +707,36 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
                   
                   {/* Reaction & Reply & Edit/Delete Buttons — show on hover */}
                   <div className={`flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                    <motion.button
-                      whileTap={{ scale: 0.9 }}
-                      onClick={() => openReactionPicker(msg.id)}
-                      className="p-1 text-gray-400 dark:text-gray-500 hover:text-[#67B88B] transition-colors"
-                    >
-                      <SmilePlus size={14} />
-                    </motion.button>
+                    {/* Quick-react bar */}
+                    <div className="flex items-center gap-0.5 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-full px-1 py-0.5 border border-gray-100 dark:border-gray-700 shadow-sm">
+                      {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
+                        <motion.button
+                          key={e}
+                          whileTap={{ scale: 0.7 }}
+                          onClick={() => {
+                            const hasIt = msg.reactions?.includes(e);
+                            setMessages((prev) => prev.map((m) => {
+                              if (m.id !== msg.id) return m;
+                              const reactions = m.reactions ?? [];
+                              return { ...m, reactions: hasIt ? reactions.filter(r => r !== e) : [...reactions, e] };
+                            }));
+                            if (hasIt) { channel.removeReaction(msg.id, e); } else { channel.addReaction(msg.id, e); }
+                          }}
+                          className={`w-7 h-7 text-[15px] flex items-center justify-center rounded-full transition-colors ${
+                            msg.reactions?.includes(e) ? 'bg-[#67B88B]/20 scale-110' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          {e}
+                        </motion.button>
+                      ))}
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => openReactionPicker(msg.id)}
+                        className="w-7 h-7 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-[#67B88B] rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <SmilePlus size={13} />
+                      </motion.button>
+                    </div>
                     <motion.button
                       whileTap={{ scale: 0.9 }}
                       onClick={() => startReply(msg)}
@@ -715,17 +769,24 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
 
                 {/* Reactions Display */}
                 {msg.reactions && msg.reactions.length > 0 && (
-                  <div className={`flex flex-wrap gap-1 mt-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`flex flex-wrap gap-1.5 mt-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
                     {msg.reactions.map((emoji, idx) => (
                       <motion.button
                         key={idx}
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => openReactionPicker(msg.id)}
-                        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-2 py-0.5 text-[13px] shadow-sm flex items-center gap-1"
+                        whileTap={{ scale: 0.8 }}
+                        onClick={() => {
+                          setMessages((prev) => prev.map((m) => {
+                            if (m.id !== msg.id) return m;
+                            const reactions = m.reactions ?? [];
+                            return { ...m, reactions: reactions.filter(r => r !== emoji) };
+                          }));
+                          channel.removeReaction(msg.id, emoji);
+                        }}
+                        className="bg-[#67B88B]/10 dark:bg-[#67B88B]/15 border border-[#67B88B]/30 rounded-full px-2.5 py-1 text-[14px] shadow-sm flex items-center gap-1 hover:bg-[#67B88B]/20 transition-colors"
                       >
-                        {emoji}
+                        <span>{emoji}</span>
                       </motion.button>
                     ))}
                   </div>
@@ -1002,15 +1063,27 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
               <Send size={20} />
             </motion.button>
           ) : (
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={toggleRecording}
-              className={`p-3 rounded-full flex items-center justify-center transition-colors ${
-                isRecording ? 'bg-red-500 text-white shadow-md shadow-red-500/30' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-              }`}
-            >
-              {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
-            </motion.button>
+            <div className="flex items-center gap-2">
+              {isRecording && (
+                <motion.div
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-full"
+                >
+                  <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-[13px] text-red-500 font-medium">Recording…</span>
+                </motion.div>
+              )}
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={toggleRecording}
+                className={`p-3 rounded-full flex items-center justify-center transition-colors ${
+                  isRecording ? 'bg-red-500 text-white shadow-md shadow-red-500/30 animate-pulse' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+              </motion.button>
+            </div>
           )}
         </div>
       </div>
