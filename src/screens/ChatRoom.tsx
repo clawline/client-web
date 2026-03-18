@@ -147,6 +147,7 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
   const [editingMsg, setEditingMsg] = useState<Message | null>(null);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [showMoreIcons, setShowMoreIcons] = useState(false);
   const fileInputRef2 = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -523,10 +524,37 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
             {wsStatus === 'disconnected' && <><WifiOff size={10} /> Disconnected</>}
           </span>
         </div>
-        <motion.button whileTap={{ scale: 0.9 }} className="p-2 -mr-2 text-gray-800 dark:text-gray-200">
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2 -mr-2 text-gray-800 dark:text-gray-200">
           <MoreHorizontal size={24} />
         </motion.button>
       </div>
+
+      {/* Header context menu */}
+      <AnimatePresence>
+        {showHeaderMenu && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-30"
+              onClick={() => setShowHeaderMenu(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              className="absolute top-[57px] right-4 z-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl p-1.5 min-w-[180px]"
+            >
+              <button
+                onClick={() => { setMessages([]); if (connId && agentId) saveMessages(agentId, connId, []); setShowHeaderMenu(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                <Trash2 size={16} />
+                Clear Chat
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 pb-4 flex flex-col gap-4">
@@ -619,8 +647,8 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
                     )}
                   </div>
                   
-                  {/* Reaction & Reply & Edit/Delete Buttons — below bubble */}
-                  <div className={`flex items-center gap-1 mt-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                  {/* Reaction & Reply & Edit/Delete Buttons — show on hover */}
+                  <div className={`flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                     <motion.button
                       whileTap={{ scale: 0.9 }}
                       onClick={() => openReactionPicker(msg.id)}
@@ -912,13 +940,24 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
             type="text"
             value={inputValue}
             onChange={handleInputChange}
+            onFocus={() => { setShowMoreIcons(false); setShowEmojiPicker(false); }}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Message OpenClaw..."
             className="flex-1 bg-transparent border-none focus:outline-none text-[15px] py-2 text-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
           />
 
-          {/* Voice button - always visible when no text */}
-          {!inputValue.trim() && (
+          {/* Voice button when no text, Send button when has text */}
+          {inputValue.trim() ? (
+            <motion.button
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={handleSend}
+              className="p-3 rounded-full flex items-center justify-center bg-[#67B88B] text-white shadow-md shadow-[#67B88B]/30"
+            >
+              <Send size={20} />
+            </motion.button>
+          ) : (
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={toggleRecording}

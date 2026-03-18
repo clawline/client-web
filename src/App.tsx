@@ -104,13 +104,24 @@ function pathToScreen(pathname: string): { screen: Screen; chatId?: string } {
 }
 
 function useIsDesktop() {
-  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768);
+  // Check URL param for forced layout mode (dev testing)
+  const forcedMobile = typeof window !== 'undefined' && (
+    new URLSearchParams(window.location.search).get('mobile') === 'true' ||
+    new URLSearchParams(window.location.search).get('layout') === 'mobile'
+  );
+  
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (forcedMobile) return false;
+    return typeof window !== 'undefined' && window.innerWidth >= 768;
+  });
+  
   useEffect(() => {
+    if (forcedMobile) return; // Skip listener if forced
     const mql = window.matchMedia('(min-width: 768px)');
     const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
     mql.addEventListener('change', handler);
     return () => mql.removeEventListener('change', handler);
-  }, []);
+  }, [forcedMobile]);
   return isDesktop;
 }
 
