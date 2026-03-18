@@ -99,7 +99,7 @@ export default function Onboarding({ onGetStarted }: { onGetStarted: () => void 
           transition={{ delay: 0.1 }}
           className="text-3xl font-bold tracking-tight text-center mb-2"
         >
-          OpenClaw
+          Clawline
         </motion.h1>
         <motion.p
           initial={{ y: 20, opacity: 0 }}
@@ -107,7 +107,7 @@ export default function Onboarding({ onGetStarted }: { onGetStarted: () => void 
           transition={{ delay: 0.15 }}
           className="text-center text-[#2D3436]/50 dark:text-[#e2e8f0]/50 text-[15px]"
         >
-          Intelligent development companion
+          Chat with OpenClaw agents
         </motion.p>
       </div>
 

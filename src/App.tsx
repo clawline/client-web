@@ -263,7 +263,7 @@ function AppShell() {
             <div className="w-20 h-20 bg-gradient-to-br from-[#67B88B] to-[#4a9a70] rounded-3xl flex items-center justify-center mb-6 shadow-lg shadow-[#67B88B]/20">
               <MessageCircle size={36} className="text-white" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">OpenClaw</h2>
+            <h2 className="text-2xl font-bold mb-2">Clawline</h2>
             <p className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40 text-[15px]">Select a conversation from the sidebar to start chatting</p>
           </div>
         );

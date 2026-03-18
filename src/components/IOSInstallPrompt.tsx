@@ -49,7 +49,7 @@ export default function IOSInstallPrompt({ show: showProp }: IOSInstallPromptPro
                   </div>
                   <div>
                     <div className="font-semibold text-[#2D3436] dark:text-[#e2e8f0]">
-                      Install OpenClaw
+                      Install Clawline
                     </div>
                     <div className="text-xs text-[#92A0A4] dark:text-[#64748b]">
                       Add to Home Screen

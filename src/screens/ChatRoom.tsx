@@ -942,7 +942,7 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
             onChange={handleInputChange}
             onFocus={() => { setShowMoreIcons(false); setShowEmojiPicker(false); }}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Message OpenClaw..."
+            placeholder="Message..."
             className="flex-1 bg-transparent border-none focus:outline-none text-[15px] py-2 text-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
           />
 
