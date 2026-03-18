@@ -34,6 +34,7 @@ import * as channel from '../services/clawChannel';
 import { getUserId } from '../App';
 import { getActiveConnection } from '../services/connectionStore';
 import ActionCard from '../components/ActionCard';
+import MemorySheet from '../components/MemorySheet';
 
 type Message = {
   id: string;
@@ -510,6 +511,8 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
   const startReply = (msg: Message) => {
     setReplyingTo(msg);
   };
+  
+  const [showMemory, setShowMemory] = useState(false);
 
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 relative">
@@ -551,6 +554,13 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
               exit={{ opacity: 0, y: -10, scale: 0.95 }}
               className="absolute top-[57px] right-4 z-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl p-1.5 min-w-[180px]"
             >
+              <button
+                onClick={() => { setShowHeaderMenu(false); setShowMemory(true); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                <Cpu size={16} />
+                View Memory
+              </button>
               <button
                 onClick={() => { setMessages([]); if (connId && agentId) saveMessages(agentId, connId, []); setShowHeaderMenu(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -611,12 +621,22 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
                         </div>
                       ) : null;
                     })()}
-                    {/* User image message */}
-                    {isUser && msg.mediaType === 'image' && msg.mediaUrl ? (
-                      <img src={msg.mediaUrl} alt="Sent image" className="max-w-full rounded-lg" />
-                    ) : isUser && msg.mediaType === 'voice' ? (
-                      <span className="flex items-center gap-2">🎙️ Voice message</span>
-                    ) : isUser ? msg.text : (
+                    {/* Message content (Image, Voice, Text/Markdown) */}
+                    {(msg.mediaType === 'image' && msg.mediaUrl) ? (
+                      <div className="bg-transparent border-none p-0">
+                        <img src={msg.mediaUrl} alt="Message attachment" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover" />
+                        {msg.text && <p className="mt-2 text-[14px]">{msg.text}</p>}
+                      </div>
+                    ) : (msg.mediaType === 'voice' || msg.mediaType === 'audio') && msg.mediaUrl ? (
+                      <div className="flex flex-col gap-1 min-w-[220px]">
+                        <div className="flex items-center gap-2 bg-[#F8FAFB]/50 dark:bg-[#131420]/50 p-2 rounded-lg">
+                          <audio src={msg.mediaUrl} controls className="h-8 w-full max-w-[240px]" />
+                        </div>
+                        {msg.text && <p className="text-[13px] opacity-80 px-1">{msg.text}</p>}
+                      </div>
+                    ) : isUser ? (
+                      <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                    ) : (
                       <Markdown
                         components={{
                           p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
@@ -994,6 +1014,15 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {showMemory && (
+          <MemorySheet 
+            onClose={() => setShowMemory(false)} 
+            agentName={agentInfo ? agentInfo.name : agentId || 'Bot'} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
