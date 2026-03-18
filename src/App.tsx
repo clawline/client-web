@@ -95,19 +95,8 @@ function AppShell() {
   const routerNavigate = useNavigate();
   const { isAuthenticated, isLoading: isAuthLoading } = useLogto();
 
-  // Handle /callback route
-  if (location.pathname === '/callback') {
-    return <Callback />;
-  }
-
-  // Show loading while Logto initializes
-  if (isAuthLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[100dvh] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0]">
-        <div className="w-10 h-10 border-4 border-[#67B88B] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  // ── All hooks MUST be called before any conditional return ──
+  // (React Rules of Hooks — Error #310 fix)
 
   const initialFromUrl = pathToScreen(location.pathname);
   const initialScreen: Screen = isAuthenticated ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
@@ -155,6 +144,24 @@ function AppShell() {
     threshold: 100,
     enabled: canGoBack,
   });
+
+  const isDesktop = useIsDesktop();
+
+  // ── Conditional returns AFTER all hooks ──
+
+  // Handle /callback route
+  if (location.pathname === '/callback') {
+    return <Callback />;
+  }
+
+  // Show loading while Logto initializes
+  if (isAuthLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[100dvh] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0]">
+        <div className="w-10 h-10 border-4 border-[#67B88B] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const renderScreen = () => {
     // Redirect unauthenticated users to onboarding (except callback)
@@ -217,7 +224,6 @@ function AppShell() {
   };
 
   const showBottomNav = ['chats', 'dashboard', 'profile', 'search'].includes(currentScreen);
-  const isDesktop = useIsDesktop();
 
   // ---- Desktop layout: sidebar + main ----
   if (isDesktop && currentScreen !== 'onboarding') {
