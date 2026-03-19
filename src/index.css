@@ -67,7 +67,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   touch-action: manipulation;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  
 }
 
 ::-webkit-scrollbar {
@@ -111,7 +111,7 @@ body {
 /* PWA standalone mode adjustments */
 @media (display-mode: standalone) {
   body {
-    padding-top: env(safe-area-inset-top);
+    
   }
 }
 

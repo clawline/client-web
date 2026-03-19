@@ -171,7 +171,7 @@ function AppShell() {
   // Show loading while Logto initializes (skip in dev mode)
   if (isAuthLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-[100dvh] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0]">
+      <div className="flex flex-col items-center justify-center h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0]">
         <div className="w-10 h-10 border-4 border-[#67B88B] border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -242,7 +242,7 @@ function AppShell() {
   // ---- Desktop layout: sidebar + main ----
   if (isDesktop && currentScreen !== 'onboarding') {
     return (
-      <div className="flex flex-col w-full h-[100dvh] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0] overflow-hidden font-sans">
+      <div className="flex flex-col w-full h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0] overflow-hidden font-sans">
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
         <div className="w-80 xl:w-96 h-full flex flex-col border-r border-[#EDF2F0] dark:border-[#2d3748] bg-white/50 dark:bg-[#232437]/50 flex-shrink-0">
@@ -304,7 +304,7 @@ function AppShell() {
   // ---- Mobile layout (unchanged) ----
 
   return (
-    <div className="relative w-full h-[100dvh] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0] overflow-hidden flex flex-col font-sans">
+    <div className="relative w-full h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0] overflow-hidden flex flex-col font-sans">
       <div className="flex-1 flex justify-center relative min-h-0">
         <div className="w-full max-w-md h-full relative bg-[#F8FAFB] dark:bg-[#1a1b2e] shadow-2xl overflow-hidden">
         {/* PWA Update Banner */}

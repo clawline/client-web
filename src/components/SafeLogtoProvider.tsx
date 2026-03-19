@@ -72,7 +72,7 @@ class LogtoCrashBoundary extends Component<CatcherProps, CatcherState> {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          height: '100dvh',
+          height: '100%',
           padding: '2rem',
           fontFamily: 'system-ui, -apple-system, sans-serif',
           background: '#F8FAFB',
