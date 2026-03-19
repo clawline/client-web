@@ -837,7 +837,7 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-gradient-to-t from-gray-50 via-gray-50 dark:from-gray-900 dark:via-gray-900 to-transparent z-30 flex-shrink-0">
+      <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-gray-50 via-gray-50 dark:from-gray-900 dark:via-gray-900 to-transparent z-30 flex-shrink-0">
         <AnimatePresence>
           {showSlashMenu && (
             <>
