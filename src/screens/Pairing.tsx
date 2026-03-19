@@ -63,21 +63,38 @@ export default function Pairing({ onBack, onPaired }: { onBack: () => void; onPa
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // --- URL parsing preview ---
+  const parsedUrl = urlInput.trim() ? parseConnectionUrl(urlInput) : null;
+  const parsedFields = parsedUrl && parsedUrl.serverUrl ? (() => {
+    try {
+      const hostUrl = new URL(parsedUrl.serverUrl.replace(/^ws/, 'http'));
+      return {
+        host: hostUrl.hostname,
+        port: hostUrl.port || (parsedUrl.serverUrl.startsWith('wss') ? '443' : '80'),
+        path: hostUrl.pathname,
+        secure: parsedUrl.serverUrl.startsWith('wss'),
+        token: parsedUrl.token,
+        chatId: parsedUrl.chatId,
+        senderId: parsedUrl.senderId,
+        displayName: parsedUrl.displayName,
+      };
+    } catch { return null; }
+  })() : null;
+
   // --- URL quick login ---
   const handleUrlLogin = () => {
-    const parsed = parseConnectionUrl(urlInput);
-    if (!parsed || !parsed.serverUrl) {
+    if (!parsedUrl || !parsedUrl.serverUrl) {
       setError('Invalid connection URL. Expected ws:// or openclaw:// format.');
       return;
     }
-    const connName = parsed.displayName || new URL(parsed.serverUrl.replace(/^ws/, 'http')).hostname;
+    const connName = parsedUrl.displayName || new URL(parsedUrl.serverUrl.replace(/^ws/, 'http')).hostname;
     const conn = addConnection(
       connName,
-      parsed.serverUrl,
-      parsed.displayName || 'OpenClaw User',
-      parsed.token,
-      parsed.chatId,
-      parsed.senderId,
+      parsedUrl.serverUrl,
+      parsedUrl.displayName || 'OpenClaw User',
+      parsedUrl.token,
+      parsedUrl.chatId,
+      parsedUrl.senderId,
     );
     onPaired(conn.id);
   };
@@ -239,9 +256,39 @@ export default function Pairing({ onBack, onPaired }: { onBack: () => void; onPa
                   </motion.button>
                 </div>
               </div>
-              <p className="text-[11px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 leading-relaxed">
-                Supports: <code className="bg-[#EDF2F0] dark:bg-[#2d3748] px-1 rounded text-[10px]">ws://</code> / <code className="bg-[#EDF2F0] dark:bg-[#2d3748] px-1 rounded text-[10px]">wss://</code> with query params, or <code className="bg-[#EDF2F0] dark:bg-[#2d3748] px-1 rounded text-[10px]">openclaw://connect?serverUrl=...&token=...</code>
-              </p>
+              {/* Parsed URL preview */}
+              {parsedFields && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-2 pt-2 border-t border-[#EDF2F0] dark:border-[#2d3748]">
+                  <p className="text-[11px] font-semibold text-[#67B88B] tracking-wide uppercase">Parsed Connection</p>
+                  <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
+                    <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Host</span>
+                    <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.host}:{parsedFields.port}{parsedFields.path}</span>
+                    <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Protocol</span>
+                    <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.secure ? '🔒 WSS (secure)' : '⚠️ WS (plain)'}</span>
+                    {parsedFields.token && <>
+                      <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Token</span>
+                      <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.token.slice(0, 8)}{'…'}</span>
+                    </>}
+                    {parsedFields.chatId && <>
+                      <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Chat ID</span>
+                      <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.chatId}</span>
+                    </>}
+                    {parsedFields.senderId && <>
+                      <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Sender</span>
+                      <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.senderId}</span>
+                    </>}
+                    {parsedFields.displayName && <>
+                      <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Name</span>
+                      <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.displayName}</span>
+                    </>}
+                  </div>
+                </motion.div>
+              )}
+              {!parsedFields && (
+                <p className="text-[11px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 leading-relaxed">
+                  Supports: <code className="bg-[#EDF2F0] dark:bg-[#2d3748] px-1 rounded text-[10px]">ws://</code> / <code className="bg-[#EDF2F0] dark:bg-[#2d3748] px-1 rounded text-[10px]">wss://</code> with query params, or <code className="bg-[#EDF2F0] dark:bg-[#2d3748] px-1 rounded text-[10px]">openclaw://connect?serverUrl=...&token=...</code>
+                </p>
+              )}
             </Card>
             <Button size="lg" className="w-full" onClick={handleUrlLogin}>
               Connect <ArrowRight size={20} />
