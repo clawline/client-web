@@ -1,4 +1,4 @@
-const CACHE_NAME = 'openclaw-v2';
+const CACHE_NAME = 'openclaw-v3';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -9,12 +9,8 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
   );
-
-  // Only skip waiting on first install (no active controller)
-  // This allows updates to wait for user approval
-  if (!self.clients || self.clients.length === 0) {
-    self.skipWaiting();
-  }
+  // Always activate new SW immediately so updates take effect
+  self.skipWaiting();
 });
 
 // Activate event - clean up old caches
