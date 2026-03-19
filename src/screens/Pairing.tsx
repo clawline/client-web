@@ -12,7 +12,7 @@ type TabId = 'url' | 'qr' | 'manual';
 // Parse a connection URL like:
 // ws://host:18080/ws?chatId=xxx&token=xxx&senderId=xxx&agentId=xxx
 // or openclaw://connect?serverUrl=ws://...&token=xxx&chatId=xxx
-function parseConnectionUrl(raw: string): { serverUrl: string; token?: string; chatId?: string; senderId?: string; displayName?: string } | null {
+function parseConnectionUrl(raw: string): { serverUrl: string; token?: string; chatId?: string; senderId?: string; displayName?: string; channelName?: string; channelId?: string } | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
@@ -20,12 +20,29 @@ function parseConnectionUrl(raw: string): { serverUrl: string; token?: string; c
   if (trimmed.startsWith('openclaw://')) {
     try {
       const url = new URL(trimmed.replace('openclaw://', 'https://'));
+      const serverUrl = url.searchParams.get('serverUrl') || '';
+
+      // Extract token/chatId from inner serverUrl if present
+      let innerToken: string | undefined;
+      let innerChatId: string | undefined;
+      let innerChannelId: string | undefined;
+      if (serverUrl) {
+        try {
+          const inner = new URL(serverUrl.replace(/^ws/, 'http'));
+          innerToken = inner.searchParams.get('token') || undefined;
+          innerChatId = inner.searchParams.get('chatId') || undefined;
+          innerChannelId = inner.searchParams.get('channelId') || undefined;
+        } catch { /* ignore */ }
+      }
+
       return {
-        serverUrl: url.searchParams.get('serverUrl') || '',
-        token: url.searchParams.get('token') || undefined,
-        chatId: url.searchParams.get('chatId') || undefined,
+        serverUrl,
+        token: url.searchParams.get('token') || innerToken,
+        chatId: url.searchParams.get('chatId') || innerChatId,
         senderId: url.searchParams.get('senderId') || undefined,
-        displayName: url.searchParams.get('name') || undefined,
+        displayName: url.searchParams.get('displayName') || url.searchParams.get('name') || undefined,
+        channelName: url.searchParams.get('channelName') || undefined,
+        channelId: url.searchParams.get('channelId') || innerChannelId,
       };
     } catch { return null; }
   }
@@ -41,6 +58,7 @@ function parseConnectionUrl(raw: string): { serverUrl: string; token?: string; c
         chatId: url.searchParams.get('chatId') || undefined,
         senderId: url.searchParams.get('senderId') || undefined,
         displayName: url.searchParams.get('name') || undefined,
+        channelId: url.searchParams.get('channelId') || undefined,
       };
     } catch { return null; }
   }
@@ -77,6 +95,8 @@ export default function Pairing({ onBack, onPaired }: { onBack: () => void; onPa
         chatId: parsedUrl.chatId,
         senderId: parsedUrl.senderId,
         displayName: parsedUrl.displayName,
+        channelName: parsedUrl.channelName,
+        channelId: parsedUrl.channelId,
       };
     } catch { return null; }
   })() : null;
@@ -87,11 +107,16 @@ export default function Pairing({ onBack, onPaired }: { onBack: () => void; onPa
       setError('Invalid connection URL. Expected ws:// or openclaw:// format.');
       return;
     }
-    const connName = parsedUrl.displayName || new URL(parsedUrl.serverUrl.replace(/^ws/, 'http')).hostname;
+    // Build a human-friendly connection name: "channelName" or "channelName/user" or hostname
+    const channelLabel = parsedUrl.channelName || parsedUrl.channelId;
+    const userLabel = parsedUrl.senderId;
+    const connName = channelLabel
+      ? (userLabel ? `${channelLabel} (${userLabel})` : channelLabel)
+      : parsedUrl.displayName || new URL(parsedUrl.serverUrl.replace(/^ws/, 'http')).hostname;
     const conn = addConnection(
       connName,
       parsedUrl.serverUrl,
-      parsedUrl.displayName || 'OpenClaw User',
+      parsedUrl.displayName || parsedUrl.senderId || 'OpenClaw User',
       parsedUrl.token,
       parsedUrl.chatId,
       parsedUrl.senderId,
@@ -261,25 +286,25 @@ export default function Pairing({ onBack, onPaired }: { onBack: () => void; onPa
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-2 pt-2 border-t border-[#EDF2F0] dark:border-[#2d3748]">
                   <p className="text-[11px] font-semibold text-[#67B88B] tracking-wide uppercase">Parsed Connection</p>
                   <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
+                    {(parsedFields.channelName || parsedFields.displayName) && <>
+                      <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Server</span>
+                      <span className="font-semibold text-[#67B88B]">{parsedFields.channelName || parsedFields.displayName}</span>
+                    </>}
                     <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Host</span>
-                    <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.host}:{parsedFields.port}{parsedFields.path}</span>
+                    <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.host}{parsedFields.path !== '/' ? parsedFields.path : ''}</span>
                     <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Protocol</span>
                     <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.secure ? '🔒 WSS (secure)' : '⚠️ WS (plain)'}</span>
+                    {parsedFields.channelId && <>
+                      <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Channel</span>
+                      <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.channelId}</span>
+                    </>}
+                    {parsedFields.senderId && <>
+                      <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">User</span>
+                      <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.senderId}</span>
+                    </>}
                     {parsedFields.token && <>
                       <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Token</span>
                       <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.token.slice(0, 8)}{'…'}</span>
-                    </>}
-                    {parsedFields.chatId && <>
-                      <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Chat ID</span>
-                      <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.chatId}</span>
-                    </>}
-                    {parsedFields.senderId && <>
-                      <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Sender</span>
-                      <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.senderId}</span>
-                    </>}
-                    {parsedFields.displayName && <>
-                      <span className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Name</span>
-                      <span className="font-mono text-[#2D3436]/80 dark:text-[#e2e8f0]/80">{parsedFields.displayName}</span>
                     </>}
                   </div>
                 </motion.div>

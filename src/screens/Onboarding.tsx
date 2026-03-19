@@ -4,12 +4,6 @@ import { ArrowRight, Github, Mail, MessageSquare, Server, Zap, Shield } from 'lu
 import { useLogto } from '@logto/react';
 import { Button } from '../components/ui/button';
 
-// Dev-only: check if we should skip authentication
-function useDevSkipAuth(): boolean {
-  if (!import.meta.env.DEV) return false;
-  return localStorage.getItem('openclaw.devSkipAuth') === 'true';
-}
-
 const SLIDES = [
   {
     icon: MessageSquare,
@@ -47,10 +41,9 @@ export default function Onboarding({ onGetStarted }: { onGetStarted: () => void 
   const touchDelta = useRef(0);
   const autoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const { signIn, isAuthenticated } = useLogto();
-  const devSkipAuth = useDevSkipAuth();
 
   const handleGetStarted = () => {
-    if (isAuthenticated || devSkipAuth) {
+    if (isAuthenticated) {
       onGetStarted();
     } else {
       signIn(`${window.location.origin}/callback`);
