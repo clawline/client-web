@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown } from 'lucide-react';
+import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
 import { CONNECTIONS_UPDATED_EVENT, getConnections, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
@@ -9,6 +9,9 @@ import type { AgentInfo, ConversationSummary, ChannelStatus } from '../services/
 import { getUserId } from '../App';
 
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
+const VIEW_MODE_KEY = 'openclaw.chatlist.viewMode';
+
+type ViewMode = 'list' | 'grid';
 
 // Distinct avatar colors per agent — hash name to a palette position
 const AVATAR_PALETTES = [
@@ -127,6 +130,9 @@ export default function ChatList({
 }) {
   const [connections, setConnections] = useState<ServerConnection[]>(() => getConnections());
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    try { return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || 'list'; } catch { return 'list'; }
+  });
   const [expandedIds, setExpandedIds] = useState<string[]>(() => {
     const initialConnections = getConnections();
     if (initialConnections.length <= 1) {
@@ -397,6 +403,15 @@ export default function ChatList({
     }
   };
 
+  const toggleViewMode = () => {
+    const next: ViewMode = viewMode === 'list' ? 'grid' : 'list';
+    setViewMode(next);
+    try { localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* noop */ }
+  };
+
+  // Effective view: grid only on mobile (non-compact) mode
+  const effectiveView: ViewMode = compact ? 'list' : viewMode;
+
   const renderAgentCard = (connection: ServerConnection, agent: AgentInfo, index: number, showSource = false) => {
     const status = statusMap[connection.id] || 'disconnected';
     const isDisabled = attemptedMap[connection.id] && status === 'disconnected';
@@ -483,6 +498,68 @@ export default function ChatList({
     );
   };
 
+  const renderAgentGridCard = (connection: ServerConnection, agent: AgentInfo, index: number) => {
+    const status = statusMap[connection.id] || 'disconnected';
+    const isDisabled = attemptedMap[connection.id] && status === 'disconnected';
+    const isActive = activeConnectionId === connection.id && activeAgentId === agent.id;
+    const palette = getAgentPalette(agent.id);
+    const initials = agent.name.slice(0, 2).toUpperCase();
+    const lastMessage = getLastMessagePreview(agent.id, connection.id);
+
+    return (
+      <motion.button
+        key={`${connection.id}-${agent.id}`}
+        type="button"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: Math.min(index * 0.03, 0.15), duration: 0.2 }}
+        whileTap={isDisabled ? undefined : { scale: 0.96 }}
+        onClick={() => handleAgentClick(connection, agent)}
+        disabled={isDisabled}
+        className={cn(
+          'relative flex flex-col items-center text-center p-4 rounded-2xl transition-all duration-150',
+          'bg-white/60 dark:bg-card-alt/40',
+          isDisabled && 'opacity-40 cursor-not-allowed',
+          !isDisabled && 'cursor-pointer active:bg-primary/5',
+          isActive
+            ? 'ring-2 ring-primary/30 bg-primary/5 dark:bg-primary/10'
+            : 'hover:bg-text/[0.02] dark:hover:bg-text-inv/[0.02]'
+        )}
+      >
+        {/* Avatar */}
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-lg mb-2.5 shadow-sm"
+          style={{ background: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
+        >
+          {agent.identityEmoji || initials}
+        </div>
+
+        {/* Name */}
+        <h3 className="text-[13px] font-semibold truncate w-full leading-tight">
+          {agent.name}
+        </h3>
+
+        {/* Model or status */}
+        {agent.model ? (
+          <span className="text-[10px] text-text/35 dark:text-text-inv/30 truncate w-full mt-0.5">
+            {agent.model.split('/').pop()}
+          </span>
+        ) : lastMessage?.text ? (
+          <span className="text-[10px] text-text/35 dark:text-text-inv/30 truncate w-full mt-0.5">
+            {lastMessage.text.slice(0, 30)}
+          </span>
+        ) : null}
+
+        {/* Default badge */}
+        {agent.isDefault && (
+          <span className="text-[8px] font-medium text-text/40 dark:text-text-inv/35 bg-text/[0.05] dark:bg-text-inv/[0.05] rounded px-1.5 py-0.5 mt-1.5">
+            default
+          </span>
+        )}
+      </motion.button>
+    );
+  };
+
   if (connections.length === 0) {
     return (
       <div className={cn('flex flex-col h-full', !compact && 'pb-24')}>
@@ -518,6 +595,16 @@ export default function ChatList({
             {compact && <span className="font-semibold text-[15px] block truncate">Chats</span>}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
+            {!compact && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={toggleViewMode}
+                className="p-1.5 text-text/35 dark:text-text-inv/30 hover:text-primary transition-colors"
+                title={viewMode === 'list' ? 'Grid view' : 'List view'}
+              >
+                {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
+              </motion.button>
+            )}
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleRefresh}
@@ -552,11 +639,13 @@ export default function ChatList({
 
       <div className={cn('flex-1 overflow-y-auto', compact ? 'px-1 pb-2' : 'px-2 pb-4')}>
         {searchQuery.trim() ? (
-          <div className="space-y-0.5">
+          <div className={effectiveView === 'grid' ? 'grid grid-cols-3 gap-2 px-1' : 'space-y-0.5'}>
             {filteredResults.length > 0 ? filteredResults.map(({ agent, connection }, index) => (
-              renderAgentCard(connection, agent, index, true)
+              effectiveView === 'grid'
+                ? renderAgentGridCard(connection, agent, index)
+                : renderAgentCard(connection, agent, index, true)
             )) : (
-              <div className="text-center text-text/30 dark:text-text-inv/30 mt-10 text-[13px]">No agents found</div>
+              <div className={cn('text-center text-text/30 dark:text-text-inv/30 text-[13px]', effectiveView === 'grid' ? 'col-span-3 mt-10' : 'mt-10')}>No agents found</div>
             )}
           </div>
         ) : showGroupedView ? (
@@ -596,16 +685,18 @@ export default function ChatList({
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden"
                       >
-                        <div className="space-y-0.5 pb-1">
+                        <div className={effectiveView === 'grid' ? 'grid grid-cols-3 gap-2 px-1 pb-1' : 'space-y-0.5 pb-1'}>
                           {isLoading ? (
-                            <div className="flex items-center justify-center gap-2 py-6">
+                            <div className={cn('flex items-center justify-center gap-2 py-6', effectiveView === 'grid' && 'col-span-3')}>
                               <Loader2 size={16} className="text-text/30 animate-spin" />
                               <span className="text-text/30 dark:text-text-inv/25 text-[12px]">Loading…</span>
                             </div>
                           ) : agents.length > 0 ? agents.map((agent, index) => (
-                            renderAgentCard(connection, agent, index)
+                            effectiveView === 'grid'
+                              ? renderAgentGridCard(connection, agent, index)
+                              : renderAgentCard(connection, agent, index)
                           )) : (
-                            <div className="text-center text-text/25 dark:text-text-inv/20 py-6 text-[12px]">No agents</div>
+                            <div className={cn('text-center text-text/25 dark:text-text-inv/20 py-6 text-[12px]', effectiveView === 'grid' && 'col-span-3')}>No agents</div>
                           )}
                         </div>
                       </motion.div>
@@ -616,16 +707,20 @@ export default function ChatList({
             })}
           </div>
         ) : (
-          <div className="space-y-0.5">
+          <div className={effectiveView === 'grid' ? 'grid grid-cols-3 gap-2 px-1' : 'space-y-0.5'}>
             {loadingMap[connections[0].id] && (agentMap[connections[0].id] || []).length === 0 ? (
-              <div className="flex items-center justify-center gap-2 py-12">
+              <div className={cn('flex items-center justify-center gap-2 py-12', effectiveView === 'grid' && 'col-span-3')}>
                 <Loader2 size={18} className="text-text/30 animate-spin" />
                 <span className="text-text/30 dark:text-text-inv/25 text-[13px]">Loading agents…</span>
               </div>
             ) : (agentMap[connections[0].id] || []).length > 0 ? (
-              (agentMap[connections[0].id] || []).map((agent, index) => renderAgentCard(connections[0], agent, index))
+              (agentMap[connections[0].id] || []).map((agent, index) =>
+                effectiveView === 'grid'
+                  ? renderAgentGridCard(connections[0], agent, index)
+                  : renderAgentCard(connections[0], agent, index)
+              )
             ) : (
-              <div className="text-center text-text/25 dark:text-text-inv/20 mt-10 text-[13px]">No agents</div>
+              <div className={cn('text-center text-text/25 dark:text-text-inv/20 mt-10 text-[13px]', effectiveView === 'grid' && 'col-span-3')}>No agents</div>
             )}
           </div>
         )}
