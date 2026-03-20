@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, Moon, ChevronRight, LogOut, Bell, Smartphone, User, Server, Plus, Trash2, Check, Pencil, X } from 'lucide-react';
+import { Settings, Moon, ChevronRight, LogOut, Bell, Smartphone, User, Server, Trash2, Check, Pencil, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { useLogto, type IdTokenClaims } from '@logto/react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
-import { getConnections, removeConnection, updateConnection, getActiveConnectionId, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
+import { CONNECTIONS_UPDATED_EVENT, getConnections, moveConnection, removeConnection, updateConnection, getActiveConnectionId, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
 import * as channel from '../services/clawChannel';
 
 export default function Profile({ onNavigate }: { onNavigate: (screen: string) => void }) {
@@ -27,6 +27,12 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
   useEffect(() => { refresh(); }, [refresh]);
 
   useEffect(() => {
+    const handleConnectionsUpdated = () => refresh();
+    window.addEventListener(CONNECTIONS_UPDATED_EVENT, handleConnectionsUpdated);
+    return () => window.removeEventListener(CONNECTIONS_UPDATED_EVENT, handleConnectionsUpdated);
+  }, [refresh]);
+
+  useEffect(() => {
     void getIdTokenClaims().then((claims) => {
       if (claims) setUserClaims(claims);
     });
@@ -35,9 +41,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
   const handleRemove = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (id === activeId) {
-      channel.close();
-      localStorage.removeItem('openclaw.agentList');
-      localStorage.removeItem('openclaw.channelStatus');
+      channel.close(true, id);
     }
     removeConnection(id);
     refresh();
@@ -45,12 +49,14 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
 
   const handleActivate = (id: string) => {
     if (id === activeId) return;
-    // Disconnect previous connection and clear caches
-    channel.close();
-    localStorage.removeItem('openclaw.agentList');
-    localStorage.removeItem('openclaw.channelStatus');
     setActiveConnectionId(id);
     setActiveId(id);
+  };
+
+  const handleMove = (e: React.MouseEvent, id: string, direction: -1 | 1) => {
+    e.stopPropagation();
+    moveConnection(id, direction);
+    refresh();
   };
 
   const openEdit = (e: React.MouseEvent, conn: ServerConnection) => {
@@ -99,14 +105,11 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
             <h3 className="text-sm font-semibold text-text/50 dark:text-text-inv/50 uppercase tracking-wider flex items-center gap-2">
               <Server size={14} /> Servers
             </h3>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onNavigate('pairing')}>
-              <Plus size={18} className="text-primary" />
-            </Button>
           </div>
 
           {connections.length > 0 ? (
               <Card className="overflow-hidden divide-y divide-border dark:divide-border-dark">
-              {connections.map((conn) => (
+              {connections.map((conn, index) => (
                 <div
                   key={conn.id}
                   onClick={() => handleActivate(conn.id)}
@@ -121,6 +124,24 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-[15px] truncate">{conn.displayName || conn.name}</p>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <motion.button
+                      whileTap={{ scale: 0.8 }}
+                      onClick={(e) => handleMove(e, conn.id, -1)}
+                      className="p-2 text-text/20 dark:text-text-inv/20 hover:text-text/60 dark:hover:text-text-inv/60 transition-colors"
+                      disabled={index === 0}
+                    >
+                      <ChevronUp size={14} />
+                    </motion.button>
+                    <motion.button
+                      whileTap={{ scale: 0.8 }}
+                      onClick={(e) => handleMove(e, conn.id, 1)}
+                      className="p-2 text-text/20 dark:text-text-inv/20 hover:text-text/60 dark:hover:text-text-inv/60 transition-colors"
+                      disabled={index === connections.length - 1}
+                    >
+                      <ChevronDown size={14} />
+                    </motion.button>
                   </div>
                   <motion.button
                     whileTap={{ scale: 0.8 }}
@@ -142,10 +163,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
           ) : (
             <Card className="p-6 flex flex-col items-center text-center">
               <Server size={24} className="text-text/20 dark:text-text-inv/20 mb-2" />
-              <p className="text-text/40 dark:text-text-inv/40 text-[14px] mb-3">No servers connected</p>
-              <Button size="sm" onClick={() => onNavigate('pairing')}>
-                <Plus size={16} /> Add Server
-              </Button>
+              <p className="text-text/40 dark:text-text-inv/40 text-[14px]">No servers connected</p>
             </Card>
           )}
         </section>

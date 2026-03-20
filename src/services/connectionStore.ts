@@ -1,5 +1,10 @@
 const STORAGE_KEY = 'openclaw.connections';
 const ACTIVE_KEY = 'openclaw.activeConnectionId';
+export const CONNECTIONS_UPDATED_EVENT = 'openclaw:connections-updated';
+
+function emitConnectionsUpdated() {
+  window.dispatchEvent(new CustomEvent(CONNECTIONS_UPDATED_EVENT));
+}
 
 export type ServerConnection = {
   id: string;
@@ -22,6 +27,7 @@ function readAll(): ServerConnection[] {
 
 function writeAll(list: ServerConnection[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  emitConnectionsUpdated();
 }
 
 export function getConnections(): ServerConnection[] {
@@ -68,6 +74,7 @@ export function setActiveConnectionId(id: string | null) {
   } else {
     localStorage.removeItem(ACTIVE_KEY);
   }
+  emitConnectionsUpdated();
 }
 
 export function getActiveConnection(): ServerConnection | undefined {
@@ -80,5 +87,16 @@ export function updateConnection(id: string, updates: Partial<Omit<ServerConnect
   const idx = list.findIndex((c) => c.id === id);
   if (idx === -1) return;
   list[idx] = { ...list[idx], ...updates };
+  writeAll(list);
+}
+
+export function moveConnection(id: string, direction: -1 | 1) {
+  const list = readAll();
+  const idx = list.findIndex((c) => c.id === id);
+  const nextIdx = idx + direction;
+  if (idx === -1 || nextIdx < 0 || nextIdx >= list.length) return;
+
+  const [item] = list.splice(idx, 1);
+  list.splice(nextIdx, 0, item);
   writeAll(list);
 }

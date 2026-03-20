@@ -41,33 +41,34 @@ type RelayHealth = {
   timestamp: number;
 };
 
-/* ── Cache helpers ────────────────────────────────────────── */
-
-const CACHE_KEY = 'openclaw.channelStatus';
-const AGENT_CACHE_KEY = 'openclaw.agentList';
-
-function loadCachedStatus(): ChannelStatus | null {
-  try { const raw = localStorage.getItem(CACHE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
-}
-function cacheStatus(s: ChannelStatus) {
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify(s)); } catch { /* ignore */ }
-}
-function loadCachedAgents(): AgentInfo[] {
-  try { const raw = localStorage.getItem(AGENT_CACHE_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
-}
-
 /* ── Component ────────────────────────────────────────────── */
 
 export default function Dashboard() {
-  const cached = loadCachedStatus();
+  const activeConn = getActiveConnection();
+  const connId = activeConn?.id || '';
+  const cached = activeConn ? channel.loadCachedChannelStatus<ChannelStatus>(activeConn.id) : null;
   const [status, setStatus] = useState<ChannelStatus | null>(cached);
   const [loading, setLoading] = useState(!cached);
-  const [wsStatus, setWsStatus] = useState(channel.getStatus());
-  const [agents, setAgents] = useState<AgentInfo[]>(loadCachedAgents());
+  const [wsStatus, setWsStatus] = useState(connId ? channel.getStatus(connId) : 'disconnected');
+  const [agents, setAgents] = useState<AgentInfo[]>(activeConn ? channel.loadCachedAgents(activeConn.id) : []);
   const [relayHealth, setRelayHealth] = useState<RelayHealth | null>(null);
   const [uptimeStr, setUptimeStr] = useState('');
-  const activeConn = getActiveConnection();
   const connectedSince = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!activeConn) {
+      setStatus(null);
+      setAgents([]);
+      setLoading(false);
+      setWsStatus('disconnected');
+      return;
+    }
+
+    setStatus(channel.loadCachedChannelStatus<ChannelStatus>(activeConn.id));
+    setAgents(channel.loadCachedAgents(activeConn.id));
+    setLoading(!channel.loadCachedChannelStatus<ChannelStatus>(activeConn.id));
+    setWsStatus(channel.getStatus(activeConn.id));
+  }, [activeConn?.id]);
 
   /* ── Relay health fetch ─────────────────────────────────── */
   const fetchRelayHealth = useCallback(async () => {
@@ -83,9 +84,10 @@ export default function Dashboard() {
 
   /* ── WebSocket listeners ────────────────────────────────── */
   useEffect(() => {
-    if (!activeConn) return;
+    if (!activeConn || !connId) return;
 
     channel.connect({
+      connectionId: connId,
       chatId: activeConn.chatId,
       senderId: activeConn.senderId || getUserId(),
       senderName: activeConn.displayName,
@@ -97,42 +99,43 @@ export default function Dashboard() {
       if (packet.type === 'connection.open') {
         connectedSince.current = Date.now();
         try {
-          channel.sendRaw({ type: 'channel.status.get', data: { requestId: `st-${Date.now()}`, includeChats: true } });
-          channel.requestAgentList();
+          channel.sendRaw({ type: 'channel.status.get', data: { requestId: `st-${Date.now()}`, includeChats: true } }, connId);
+          channel.requestAgentList(connId);
         } catch { /* ignore */ }
       }
       if (packet.type === 'channel.status') {
         const s = packet.data as unknown as ChannelStatus;
         setStatus(s);
-        cacheStatus(s);
+        channel.saveCachedChannelStatus(connId, s);
         setLoading(false);
       }
       if (packet.type === 'agent.list') {
         const list = (packet.data as { agents?: AgentInfo[] })?.agents ?? [];
         setAgents(list);
+        channel.saveCachedAgents(connId, list);
       }
-    });
+    }, connId);
 
     const unsubStatus = channel.onStatus((s) => {
       setWsStatus(s);
       if (s === 'connected') {
         connectedSince.current = Date.now();
         try {
-          channel.sendRaw({ type: 'channel.status.get', data: { requestId: `st-${Date.now()}`, includeChats: true } });
-          channel.requestAgentList();
+          channel.sendRaw({ type: 'channel.status.get', data: { requestId: `st-${Date.now()}`, includeChats: true } }, connId);
+          channel.requestAgentList(connId);
         } catch { /* ignore */ }
       }
-    });
+    }, connId);
 
     fetchRelayHealth();
 
     const pollInterval = setInterval(() => {
-      try { channel.sendRaw({ type: 'channel.status.get', data: { requestId: `st-${Date.now()}`, includeChats: false } }); } catch { /* ignore */ }
+      try { channel.sendRaw({ type: 'channel.status.get', data: { requestId: `st-${Date.now()}`, includeChats: false } }, connId); } catch { /* ignore */ }
       fetchRelayHealth();
     }, 15000);
 
     return () => { unsubMsg(); unsubStatus(); clearInterval(pollInterval); };
-  }, [activeConn?.id, fetchRelayHealth]);
+  }, [activeConn?.id, connId, fetchRelayHealth]);
 
   /* ── Uptime ticker ──────────────────────────────────────── */
   useEffect(() => {
@@ -153,8 +156,8 @@ export default function Dashboard() {
   const refresh = () => {
     setLoading(true);
     try {
-      channel.sendRaw({ type: 'channel.status.get', data: { requestId: `st-${Date.now()}`, includeChats: true } });
-      channel.requestAgentList();
+      channel.sendRaw({ type: 'channel.status.get', data: { requestId: `st-${Date.now()}`, includeChats: true } }, connId);
+      channel.requestAgentList(connId);
     } catch { /* ignore */ }
     fetchRelayHealth();
   };

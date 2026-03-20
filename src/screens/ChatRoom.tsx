@@ -5,6 +5,7 @@ import Markdown from 'react-markdown';
 import hljs from 'highlight.js/lib/core';
 
 import type { LanguageFn } from 'highlight.js';
+import { cn } from '../lib/utils';
 
 // Lazy-load language grammars on first code block render
 const langLoaders: Record<string, () => Promise<{ default: LanguageFn }>> = {
@@ -35,8 +36,9 @@ async function ensureLang(lang: string): Promise<void> {
   loadedLangs.add(lang);
 }
 import * as channel from '../services/clawChannel';
+import type { ConversationSummary } from '../services/clawChannel';
 import { getUserId } from '../App';
-import { getActiveConnection } from '../services/connectionStore';
+import { getActiveConnection, getConnectionById } from '../services/connectionStore';
 import ActionCard from '../components/ActionCard';
 import MemorySheet from '../components/MemorySheet';
 
@@ -51,6 +53,8 @@ type Message = {
   timestamp?: number;
   isStreaming?: boolean; // Temporary streaming message indicator
 };
+
+const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
 
 const slashCommands = [
   { id: 'help', icon: HelpCircle, label: '/help', desc: 'Show built-in help and command usage' },
@@ -104,6 +108,19 @@ function formatDate(ts: number) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
 }
 
+function formatRelativeTime(ts?: number) {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 function isDifferentDay(ts1?: number, ts2?: number) {
   if (!ts1 || !ts2) return true;
   return new Date(ts1).toDateString() !== new Date(ts2).toDateString();
@@ -141,13 +158,32 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 // --- Load agent info ---
-function getAgentInfo(agentId: string | null | undefined) {
+function getAgentInfo(agentId: string | null | undefined, connectionId: string) {
+  const list = channel.loadCachedAgents(connectionId);
+  return list.find((agent) => agent.id === agentId) || null;
+}
+
+function getPreviewKey(connectionId: string, agentId: string) {
+  return `${PREVIEW_KEY_PREFIX}${connectionId}.${agentId}`;
+}
+
+function saveAgentPreview(agentId: string | null | undefined, connectionId: string, messages: Message[]) {
+  if (!agentId || !connectionId || messages.length === 0) return;
+  const lastMeaningfulMessage = [...messages].reverse().find((message) => !message.isStreaming);
+  if (!lastMeaningfulMessage) return;
+
   try {
-    const raw = localStorage.getItem('openclaw.agentList');
-    if (!raw) return null;
-    const list = JSON.parse(raw) as Array<{ id: string; name: string; identityEmoji?: string; model?: string }>;
-    return list.find((a) => a.id === agentId) || null;
-  } catch { return null; }
+    localStorage.setItem(getPreviewKey(connectionId, agentId), JSON.stringify({
+      text: lastMeaningfulMessage.text || lastMeaningfulMessage.mediaType || 'Attachment',
+      timestamp: lastMeaningfulMessage.timestamp,
+    }));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function getConnectionDisplayName(name?: string, fallbackName?: string) {
+  return name || fallbackName || 'Server';
 }
 
 function LazyCodeBlock({ lang, children }: { lang: string; children: string }) {
@@ -174,17 +210,31 @@ function LazyCodeBlock({ lang, children }: { lang: string; children: string }) {
   );
 }
 
-export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agentId?: string | null; chatId?: string | null; onBack: () => void; isDesktop?: boolean }) {
-  const activeConn = getActiveConnection();
+export default function ChatRoom({
+  agentId,
+  chatId,
+  connectionId,
+  onBack,
+  onOpenConversation,
+  isDesktop,
+}: {
+  agentId?: string | null;
+  chatId?: string | null;
+  connectionId?: string | null;
+  onBack: () => void;
+  onOpenConversation: (chatId: string) => void;
+  isDesktop?: boolean;
+}) {
+  const activeConn = connectionId ? getConnectionById(connectionId) : getActiveConnection();
   const connId = activeConn?.id || '';
-  const agentInfo = getAgentInfo(agentId);
+  const agentInfo = getAgentInfo(agentId, connId);
   const [messages, setMessages] = useState<Message[]>(() => loadMessages(agentId, connId, chatId));
   const [inputValue, setInputValue] = useState('');
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactingToMsgId, setReactingToMsgId] = useState<string | null>(null);
-  const [wsStatus, setWsStatus] = useState<string>(channel.getStatus());
-  const prevWsStatusRef = useRef<string>(channel.getStatus());
+  const [wsStatus, setWsStatus] = useState<string>(channel.getStatus(connId));
+  const prevWsStatusRef = useRef<string>(channel.getStatus(connId));
   const [showReconnected, setShowReconnected] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -192,7 +242,10 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
   const [peerTyping, setPeerTyping] = useState(false);
   const [editingMsg, setEditingMsg] = useState<Message | null>(null);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showMoreIcons, setShowMoreIcons] = useState(false);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [loadingConversations, setLoadingConversations] = useState(false);
   const fileInputRef2 = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -206,6 +259,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       saveMessages(agentId, connId, messages, chatId);
+      saveAgentPreview(agentId, connId, messages);
     }, 500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [messages, agentId, connId, chatId]);
@@ -216,19 +270,25 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
 
   // WebSocket 连接 & 消息监听
   useEffect(() => {
-    if (!activeConn) return;
+    if (!activeConn || !connId) return;
     // Use explicit chatId if provided; otherwise let server assign via connection.open
     const conversationId = chatId || activeConn.chatId || undefined;
     const requestSelectedHistory = () => {
       if (!chatId) return;
-      try { channel.requestHistory(chatId); } catch { /* ignore */ }
+      try { channel.requestHistory(chatId, connId); } catch { /* ignore */ }
     };
 
     // Clear messages from previous agent before connecting to new one
     setMessages(loadMessages(agentId, connId, chatId));
     setIsThinking(false);
+    setShowHeaderMenu(false);
+    setShowHistoryDrawer(false);
+    setConversations([]);
+    setWsStatus(channel.getStatus(connId));
+    prevWsStatusRef.current = channel.getStatus(connId);
 
     channel.connect({
+      connectionId: connId,
       chatId: conversationId,
       senderId: activeConn.senderId || getUserId(),
       senderName: activeConn.displayName,
@@ -237,7 +297,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
       token: activeConn.token,
     });
 
-    if (channel.getStatus() === 'connected') {
+    if (channel.getStatus(connId) === 'connected') {
       requestSelectedHistory();
     }
 
@@ -304,7 +364,13 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
           text: m.content || '',
           timestamp: m.timestamp || Date.now(),
         }));
-        if (history.length > 0) setMessages(history);
+        setMessages(history);
+      } else if (packet.type === 'conversation.list') {
+        const nextConversations = Array.isArray((packet.data as { conversations?: ConversationSummary[] }).conversations)
+          ? [ ...((packet.data as { conversations?: ConversationSummary[] }).conversations || []) ].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+          : [];
+        setConversations(nextConversations);
+        setLoadingConversations(false);
       } else if (packet.type === 'text.delta') {
         if (localStorage.getItem('openclaw.streaming.enabled') === 'false') return;
 
@@ -340,7 +406,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
           });
         }
       }
-    });
+    }, connId);
 
     const unsubStatus = channel.onStatus((status) => {
       // Detect reconnect: was disconnected/reconnecting → now connected
@@ -350,7 +416,10 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
       }
       prevWsStatusRef.current = status;
       setWsStatus(status);
-    });
+      if (status === 'disconnected') {
+        setLoadingConversations(false);
+      }
+    }, connId);
 
     return () => {
       unsubMsg();
@@ -358,7 +427,43 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
       // Don't close channel here — next connect() will replace it,
       // and StrictMode double-invoke would kill the connection prematurely
     };
-  }, [agentId, chatId, activeConn?.id]);
+  }, [agentId, chatId, activeConn?.id, connId]);
+
+  const requestConversationList = useCallback(() => {
+    if (!agentId || !connId) return;
+    setLoadingConversations(true);
+    try {
+      channel.requestConversationList(agentId, connId);
+    } catch {
+      setLoadingConversations(false);
+    }
+  }, [agentId, connId]);
+
+  useEffect(() => {
+    if (!showHistoryDrawer || !activeConn || !connId || !agentId) return;
+
+    channel.connect({
+      connectionId: connId,
+      chatId: chatId || activeConn.chatId || undefined,
+      senderId: activeConn.senderId || getUserId(),
+      senderName: activeConn.displayName,
+      serverUrl: activeConn.serverUrl,
+      agentId: agentId || undefined,
+      token: activeConn.token,
+    });
+
+    if (channel.getStatus(connId) === 'connected') {
+      requestConversationList();
+    } else {
+      setLoadingConversations(true);
+    }
+  }, [activeConn, agentId, chatId, connId, requestConversationList, showHistoryDrawer]);
+
+  useEffect(() => {
+    if (showHistoryDrawer && wsStatus === 'connected') {
+      requestConversationList();
+    }
+  }, [requestConversationList, showHistoryDrawer, wsStatus]);
 
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -369,9 +474,9 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
 
     // Send typing indicator (debounced)
     if (val.trim()) {
-      try { channel.sendTyping(true); } catch {}
+      try { channel.sendTyping(true, connId); } catch {}
       if (typingTimer.current) clearTimeout(typingTimer.current);
-      typingTimer.current = setTimeout(() => { try { channel.sendTyping(false); } catch {} }, 3000);
+      typingTimer.current = setTimeout(() => { try { channel.sendTyping(false, connId); } catch {} }, 3000);
     }
   };
 
@@ -383,7 +488,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
 
   const handleSaveEdit = () => {
     if (!editingMsg || !inputValue.trim()) return;
-    channel.editMessage(editingMsg.id, inputValue.trim());
+    channel.editMessage(editingMsg.id, inputValue.trim(), connId);
     setMessages((prev) => prev.map((m) => m.id === editingMsg.id ? { ...m, text: inputValue.trim() } : m));
     setEditingMsg(null);
     setInputValue('');
@@ -396,7 +501,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
 
   // Delete message
   const handleDeleteMessage = (msgId: string) => {
-    channel.deleteMessage(msgId);
+    channel.deleteMessage(msgId, connId);
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
   };
 
@@ -418,7 +523,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
     };
     setMessages((prev) => [...prev, userMsg]);
     try {
-      channel.sendFile({ content: file.name, mediaUrl: dataUrl, mimeType: file.type, fileName: file.name, agentId: agentId || undefined });
+      channel.sendFile({ content: file.name, mediaUrl: dataUrl, mimeType: file.type, fileName: file.name, agentId: agentId || undefined }, connId);
     } catch { /* ignore */ }
   };
 
@@ -446,9 +551,9 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
 
     try {
       if (replyId) {
-        channel.sendTextWithParent(inputValue, replyId, agentId || undefined);
+        channel.sendTextWithParent(inputValue, replyId, agentId || undefined, connId);
       } else {
-        channel.sendText(inputValue, agentId || undefined);
+        channel.sendText(inputValue, agentId || undefined, connId);
       }
     } catch {
       setMessages((prev) => [
@@ -468,7 +573,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
     const userMsg: Message = { id: Date.now().toString(), sender: 'user', text, timestamp: Date.now() };
     setMessages((prev) => [...prev, userMsg]);
     try {
-      channel.sendText(text, agentId || undefined);
+      channel.sendText(text, agentId || undefined, connId);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -502,7 +607,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
         mediaUrl: dataUrl,
         mimeType: file.type,
         agentId: agentId || undefined,
-      });
+      }, connId);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -549,7 +654,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
               mediaUrl: dataUrl,
               mimeType: 'audio/webm',
               agentId: agentId || undefined,
-            });
+            }, connId);
           } catch { /* ignore */ }
         };
         reader.readAsDataURL(blob);
@@ -598,9 +703,9 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
       // Send to server
       try {
         if (hasReaction) {
-          channel.removeReaction(reactingToMsgId, emoji);
+          channel.removeReaction(reactingToMsgId, emoji, connId);
         } else {
-          channel.addReaction(reactingToMsgId, emoji);
+          channel.addReaction(reactingToMsgId, emoji, connId);
         }
       } catch { /* ignore */ }
     } else {
@@ -608,7 +713,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
       const emojiMsg: Message = { id: Date.now().toString(), sender: 'user', text: emoji, timestamp: Date.now() };
       setMessages((prev) => [...prev, emojiMsg]);
       try {
-        channel.sendText(emoji);
+        channel.sendText(emoji, undefined, connId);
       } catch {
         // ignore
       }
@@ -639,6 +744,16 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
     if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
   };
   const closeLongPress = () => setLongPressedMsgId(null);
+  const openHistoryDrawer = () => {
+    setShowHeaderMenu(false);
+    setShowHistoryDrawer(true);
+  };
+  const handleConversationSwitch = (nextChatId: string) => {
+    setShowHistoryDrawer(false);
+    setShowHeaderMenu(false);
+    if (nextChatId === chatId) return;
+    onOpenConversation(nextChatId);
+  };
 
   return (
     <div className="flex flex-col h-full bg-surface dark:bg-surface-dark relative">
@@ -650,7 +765,9 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
           </motion.button>
         )}
         <div className={`flex flex-col ${isDesktop ? 'items-start ml-2' : 'items-center'}`}>
-          <h2 className="font-semibold text-[17px] text-text dark:text-text-inv">{agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}</h2>
+          <h2 className="font-semibold text-[17px] text-text dark:text-text-inv">
+            {`${getConnectionDisplayName(activeConn?.name, activeConn?.displayName)} / ${agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}`}
+          </h2>
           <span className={`text-[11px] font-medium flex items-center gap-1 ${
             wsStatus === 'connected' ? 'text-primary' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'text-amber-500' : 'text-red-400'
           }`}>
@@ -660,9 +777,14 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
             {wsStatus === 'disconnected' && <><WifiOff size={10} /> Disconnected</>}
           </span>
         </div>
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2 -mr-2 text-text dark:text-text-inv" aria-label="More options">
-          <MoreHorizontal size={24} />
-        </motion.button>
+        <div className="flex items-center gap-1">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={openHistoryDrawer} className="p-2 text-text dark:text-text-inv" aria-label="Open history drawer">
+            <MessageSquare size={20} />
+          </motion.button>
+          <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2 -mr-2 text-text dark:text-text-inv" aria-label="More options">
+            <MoreHorizontal size={24} />
+          </motion.button>
+        </div>
       </div>
 
       {/* Header context menu */}
@@ -681,6 +803,13 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
               className="absolute top-[57px] right-4 z-40 bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-2xl shadow-xl p-1.5 min-w-[180px]"
             >
               <button
+                onClick={openHistoryDrawer}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+              >
+                <MessageSquare size={16} />
+                Conversation History
+              </button>
+              <button
                 onClick={() => { setShowHeaderMenu(false); setShowMemory(true); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
               >
@@ -688,12 +817,100 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                 View Memory
               </button>
               <button
-                onClick={() => { setMessages([]); if (connId) saveMessages(agentId, connId, [], chatId); setShowHeaderMenu(false); }}
+                onClick={() => {
+                  setMessages([]);
+                  if (connId) {
+                    saveMessages(agentId, connId, [], chatId);
+                    if (agentId) {
+                      localStorage.removeItem(getPreviewKey(connId, agentId));
+                    }
+                  }
+                  setShowHeaderMenu(false);
+                }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
               >
                 <Trash2 size={16} />
                 Clear Chat
               </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showHistoryDrawer && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-30 bg-black/25"
+              onClick={() => setShowHistoryDrawer(false)}
+            />
+            <motion.div
+              initial={isDesktop ? { opacity: 0, x: 32 } : { opacity: 0, y: 32 }}
+              animate={isDesktop ? { opacity: 1, x: 0 } : { opacity: 1, y: 0 }}
+              exit={isDesktop ? { opacity: 0, x: 32 } : { opacity: 0, y: 32 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+              className={cn(
+                'fixed z-40 bg-white dark:bg-card-alt shadow-2xl border border-border dark:border-border-dark',
+                isDesktop
+                  ? 'top-0 right-0 h-full w-[360px] max-w-[88vw] rounded-l-[28px]'
+                  : 'left-0 right-0 bottom-0 max-h-[78vh] rounded-t-[28px]'
+              )}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-border dark:border-border-dark">
+                <div>
+                  <h3 className="text-[15px] font-semibold">Conversation History</h3>
+                  <p className="text-[12px] text-text/45 dark:text-text-inv/45">
+                    {agentInfo?.name || agentId || 'Agent'}
+                  </p>
+                </div>
+                <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHistoryDrawer(false)} className="p-2 text-text/55 dark:text-text-inv/55">
+                  <X size={18} />
+                </motion.button>
+              </div>
+
+              <div className="overflow-y-auto p-3 space-y-2 max-h-[calc(78vh-76px)] md:max-h-[calc(100vh-76px)]">
+                {loadingConversations ? (
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <Loader2 size={24} className="text-primary animate-spin mb-3" />
+                    <p className="text-[13px] text-text/40 dark:text-text-inv/40">Loading conversations…</p>
+                  </div>
+                ) : conversations.length > 0 ? conversations.map((conversation) => (
+                  <button
+                    key={conversation.chatId}
+                    type="button"
+                    onClick={() => handleConversationSwitch(conversation.chatId)}
+                    className={cn(
+                      'w-full text-left rounded-[20px] border px-4 py-3 transition-colors',
+                      chatId === conversation.chatId
+                        ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                        : 'border-border/70 dark:border-border-dark/70 hover:border-primary/30'
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <p className="font-medium text-[14px] truncate">{conversation.chatId}</p>
+                      {conversation.timestamp && (
+                        <span className="text-[11px] text-text/40 dark:text-text-inv/40 shrink-0">
+                          {formatRelativeTime(conversation.timestamp)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[12px] text-text/45 dark:text-text-inv/45 line-clamp-2">
+                      {conversation.lastMessage || 'No messages yet'}
+                    </p>
+                  </button>
+                )) : (
+                  <div className="flex flex-col items-center justify-center text-center py-16 px-6">
+                    <div className="w-14 h-14 rounded-full bg-primary/10 dark:bg-primary/15 flex items-center justify-center mb-4">
+                      <MessageSquare size={22} className="text-primary" />
+                    </div>
+                    <p className="text-[15px] font-medium text-text dark:text-text-inv mb-1">No saved conversations</p>
+                    <p className="text-[13px] text-text/40 dark:text-text-inv/40">This agent has no conversation history yet.</p>
+                  </div>
+                )}
+              </div>
             </motion.div>
           </>
         )}
@@ -874,7 +1091,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                               const reactions = m.reactions ?? [];
                               return { ...m, reactions: hasIt ? reactions.filter(r => r !== e) : [...reactions, e] };
                             }));
-                            if (hasIt) { channel.removeReaction(msg.id, e); } else { channel.addReaction(msg.id, e); }
+                            if (hasIt) { channel.removeReaction(msg.id, e, connId); } else { channel.addReaction(msg.id, e, connId); }
                           }}
                           className={`w-7 h-7 text-[15px] flex items-center justify-center rounded-full transition-colors ${
                             msg.reactions?.includes(e) ? 'bg-primary/20 scale-110' : 'hover:bg-border dark:hover:bg-border-dark'
@@ -938,7 +1155,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                             const reactions = m.reactions ?? [];
                             return { ...m, reactions: reactions.filter(r => r !== emoji) };
                           }));
-                          channel.removeReaction(msg.id, emoji);
+                          channel.removeReaction(msg.id, emoji, connId);
                         }}
                         className="bg-primary/10 dark:bg-primary/15 border border-primary/30 rounded-full px-2.5 py-1 text-[14px] shadow-sm flex items-center gap-1 hover:bg-primary/20 transition-colors"
                       >
@@ -1024,7 +1241,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                             const reactions = m.reactions ?? [];
                             return { ...m, reactions: hasIt ? reactions.filter(r => r !== e) : [...reactions, e] };
                           }));
-                          if (hasIt) { channel.removeReaction(longPressedMsgId, e); } else { channel.addReaction(longPressedMsgId, e); }
+                          if (hasIt) { channel.removeReaction(longPressedMsgId, e, connId); } else { channel.addReaction(longPressedMsgId, e, connId); }
                           closeLongPress();
                         }}
                         className={`w-11 h-11 text-[22px] flex items-center justify-center rounded-full transition-colors ${

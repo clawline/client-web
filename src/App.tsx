@@ -8,8 +8,7 @@ import ChatList from './screens/ChatList';
 import BottomNav from './components/BottomNav';
 import UpdateBanner from './components/UpdateBanner';
 import IOSInstallPrompt from './components/IOSInstallPrompt';
-import { setActiveConnectionId } from './services/connectionStore';
-import * as clawChannel from './services/clawChannel';
+import { getActiveConnectionId, getConnectionById, setActiveConnectionId } from './services/connectionStore';
 import { useSwipeBack } from './hooks/useSwipeBack';
 import { usePWAUpdate } from './hooks/usePWAUpdate';
 import { useIOSPWA } from './hooks/useIOSPWA';
@@ -73,13 +72,14 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   pairing: '/pairing',
 };
 
-function pathToScreen(pathname: string, search: string): { screen: Screen; agentId?: string; chatId?: string } {
+function pathToScreen(pathname: string, search: string): { screen: Screen; agentId?: string; chatId?: string; connectionId?: string } {
   if (pathname.startsWith('/chat/')) {
     const params = new URLSearchParams(search);
     return {
       screen: 'chat_room',
       agentId: decodeURIComponent(pathname.slice('/chat/'.length)),
       chatId: params.get('chatId') || undefined,
+      connectionId: params.get('connectionId') || undefined,
     };
   }
   for (const [screen, path] of Object.entries(SCREEN_TO_PATH)) {
@@ -133,6 +133,7 @@ function AppShell() {
   const [currentScreen, setCurrentScreen] = useState<Screen>(initialScreen);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(initialFromUrl.agentId ?? null);
   const [activeChatId, setActiveChatId] = useState<string | null>(initialFromUrl.chatId ?? null);
+  const [activeConnectionId, setActiveConnectionState] = useState<string | null>(initialFromUrl.connectionId ?? getActiveConnectionId());
 
   // PWA update detection
   const { updateAvailable, applyUpdate, dismissUpdate } = usePWAUpdate();
@@ -142,21 +143,33 @@ function AppShell() {
 
   // URL → Screen（浏览器前进/后退）
   useEffect(() => {
-    const { screen, agentId, chatId } = pathToScreen(location.pathname, location.search);
+    const { screen, agentId, chatId, connectionId } = pathToScreen(location.pathname, location.search);
     setCurrentScreen(screen);
     setActiveAgentId(agentId ?? null);
     setActiveChatId(chatId ?? null);
+    const nextConnectionId = connectionId ?? getActiveConnectionId();
+    setActiveConnectionState(nextConnectionId);
+    if (connectionId && connectionId !== getActiveConnectionId() && getConnectionById(connectionId)) {
+      setActiveConnectionId(connectionId);
+    }
   }, [location.pathname, location.search]);
 
-  const navigate = useCallback((screen: Screen, agentId?: string, chatId?: string) => {
+  const navigate = useCallback((screen: Screen, agentId?: string, chatId?: string, connectionId?: string) => {
     setCurrentScreen(screen);
     setActiveAgentId(agentId ?? null);
     setActiveChatId(chatId ?? null);
+    setActiveConnectionState(connectionId ?? getActiveConnectionId());
 
     // Screen → URL
     if (screen === 'chat_room' && agentId) {
       const params = new URLSearchParams();
       if (chatId) params.set('chatId', chatId);
+      if (connectionId) {
+        params.set('connectionId', connectionId);
+        if (getConnectionById(connectionId)) {
+          setActiveConnectionId(connectionId);
+        }
+      }
       routerNavigate({
         pathname: `/chat/${encodeURIComponent(agentId)}`,
         search: params.toString() ? `?${params.toString()}` : '',
@@ -212,9 +225,9 @@ function AppShell() {
         case 'callback':
           return <Callback />;
         case 'chats':
-          return <ChatList onOpenChat={(agentId, chatId) => navigate('chat_room', agentId, chatId)} onAddServer={() => navigate('pairing')} />;
+          return <ChatList onOpenChat={(connectionId, agentId, chatId) => navigate('chat_room', agentId, chatId, connectionId)} onAddServer={() => navigate('pairing')} activeAgentId={activeAgentId} activeConnectionId={activeConnectionId} />;
         case 'chat_room':
-          return <ChatRoom agentId={activeAgentId} chatId={activeChatId} onBack={() => navigate('chats')} />;
+          return <ChatRoom agentId={activeAgentId} chatId={activeChatId} connectionId={activeConnectionId} onBack={() => navigate('chats')} onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)} />;
         case 'dashboard':
           return <Dashboard />;
         case 'profile':
@@ -224,7 +237,7 @@ function AppShell() {
         case 'preferences':
           return <Preferences onBack={() => navigate('profile')} />;
         case 'pairing':
-          return <Pairing onBack={() => navigate('profile')} onPaired={(connId) => { clawChannel.close(); localStorage.removeItem('openclaw.agentList'); localStorage.removeItem('openclaw.channelStatus'); setActiveConnectionId(connId); navigate('chats'); }} />;
+          return <Pairing onBack={() => navigate('profile')} onPaired={(connId) => { setActiveConnectionId(connId); setActiveConnectionState(connId); navigate('chats'); }} />;
         default:
           return <Onboarding onGetStarted={() => navigate('chats')} />;
       }
@@ -237,7 +250,7 @@ function AppShell() {
     const content = (() => {
       switch (currentScreen) {
         case 'chat_room':
-          return <ChatRoom agentId={activeAgentId} chatId={activeChatId} onBack={() => navigate('chats')} isDesktop />;
+          return <ChatRoom agentId={activeAgentId} chatId={activeChatId} connectionId={activeConnectionId} onBack={() => navigate('chats')} onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)} isDesktop />;
         case 'dashboard':
           return <Dashboard />;
         case 'profile':
@@ -247,7 +260,7 @@ function AppShell() {
         case 'preferences':
           return <Preferences onBack={() => navigate('profile')} />;
         case 'pairing':
-          return <Pairing onBack={() => navigate('profile')} onPaired={(connId) => { clawChannel.close(); localStorage.removeItem('openclaw.agentList'); localStorage.removeItem('openclaw.channelStatus'); setActiveConnectionId(connId); navigate('chats'); }} />;
+          return <Pairing onBack={() => navigate('profile')} onPaired={(connId) => { setActiveConnectionId(connId); setActiveConnectionState(connId); navigate('chats'); }} />;
         case 'onboarding':
           return <Onboarding onGetStarted={() => navigate('chats')} />;
         default:
@@ -309,10 +322,11 @@ function AppShell() {
           {/* Sidebar content: ChatList */}
           <div className="flex-1 overflow-y-auto">
             <ChatList
-              onOpenChat={(agentId, chatId) => navigate('chat_room', agentId, chatId)}
+              onOpenChat={(connectionId, agentId, chatId) => navigate('chat_room', agentId, chatId, connectionId)}
               onAddServer={() => navigate('pairing')}
               compact
               activeAgentId={activeAgentId}
+              activeConnectionId={activeConnectionId}
             />
           </div>
         </div>
@@ -322,7 +336,7 @@ function AppShell() {
           <UpdateBanner isVisible={updateAvailable} onUpdate={applyUpdate} onDismiss={dismissUpdate} />
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.div
-              key={currentScreen + (activeAgentId || '') + (activeChatId || '')}
+              key={currentScreen + (activeConnectionId || '') + (activeAgentId || '') + (activeChatId || '')}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
