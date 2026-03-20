@@ -164,11 +164,11 @@ export default function Dashboard() {
   if (!activeConn) {
     return (
       <div className="flex flex-col items-center justify-center h-full px-6 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#67B88B]/20 to-[#5B8DEF]/20 flex items-center justify-center mb-4">
-          <Server size={28} className="text-[#67B88B]" />
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-[#5B8DEF]/20 flex items-center justify-center mb-4">
+          <Server size={28} className="text-primary" />
         </div>
         <h2 className="text-xl font-bold mb-2">No Server Connected</h2>
-        <p className="text-[14px] text-[#2D3436]/50 dark:text-[#e2e8f0]/50 max-w-xs">
+        <p className="text-[14px] text-text/50 dark:text-text-inv/50 max-w-xs">
           Connect to an OpenClaw server to view real-time status, agent fleet, and system health.
         </p>
       </div>
@@ -181,10 +181,10 @@ export default function Dashboard() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-[13px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 mt-0.5">{activeConn.name || 'Server'}</p>
+          <p className="text-[13px] text-text/40 dark:text-text-inv/40 mt-0.5">{activeConn.name || 'Server'}</p>
         </div>
         <div className="flex items-center gap-2">
-          <motion.button whileTap={{ scale: 0.9 }} onClick={refresh} className="p-2 text-[#2D3436]/50 dark:text-[#e2e8f0]/50 hover:text-[#67B88B] transition-colors">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={refresh} className="p-2 text-text/50 dark:text-text-inv/50 hover:text-primary transition-colors">
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </motion.button>
           <StatusPill connected={isConnected} uptime={uptimeStr} />
@@ -203,13 +203,13 @@ export default function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Bot size={18} className="text-[#67B88B]" /> Agent Fleet
+              <Bot size={18} className="text-primary" /> Agent Fleet
               <Badge variant="default" className="ml-auto text-[11px]">{agents.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
             {agents.length === 0 ? (
-              <div className="py-4 text-center text-[13px] text-[#2D3436]/50 dark:text-[#e2e8f0]/50">
+              <div className="py-4 text-center text-[13px] text-text/50 dark:text-text-inv/50">
                 {loading ? 'Loading agents…' : 'No agents available'}
               </div>
             ) : (
@@ -229,18 +229,18 @@ export default function Dashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Shield size={18} className="text-[#5B8DEF]" /> Relay Channels
+                <Shield size={18} className="text-info" /> Relay Channels
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {relayHealth.channels.map((ch) => (
-                  <div key={ch.channelId} className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-[#F8FAFB] dark:bg-[#131420] border border-[#EDF2F0] dark:border-[#2d3748]">
+                  <div key={ch.channelId} className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-surface dark:bg-[#131420] border border-border dark:border-border-dark">
                     <div className="flex items-center gap-2">
                       <PulseDot active={ch.backendConnected} />
                       <span className="font-medium text-[14px]">{ch.label || ch.channelId}</span>
                     </div>
-                    <div className="flex items-center gap-3 text-[12px] text-[#2D3436]/50 dark:text-[#e2e8f0]/50">
+                    <div className="flex items-center gap-3 text-[12px] text-text/50 dark:text-text-inv/50">
                       <span>{ch.backendConnected ? '🟢 Backend' : '🔴 Disconnected'}</span>
                       <span>👥 {ch.clientCount}</span>
                     </div>
@@ -276,14 +276,14 @@ export default function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Activity size={18} className="text-[#67B88B]" /> Connection
+              <Activity size={18} className="text-primary" /> Connection
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2.5 text-[14px]">
               <DetailRow label="Server" value={activeConn.name || activeConn.serverUrl} />
               <DetailRow label="Mode" value={status?.mode ?? '–'} />
-              <DetailRow label="Status" value={isConnected ? '● Connected' : '○ Disconnected'} valueClass={isConnected ? 'text-[#67B88B]' : 'text-red-400'} />
+              <DetailRow label="Status" value={isConnected ? '● Connected' : '○ Disconnected'} valueClass={isConnected ? 'text-primary' : 'text-red-400'} />
               {uptimeStr && <DetailRow label="Session" value={uptimeStr} />}
               <DetailRow label="This Chat" value={`${status?.currentChatConnectionCount ?? 0} connections`} />
             </div>
@@ -300,7 +300,7 @@ function StatusPill({ connected, uptime }: { connected: boolean; uptime: string 
   return (
     <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors ${
       connected
-        ? 'bg-[#67B88B]/10 text-[#67B88B] border border-[#67B88B]/20'
+        ? 'bg-primary/10 text-primary border border-primary/20'
         : 'bg-red-500/10 text-red-400 border border-red-500/20'
     }`}>
       <PulseDot active={connected} />
@@ -312,16 +312,16 @@ function StatusPill({ connected, uptime }: { connected: boolean; uptime: string 
 function PulseDot({ active }: { active: boolean }) {
   return (
     <span className="relative flex h-2 w-2">
-      {active && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#67B88B] opacity-75" />}
-      <span className={`relative inline-flex rounded-full h-2 w-2 ${active ? 'bg-[#67B88B]' : 'bg-red-400'}`} />
+      {active && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />}
+      <span className={`relative inline-flex rounded-full h-2 w-2 ${active ? 'bg-primary' : 'bg-red-400'}`} />
     </span>
   );
 }
 
 function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: 'green' | 'blue' | 'purple' | 'red' }) {
   const colors = {
-    green: 'from-[#67B88B]/15 to-[#67B88B]/5 text-[#67B88B]',
-    blue: 'from-[#5B8DEF]/15 to-[#5B8DEF]/5 text-[#5B8DEF]',
+    green: 'from-primary/15 to-primary/5 text-primary',
+    blue: 'from-[#5B8DEF]/15 to-[#5B8DEF]/5 text-info',
     purple: 'from-[#a78bfa]/15 to-[#a78bfa]/5 text-[#a78bfa]',
     red: 'from-red-500/15 to-red-500/5 text-red-400',
   };
@@ -340,12 +340,12 @@ function AgentRow({ agent }: { agent: AgentInfo }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#F8FAFB] dark:bg-[#131420] border border-[#EDF2F0] dark:border-[#2d3748] hover:border-[#67B88B]/30 transition-colors"
+      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface dark:bg-[#131420] border border-border dark:border-border-dark hover:border-primary/30 transition-colors"
     >
       <span className="text-xl">{emoji}</span>
       <div className="flex-1 min-w-0">
         <div className="font-medium text-[14px] truncate">{name}</div>
-        <div className="text-[11px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 flex items-center gap-1.5">
+        <div className="text-[11px] text-text/40 dark:text-text-inv/40 flex items-center gap-1.5">
           <Cpu size={10} /> {model}
           {agent.isDefault && <Badge variant="success" className="text-[9px] px-1.5 py-0">default</Badge>}
         </div>
@@ -358,7 +358,7 @@ function AgentRow({ agent }: { agent: AgentInfo }) {
 function DetailRow({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
   return (
     <div className="flex justify-between items-center">
-      <span className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50">{label}</span>
+      <span className="text-text/50 dark:text-text-inv/50">{label}</span>
       <span className={`font-medium truncate ml-4 max-w-[60%] text-right ${valueClass ?? ''}`}>{value}</span>
     </div>
   );

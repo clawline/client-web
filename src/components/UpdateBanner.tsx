@@ -19,7 +19,7 @@ export default function UpdateBanner({ isVisible, onUpdate, onDismiss }: UpdateB
           className="fixed top-0 left-0 right-0 z-50 flex justify-center p-4 pointer-events-none"
         >
           <div className="w-full max-w-md pointer-events-auto">
-            <div className="bg-[#67B88B] dark:bg-[#67B88B] text-white rounded-2xl shadow-lg p-4 flex items-center justify-between">
+            <div className="bg-primary dark:bg-primary text-white rounded-2xl shadow-lg p-4 flex items-center justify-between">
               <div className="flex items-center gap-3 flex-1">
                 <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
                   <RefreshCw className="w-5 h-5" />
@@ -33,7 +33,7 @@ export default function UpdateBanner({ isVisible, onUpdate, onDismiss }: UpdateB
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={onUpdate}
-                  className="px-4 py-2 bg-white text-[#67B88B] rounded-full font-medium text-sm hover:bg-white/90 transition-colors"
+                  className="px-4 py-2 bg-white text-primary rounded-full font-medium text-sm hover:bg-white/90 transition-colors"
                 >
                   Update
                 </motion.button>

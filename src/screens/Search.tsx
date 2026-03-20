@@ -52,7 +52,7 @@ function highlightMatch(text: string, query: string): React.ReactNode {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="bg-[#67B88B]/20 text-inherit rounded px-0.5">{text.slice(idx, idx + query.length)}</mark>
+      <mark className="bg-primary/20 text-inherit rounded px-0.5">{text.slice(idx, idx + query.length)}</mark>
       {text.slice(idx + query.length)}
     </>
   );
@@ -71,8 +71,8 @@ function formatSearchTime(ts?: number): string {
 
 const filters: { id: FilterType; label: string; icon: typeof Filter; color: string }[] = [
   { id: 'all', label: 'All', icon: Filter, color: 'text-gray-500' },
-  { id: 'user', label: 'Sent', icon: MessageSquare, color: 'text-[#5B8DEF]' },
-  { id: 'ai', label: 'Received', icon: MessageSquare, color: 'text-[#67B88B]' },
+  { id: 'user', label: 'Sent', icon: MessageSquare, color: 'text-info' },
+  { id: 'ai', label: 'Received', icon: MessageSquare, color: 'text-primary' },
   { id: 'image', label: 'Images', icon: Image, color: 'text-purple-500' },
   { id: 'voice', label: 'Voice', icon: Mic, color: 'text-amber-500' },
   { id: 'command', label: 'Commands', icon: Command, color: 'text-rose-500' },
@@ -89,13 +89,13 @@ export default function Search() {
       <h1 className="text-3xl font-bold tracking-tight mb-6">Search</h1>
 
       <div className="relative mb-4">
-        <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-[#2D3436]/40 dark:text-[#e2e8f0]/40" size={20} />
+        <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-text/40 dark:text-text-inv/40" size={20} />
         <Input
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search messages..."
-          className="pl-12 pr-10 py-4 rounded-[24px] text-[16px] focus:ring-4 focus:ring-[#67B88B]/10 bg-white dark:bg-[#232437]"
+          className="pl-12 pr-10 py-4 rounded-[24px] text-[16px] focus:ring-4 focus:ring-primary/10 bg-white dark:bg-card-alt"
         />
         {query && (
           <button
@@ -119,11 +119,11 @@ export default function Search() {
               onClick={() => setActiveFilter(isActive && f.id !== 'all' ? 'all' : f.id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap border transition-colors ${
                 isActive
-                  ? 'bg-[#67B88B]/10 border-[#67B88B]/30 text-[#67B88B]'
-                  : 'bg-white dark:bg-[#232437] border-gray-200 dark:border-gray-700 text-gray-500 hover:border-[#67B88B]/30'
+                  ? 'bg-primary/10 border-primary/30 text-primary'
+                  : 'bg-white dark:bg-card-alt border-gray-200 dark:border-gray-700 text-gray-500 hover:border-primary/30'
               }`}
             >
-              <Icon size={13} className={isActive ? 'text-[#67B88B]' : f.color} />
+              <Icon size={13} className={isActive ? 'text-primary' : f.color} />
               {f.label}
             </motion.button>
           );
@@ -140,11 +140,11 @@ export default function Search() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -5 }}
                 transition={{ delay: Math.min(i * 0.02, 0.3) }}
-                className="bg-white dark:bg-[#232437] p-4 rounded-[16px] border border-[#EDF2F0] dark:border-[#2d3748] shadow-sm"
+                className="bg-white dark:bg-card-alt p-4 rounded-[16px] border border-border dark:border-border-dark shadow-sm"
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
-                    <span className={`text-[12px] font-semibold ${msg.sender === 'user' ? 'text-[#5B8DEF]' : 'text-[#67B88B]'}`}>
+                    <span className={`text-[12px] font-semibold ${msg.sender === 'user' ? 'text-info' : 'text-primary'}`}>
                       {msg.sender === 'user' ? 'You' : 'AI'}
                     </span>
                     {msg.agentId && (
@@ -155,34 +155,34 @@ export default function Search() {
                     )}
                   </div>
                   {msg.timestamp && (
-                    <span className="text-[11px] text-[#2D3436]/30 dark:text-[#e2e8f0]/30 flex items-center gap-1">
+                    <span className="text-[11px] text-text/30 dark:text-text-inv/30 flex items-center gap-1">
                       <Clock size={10} />
                       {formatSearchTime(msg.timestamp)}
                     </span>
                   )}
                 </div>
-                <p className="text-[14px] text-[#2D3436] dark:text-[#e2e8f0] line-clamp-3 leading-relaxed">
+                <p className="text-[14px] text-text dark:text-text-inv line-clamp-3 leading-relaxed">
                   {highlightMatch(msg.text ?? '', query)}
                 </p>
               </motion.div>
             )) : (
-              <div className="text-center text-[#2D3436]/30 dark:text-[#e2e8f0]/30 py-12">
+              <div className="text-center text-text/30 dark:text-text-inv/30 py-12">
                 <SearchIcon size={32} className="mx-auto mb-3 opacity-30" />
                 No messages found
               </div>
             )}
           </AnimatePresence>
           {results.length > 0 && (
-            <p className="text-center text-[11px] text-[#2D3436]/20 dark:text-[#e2e8f0]/20 mt-4 pb-4">
+            <p className="text-center text-[11px] text-text/20 dark:text-text-inv/20 mt-4 pb-4">
               {results.length} result{results.length !== 1 ? 's' : ''}{results.length >= 100 ? '+' : ''}
             </p>
           )}
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center flex-1 text-center">
-          <SearchIcon size={48} className="text-[#2D3436]/8 dark:text-[#e2e8f0]/8 mb-4" />
-          <p className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30 text-[15px] mb-1">Search across your conversations</p>
-          <p className="text-[#2D3436]/20 dark:text-[#e2e8f0]/20 text-[13px]">Use filters to narrow results</p>
+          <SearchIcon size={48} className="text-text/8 dark:text-text-inv/8 mb-4" />
+          <p className="text-text/30 dark:text-text-inv/30 text-[15px] mb-1">Search across your conversations</p>
+          <p className="text-text/20 dark:text-text-inv/20 text-[13px]">Use filters to narrow results</p>
         </div>
       )}
     </div>

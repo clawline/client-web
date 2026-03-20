@@ -140,9 +140,9 @@ export default function ActionCard({ text, onSend }: ActionCardProps) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="mt-2 bg-[#F8FAFB] dark:bg-[#1a1b2e] border border-[#EDF2F0] dark:border-[#2d3748] rounded-[16px] p-3"
+      className="mt-2 bg-surface dark:bg-surface-dark border border-border dark:border-border-dark rounded-[16px] p-3"
     >
-      <p className="text-[12px] font-semibold text-[#2D3436]/50 dark:text-[#e2e8f0]/50 uppercase tracking-wider mb-2">
+      <p className="text-[12px] font-semibold text-text/50 dark:text-text-inv/50 uppercase tracking-wider mb-2">
         {action.title}
       </p>
       <div className="flex flex-wrap gap-1.5">
@@ -155,12 +155,12 @@ export default function ActionCard({ text, onSend }: ActionCardProps) {
               animate={{ opacity: 1, scale: 1 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => onSend(opt.command)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#232437] border border-[#EDF2F0] dark:border-[#2d3748] rounded-full text-[13px] font-medium text-[#2D3436] dark:text-[#e2e8f0] shadow-sm hover:border-[#67B88B] hover:text-[#67B88B] transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full text-[13px] font-medium text-text dark:text-text-inv shadow-sm hover:border-primary hover:text-primary transition-colors"
             >
               {opt.emoji && <span>{opt.emoji}</span>}
               {opt.label}
               {opt.badge && (
-                <span className="text-[11px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 font-normal">({opt.badge})</span>
+                <span className="text-[11px] text-text/40 dark:text-text-inv/40 font-normal">({opt.badge})</span>
               )}
             </motion.button>
           ))}
@@ -170,7 +170,7 @@ export default function ActionCard({ text, onSend }: ActionCardProps) {
         <motion.button
           whileTap={{ scale: 0.95 }}
           onClick={() => setExpanded(!expanded)}
-          className="mt-2 flex items-center gap-1 text-[12px] text-[#67B88B] font-medium"
+          className="mt-2 flex items-center gap-1 text-[12px] text-primary font-medium"
         >
           <ChevronDown size={14} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
           {expanded ? 'Show less' : `Show all ${action.options.length} providers`}

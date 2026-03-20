@@ -13,7 +13,7 @@ export default function MemorySheet({ onClose, agentName }: { onClose: () => voi
       />
       <motion.div
         initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-        className="fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-[#1a1b2e] rounded-t-[32px] max-h-[85vh] h-full flex flex-col shadow-2xl border-t border-white/10"
+        className="fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-surface-dark rounded-t-[32px] max-h-[85vh] h-full flex flex-col shadow-2xl border-t border-white/10"
       >
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-gray-800">
           <div className="flex items-center gap-3">

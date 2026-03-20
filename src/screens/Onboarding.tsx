@@ -7,8 +7,8 @@ import { Button } from '../components/ui/button';
 const SLIDES = [
   {
     icon: MessageSquare,
-    color: 'from-[#67B88B] to-[#4a9a70]',
-    shadow: 'shadow-[#67B88B]/30',
+    color: 'from-primary to-primary-deep',
+    shadow: 'shadow-primary/30',
     title: 'Real-time Chat',
     desc: 'Chat with OpenClaw agents in real time via WebSocket. Get instant code reviews, explanations, and deployments.',
   },
@@ -28,7 +28,7 @@ const SLIDES = [
   },
   {
     icon: Shield,
-    color: 'from-[#8B5CF6] to-[#7C3AED]',
+    color: 'from-accent to-[#7C3AED]',
     shadow: 'shadow-[#8B5CF6]/30',
     title: 'Secure & Local',
     desc: 'All connection data stays on your device. No cloud accounts needed — pair directly to your own server.',
@@ -73,7 +73,7 @@ export default function Onboarding({ onGetStarted }: { onGetStarted: () => void 
   const Icon = slide.icon;
 
   return (
-    <div className="flex items-center justify-center h-full bg-[#F8FAFB] dark:bg-[#131420]">
+    <div className="flex items-center justify-center h-full bg-surface dark:bg-[#131420]">
       {/* Phone-style container - centered on all screens */}
       <div className="w-full max-w-[420px] flex flex-col items-center justify-center px-6 relative">
         {/* Brand logo - top right corner (absolute to parent) */}
@@ -84,12 +84,12 @@ export default function Onboarding({ onGetStarted }: { onGetStarted: () => void 
           className="absolute top-0 right-6 flex items-center gap-2"
           style={{ top: '-40px' }}
         >
-          <div className="w-7 h-7 bg-gradient-to-br from-[#67B88B] to-[#4a9a70] rounded-[8px] flex items-center justify-center shadow-sm">
+          <div className="w-7 h-7 bg-gradient-to-br from-primary to-primary-deep rounded-[8px] flex items-center justify-center shadow-sm">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 18V9.3a1 1 0 0 1 .2-.6L8 4m0 0h2l1 3M8 4V2m8 16V9.3a1 1 0 0 0-.2-.6L12 4m0 0h-2m2 0V2m4 16.5A2.5 2.5 0 0 1 11.5 21h-3A2.5 2.5 0 0 1 6 18.5" />
             </svg>
           </div>
-          <span className="text-[13px] font-semibold text-[#2D3436]/60 dark:text-[#e2e8f0]/60">Clawline</span>
+          <span className="text-[13px] font-semibold text-text/60 dark:text-text-inv/60">Clawline</span>
         </motion.div>
 
         {/* Feature Carousel */}
@@ -115,7 +115,7 @@ export default function Onboarding({ onGetStarted }: { onGetStarted: () => void 
                 <Icon size={36} className="text-white" />
               </div>
               <h2 className="text-xl font-bold text-center mb-3">{slide.title}</h2>
-              <p className="text-center text-[#2D3436]/55 dark:text-[#e2e8f0]/55 text-[15px] leading-relaxed max-w-[280px]">
+              <p className="text-center text-text/55 dark:text-text-inv/55 text-[15px] leading-relaxed max-w-[280px]">
                 {slide.desc}
               </p>
             </motion.div>
@@ -128,7 +128,7 @@ export default function Onboarding({ onGetStarted }: { onGetStarted: () => void 
                 key={i}
                 onClick={() => goTo(i)}
                 className={`rounded-full transition-all duration-300 ${
-                  i === activeSlide ? 'w-6 h-2 bg-[#67B88B]' : 'w-2 h-2 bg-[#2D3436]/15 dark:bg-[#e2e8f0]/15'
+                  i === activeSlide ? 'w-6 h-2 bg-primary' : 'w-2 h-2 bg-text/15 dark:bg-text-inv/15'
                 }`}
               />
             ))}

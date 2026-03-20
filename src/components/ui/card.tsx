@@ -5,7 +5,7 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("bg-white/60 dark:bg-[#232437]/60 backdrop-blur-xl rounded-[32px] border border-white dark:border-white/10 shadow-sm", className)}
+      className={cn("bg-white/60 dark:bg-card-alt/60 backdrop-blur-xl rounded-[32px] border border-white dark:border-white/10 shadow-sm", className)}
       {...props}
     />
   )
@@ -37,7 +37,7 @@ const GlassCard = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivE
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("bg-white/70 dark:bg-[#232437]/70 backdrop-blur-[20px] border border-white/50 dark:border-white/10 shadow-xl rounded-[32px]", className)}
+      className={cn("bg-white/70 dark:bg-card-alt/70 backdrop-blur-[20px] border border-white/50 dark:border-white/10 shadow-xl rounded-[32px]", className)}
       {...props}
     />
   )

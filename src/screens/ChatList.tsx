@@ -228,11 +228,11 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
           {!compact && <h1 className="text-3xl font-bold tracking-tight mb-6">Chats</h1>}
         </div>
         <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-          <div className="w-16 h-16 bg-[#EDF2F0] dark:bg-[#2d3748] rounded-full flex items-center justify-center mb-4">
-            <Server size={28} className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50" />
+          <div className="w-16 h-16 bg-border dark:bg-border-dark rounded-full flex items-center justify-center mb-4">
+            <Server size={28} className="text-text/50 dark:text-text-inv/50" />
           </div>
-          <p className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50 text-[15px] mb-1">No server connected</p>
-          <p className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50 text-[13px] mb-6">Add a server in Profile to get started</p>
+          <p className="text-text/50 dark:text-text-inv/50 text-[15px] mb-1">No server connected</p>
+          <p className="text-text/50 dark:text-text-inv/50 text-[13px] mb-6">Add a server in Profile to get started</p>
           <Button onClick={onAddServer}>
             <Server size={16} /> Add Server
           </Button>
@@ -244,7 +244,7 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
   return (
     <div className={cn('flex flex-col h-full min-h-0', !compact && 'pb-32')}>
       <div className={cn(
-        'sticky top-0 bg-[#F8FAFB]/80 dark:bg-[#1a1b2e]/80 backdrop-blur-xl z-10',
+        'sticky top-0 bg-surface/80 dark:bg-surface-dark/80 backdrop-blur-xl z-10',
         compact ? 'px-4 pt-3 pb-3' : 'px-6 pt-12 pb-4'
       )}>
         <div className="flex justify-between items-center mb-2 gap-3">
@@ -254,13 +254,13 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={handleBackToAgents}
-                  className="p-2 -ml-2 text-[#2D3436]/50 dark:text-[#e2e8f0]/50 hover:text-[#67B88B] transition-colors"
+                  className="p-2 -ml-2 text-text/50 dark:text-text-inv/50 hover:text-primary transition-colors"
                 >
                   <ChevronLeft size={20} />
                 </motion.button>
                 <div className="min-w-0">
                   <h2 className={cn('font-semibold truncate', compact ? 'text-[15px]' : 'text-2xl')}>{selectedAgent.name}</h2>
-                  <p className="text-[12px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 truncate">Conversation history</p>
+                  <p className="text-[12px] text-text/40 dark:text-text-inv/40 truncate">Conversation history</p>
                 </div>
               </div>
             ) : (
@@ -274,7 +274,7 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleRefresh}
-              className="p-2 text-[#2D3436]/50 dark:text-[#e2e8f0]/50 hover:text-[#67B88B] transition-colors"
+              className="p-2 text-text/50 dark:text-text-inv/50 hover:text-primary transition-colors"
             >
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
             </motion.button>
@@ -285,17 +285,17 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
         </div>
 
         {!selectedAgent && !compact && (
-          <p className="text-[12px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 mb-4 truncate">{activeConn.serverUrl}</p>
+          <p className="text-[12px] text-text/40 dark:text-text-inv/40 mb-4 truncate">{activeConn.serverUrl}</p>
         )}
 
         {!selectedAgent && (
           <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#2D3436]/40 dark:text-[#e2e8f0]/40" size={compact ? 16 : 20} />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text/40 dark:text-text-inv/40" size={compact ? 16 : 20} />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search agents..."
-              className={cn('pl-12 rounded-full bg-white dark:bg-[#232437]', compact && 'pl-10 py-1.5 text-[13px]')}
+              className={cn('pl-12 rounded-full bg-white dark:bg-card-alt', compact && 'pl-10 py-1.5 text-[13px]')}
             />
           </div>
         )}
@@ -314,8 +314,8 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
             <div className={cn('flex-1 overflow-y-auto space-y-2', compact ? 'px-2' : 'px-4')}>
               {loadingConversations ? (
                 <div className="flex flex-col items-center justify-center py-16">
-                  <Loader2 size={28} className="text-[#67B88B] animate-spin mb-3" />
-                  <p className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40 text-[14px]">Loading conversations…</p>
+                  <Loader2 size={28} className="text-primary animate-spin mb-3" />
+                  <p className="text-text/40 dark:text-text-inv/40 text-[14px]">Loading conversations…</p>
                 </div>
               ) : conversations.length > 0 ? conversations.map((conversation, index) => (
                 <motion.button
@@ -327,32 +327,32 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
                   whileTap={{ scale: 0.98 }}
                   onClick={() => onOpenChat(selectedAgent.id, conversation.chatId)}
                   className={cn(
-                    'w-full text-left bg-white dark:bg-[#232437] rounded-[24px] p-4 border border-[#EDF2F0]/70 dark:border-[#2d3748]/70 shadow-sm hover:border-[#67B88B]/40 transition-colors'
+                    'w-full text-left bg-white dark:bg-card-alt rounded-[24px] p-4 border border-border/70 dark:border-border-dark/70 shadow-sm hover:border-primary/40 transition-colors'
                   )}
                 >
                   <div className="flex items-center justify-between gap-3 mb-2">
-                    <h3 className="font-semibold text-[15px] truncate text-[#2D3436] dark:text-[#e2e8f0]">{conversation.chatId || 'New conversation'}</h3>
+                    <h3 className="font-semibold text-[15px] truncate text-text dark:text-text-inv">{conversation.chatId || 'New conversation'}</h3>
                     {conversation.timestamp && (
-                      <span className="text-[11px] text-[#2D3436]/35 dark:text-[#e2e8f0]/35 shrink-0">{formatRelativeTime(conversation.timestamp)}</span>
+                      <span className="text-[11px] text-text/35 dark:text-text-inv/35 shrink-0">{formatRelativeTime(conversation.timestamp)}</span>
                     )}
                   </div>
-                  <p className="text-[13px] text-[#2D3436]/45 dark:text-[#e2e8f0]/45 line-clamp-2">
+                  <p className="text-[13px] text-text/45 dark:text-text-inv/45 line-clamp-2">
                     {conversation.lastMessage || 'No messages yet'}
                   </p>
                 </motion.button>
               )) : (
                 <div className="flex flex-col items-center justify-center text-center py-16 px-6">
-                  <div className="w-16 h-16 rounded-full bg-[#67B88B]/10 dark:bg-[#67B88B]/15 flex items-center justify-center mb-4">
-                    <Bot size={24} className="text-[#67B88B]" />
+                  <div className="w-16 h-16 rounded-full bg-primary/10 dark:bg-primary/15 flex items-center justify-center mb-4">
+                    <Bot size={24} className="text-primary" />
                   </div>
-                  <p className="text-[15px] font-medium text-[#2D3436] dark:text-[#e2e8f0] mb-1">No saved conversations</p>
-                  <p className="text-[13px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Start a new chat with {selectedAgent.name}</p>
+                  <p className="text-[15px] font-medium text-text dark:text-text-inv mb-1">No saved conversations</p>
+                  <p className="text-[13px] text-text/40 dark:text-text-inv/40">Start a new chat with {selectedAgent.name}</p>
                 </div>
               )}
             </div>
 
             <div className={cn(
-              'px-4 pb-4 pt-3 border-t border-[#EDF2F0]/70 dark:border-[#2d3748]/70 bg-[#F8FAFB]/95 dark:bg-[#1a1b2e]/95 backdrop-blur-xl',
+              'px-4 pb-4 pt-3 border-t border-border/70 dark:border-border-dark/70 bg-surface/95 dark:bg-surface-dark/95 backdrop-blur-xl',
               !compact && 'mb-4'
             )}>
               <Button className="w-full rounded-[24px]" onClick={() => onOpenChat(selectedAgent.id)}>
@@ -372,8 +372,8 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
           >
             {loadingAgents ? (
               <div className="flex flex-col items-center justify-center py-16">
-                <Loader2 size={28} className="text-[#67B88B] animate-spin mb-3" />
-                <p className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40 text-[14px]">Loading agents…</p>
+                <Loader2 size={28} className="text-primary animate-spin mb-3" />
+                <p className="text-text/40 dark:text-text-inv/40 text-[14px]">Loading agents…</p>
               </div>
             ) : filteredAgents.length > 0 ? filteredAgents.map((agent, index) => {
               const isActive = selectedAgent?.id === agent.id || (compact && activeAgentId === agent.id);
@@ -392,21 +392,21 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
                   whileTap={{ scale: 0.98 }}
                   onClick={() => requestConversations(agent, true)}
                   className={cn(
-                    'relative bg-white dark:bg-[#232437] rounded-[24px] flex items-center gap-4 shadow-sm border cursor-pointer transition-colors',
+                    'relative bg-white dark:bg-card-alt rounded-[24px] flex items-center gap-4 shadow-sm border cursor-pointer transition-colors',
                     compact ? 'p-3 rounded-[16px] gap-3' : 'p-4',
                     isActive
-                      ? 'border-[#67B88B] bg-[#67B88B]/5 dark:bg-[#67B88B]/10'
-                      : 'border-[#EDF2F0]/50 dark:border-[#2d3748]/50 hover:border-[#67B88B]/30'
+                      ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                      : 'border-border/50 dark:border-border-dark/50 hover:border-primary/30'
                   )}
                 >
                   {/* Model badge - small top-right indicator */}
                   {agent.model && (
-                    <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-[#5B8DEF]/10 text-[#5B8DEF] text-[9px] font-medium rounded">
+                    <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-info/10 text-info text-[9px] font-medium rounded">
                       {agent.model.split('/').pop()}
                     </span>
                   )}
                   <div className={cn(
-                    'rounded-full bg-gradient-to-br from-[#67B88B] to-[#4a9a70] flex-shrink-0 flex items-center justify-center text-white shadow-sm',
+                    'rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 flex items-center justify-center text-white shadow-sm',
                     compact ? 'w-10 h-10 text-lg' : 'w-14 h-14 text-2xl'
                   )}>
                     {agent.identityEmoji || <Bot size={compact ? 18 : 24} />}
@@ -420,15 +420,15 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
                         )}
                       </div>
                       {lastMsg?.timestamp && (
-                        <span className="text-[11px] text-[#2D3436]/50 dark:text-[#e2e8f0]/50 shrink-0">{formatRelativeTime(lastMsg.timestamp)}</span>
+                        <span className="text-[11px] text-text/50 dark:text-text-inv/50 shrink-0">{formatRelativeTime(lastMsg.timestamp)}</span>
                       )}
                     </div>
-                    <p className={cn('text-[#2D3436]/40 dark:text-[#e2e8f0]/40 truncate', compact ? 'text-[12px]' : 'text-[13px]')}>{preview}</p>
+                    <p className={cn('text-text/40 dark:text-text-inv/40 truncate', compact ? 'text-[12px]' : 'text-[13px]')}>{preview}</p>
                   </div>
                 </motion.div>
               );
             }) : (
-              <div className="text-center text-[#2D3436]/40 dark:text-[#e2e8f0]/40 mt-10">No agents found</div>
+              <div className="text-center text-text/40 dark:text-text-inv/40 mt-10">No agents found</div>
             )}
           </motion.div>
         )}

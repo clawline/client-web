@@ -5,6 +5,19 @@
 
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-surface: #F8FAFB;
+  --color-card: #FFFFFF;
+  --color-card-alt: #232437;
+  --color-text: #2D3436;
+  --color-text-inv: #e2e8f0;
+  --color-border: #EDF2F0;
+  --color-border-dark: #2d3748;
+  --color-primary: #67B88B;
+  --color-primary-deep: #4a9a70;
+  --color-info: #5B8DEF;
+  --color-accent: #8B5CF6;
+  --color-warn: #F59E0B;
+  --color-surface-dark: #1a1b2e;
 }
 
 /* highlight.js inline theme (Catppuccin Mocha) */

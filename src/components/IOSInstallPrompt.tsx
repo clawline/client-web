@@ -41,14 +41,14 @@ export default function IOSInstallPrompt({ show: showProp }: IOSInstallPromptPro
           className="fixed bottom-20 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none"
         >
           <div className="w-full max-w-md pointer-events-auto">
-            <div className="bg-white dark:bg-[#232437] rounded-2xl shadow-2xl p-4 border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-card-alt rounded-2xl shadow-2xl p-4 border border-gray-200 dark:border-gray-700">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-[#67B88B] rounded-xl flex items-center justify-center">
+                  <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
                     <span className="text-white text-2xl font-bold">$</span>
                   </div>
                   <div>
-                    <div className="font-semibold text-[#2D3436] dark:text-[#e2e8f0]">
+                    <div className="font-semibold text-text dark:text-text-inv">
                       Install Clawline
                     </div>
                     <div className="text-xs text-[#92A0A4] dark:text-[#64748b]">
@@ -66,11 +66,11 @@ export default function IOSInstallPrompt({ show: showProp }: IOSInstallPromptPro
                 </motion.button>
               </div>
 
-              <div className="bg-[#F8FAFB] dark:bg-[#1a1b2e] rounded-xl p-3 text-sm text-[#5B6669] dark:text-[#a0aec0]">
+              <div className="bg-surface dark:bg-surface-dark rounded-xl p-3 text-sm text-[#5B6669] dark:text-[#a0aec0]">
                 <div className="flex items-start gap-2">
                   <span className="text-base">1.</span>
                   <span>
-                    Tap the <Share className="inline w-4 h-4 mx-1 text-[#5B8DEF]" /> share button
+                    Tap the <Share className="inline w-4 h-4 mx-1 text-info" /> share button
                   </span>
                 </div>
                 <div className="flex items-start gap-2 mt-2">

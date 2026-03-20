@@ -184,8 +184,8 @@ function AppShell() {
   // Show loading while Logto initializes (skip in dev mode)
   if (isAuthLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0]">
-        <div className="w-10 h-10 border-4 border-[#67B88B] border-t-transparent rounded-full animate-spin" />
+      <div className="flex flex-col items-center justify-center h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-surface dark:bg-surface-dark text-text dark:text-text-inv">
+        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -240,11 +240,11 @@ function AppShell() {
         // Default: show a welcome/empty state
         return (
           <div className="flex flex-col items-center justify-center h-full text-center px-8">
-            <div className="w-20 h-20 bg-gradient-to-br from-[#67B88B] to-[#4a9a70] rounded-3xl flex items-center justify-center mb-6 shadow-lg shadow-[#67B88B]/20">
+            <div className="w-20 h-20 bg-gradient-to-br from-primary to-primary-deep rounded-3xl flex items-center justify-center mb-6 shadow-lg shadow-primary/20">
               <MessageCircle size={36} className="text-white" />
             </div>
             <h2 className="text-2xl font-bold mb-2">Clawline</h2>
-            <p className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40 text-[15px]">Select a conversation from the sidebar to start chatting</p>
+            <p className="text-text/40 dark:text-text-inv/40 text-[15px]">Select a conversation from the sidebar to start chatting</p>
           </div>
         );
     }
@@ -256,7 +256,7 @@ function AppShell() {
   // Onboarding gets a special full-width desktop layout without sidebar
   if (isDesktop && currentScreen === 'onboarding') {
     return (
-      <div className="w-full h-full bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0] font-sans overflow-hidden">
+      <div className="w-full h-full bg-surface dark:bg-surface-dark text-text dark:text-text-inv font-sans overflow-hidden">
         <Onboarding onGetStarted={() => navigate('chats')} />
       </div>
     );
@@ -264,12 +264,12 @@ function AppShell() {
 
   if (isDesktop) {
     return (
-      <div className="flex flex-col w-full h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0] overflow-hidden font-sans">
+      <div className="flex flex-col w-full h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-surface dark:bg-surface-dark text-text dark:text-text-inv overflow-hidden font-sans">
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
-        <div className="w-80 xl:w-96 h-full flex flex-col border-r border-[#EDF2F0] dark:border-[#2d3748] bg-white/50 dark:bg-[#232437]/50 flex-shrink-0">
+        <div className="w-80 xl:w-96 h-full flex flex-col border-r border-border dark:border-border-dark bg-white/50 dark:bg-card-alt/50 flex-shrink-0">
           {/* Sidebar nav */}
-          <div className="flex items-center gap-1 px-3 py-2.5 border-b border-[#EDF2F0] dark:border-[#2d3748] min-h-[57px]">
+          <div className="flex items-center gap-1 px-3 py-2.5 border-b border-border dark:border-border-dark min-h-[57px]">
             {SIDEBAR_NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive = item.id === 'chats'
@@ -281,7 +281,7 @@ function AppShell() {
                   onClick={() => navigate(item.id as Screen)}
                   className={cn(
                     'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all',
-                    isActive ? 'text-white shadow-sm' : 'text-[#2D3436]/50 dark:text-[#e2e8f0]/40 hover:bg-[#F8FAFB] dark:hover:bg-[#1a1b2e]'
+                    isActive ? 'text-white shadow-sm' : 'text-text/50 dark:text-text-inv/40 hover:bg-surface dark:hover:bg-surface-dark'
                   )}
                   style={isActive ? { backgroundColor: item.color } : undefined}
                 >
@@ -327,9 +327,9 @@ function AppShell() {
   // ---- Mobile layout (unchanged) ----
 
   return (
-    <div className="relative w-full h-full pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0] overflow-hidden flex flex-col font-sans">
+    <div className="relative w-full h-full pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-surface dark:bg-surface-dark text-text dark:text-text-inv overflow-hidden flex flex-col font-sans">
       <div className="flex-1 flex justify-center relative min-h-0">
-        <div className="w-full max-w-md h-full relative bg-[#F8FAFB] dark:bg-[#1a1b2e] overflow-hidden">
+        <div className="w-full max-w-md h-full relative bg-surface dark:bg-surface-dark overflow-hidden">
         {/* PWA Update Banner */}
         <UpdateBanner
           isVisible={updateAvailable}
