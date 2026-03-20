@@ -80,7 +80,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
       <h1 className="text-3xl font-bold tracking-tight mb-8">Profile</h1>
 
       <div className="flex items-center gap-5 mb-8">
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#67B88B] to-[#4a9a70] flex items-center justify-center text-white shadow-md border-2 border-white overflow-hidden">
+        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] flex items-center justify-center text-white shadow-md border-2 border-white overflow-hidden">
           {userClaims?.picture ? (
             <img src={userClaims.picture} alt="avatar" className="w-full h-full object-cover" />
           ) : (

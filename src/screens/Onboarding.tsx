@@ -86,7 +86,7 @@ export default function Onboarding({ onGetStarted }: { onGetStarted: () => void 
         >
           <div className="w-7 h-7 bg-gradient-to-br from-[#67B88B] to-[#4a9a70] rounded-[8px] flex items-center justify-center shadow-sm">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              <path d="M4 18V9.3a1 1 0 0 1 .2-.6L8 4m0 0h2l1 3M8 4V2m8 16V9.3a1 1 0 0 0-.2-.6L12 4m0 0h-2m2 0V2m4 16.5A2.5 2.5 0 0 1 11.5 21h-3A2.5 2.5 0 0 1 6 18.5" />
             </svg>
           </div>
           <span className="text-[13px] font-semibold text-[#2D3436]/60 dark:text-[#e2e8f0]/60">Clawline</span>

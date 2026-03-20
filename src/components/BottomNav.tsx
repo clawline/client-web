@@ -11,10 +11,10 @@ interface BottomNavProps {
 
 export default function BottomNav({ currentScreen, onNavigate }: BottomNavProps) {
   const navItems = [
-    { id: 'chats', icon: MessageCircle, label: 'Chats' },
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Resources' },
-    { id: 'search', icon: Search, label: 'Search' },
-    { id: 'profile', icon: User, label: 'Profile' },
+    { id: 'chats', icon: MessageCircle, label: 'Chats', color: '#67B88B' },
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Resources', color: '#5B8DEF' },
+    { id: 'search', icon: Search, label: 'Search', color: '#F59E0B' },
+    { id: 'profile', icon: User, label: 'Profile', color: '#8B5CF6' },
   ];
 
   return (
@@ -32,14 +32,16 @@ export default function BottomNav({ currentScreen, onNavigate }: BottomNavProps)
               aria-current={isActive ? 'page' : undefined}
               className={cn(
                 "p-3 rounded-2xl flex flex-col items-center justify-center transition-colors relative",
-                isActive ? 'text-[#67B88B]' : 'text-[#2D3436]/40 dark:text-[#e2e8f0]/40 hover:text-[#2D3436]/70 dark:hover:text-[#e2e8f0]/70'
+                isActive ? '' : 'text-[#2D3436]/50 dark:text-[#e2e8f0]/50 hover:text-[#2D3436]/70 dark:hover:text-[#e2e8f0]/70'
               )}
+              style={isActive ? { color: item.color } : undefined}
             >
               <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
               {isActive && (
                 <motion.div
                   layoutId="nav-indicator"
-                  className="w-1.5 h-1.5 bg-[#67B88B] rounded-full absolute -bottom-1"
+                  className="w-1.5 h-1.5 rounded-full absolute -bottom-1"
+                  style={{ backgroundColor: item.color }}
                 />
               )}
             </motion.button>
