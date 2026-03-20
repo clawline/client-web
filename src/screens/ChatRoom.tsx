@@ -45,6 +45,7 @@ type Message = {
   mediaUrl?: string;
   replyTo?: string;
   timestamp?: number;
+  isStreaming?: boolean; // Temporary streaming message indicator
 };
 
 const slashCommands = [
@@ -197,16 +198,20 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
       if (packet.type === 'message.send' && packet.data?.content) {
         setIsThinking(false);
         const content = packet.data.content as string;
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: packet.data.messageId || Date.now().toString(),
-            sender: 'ai',
-            text: content,
-            replyTo: (packet.data.replyTo as string) || undefined,
-            timestamp: (packet.data.timestamp as number) || Date.now(),
-          },
-        ]);
+        // Remove any streaming placeholder before adding the final message
+        setMessages((prev) => {
+          const withoutStreaming = prev.filter((m) => !m.isStreaming);
+          return [
+            ...withoutStreaming,
+            {
+              id: packet.data.messageId || Date.now().toString(),
+              sender: 'ai',
+              text: content,
+              replyTo: (packet.data.replyTo as string) || undefined,
+              timestamp: (packet.data.timestamp as number) || Date.now(),
+            },
+          ];
+        });
 
         // Push notification (browser)
         if (localStorage.getItem('openclaw.pushNotif') !== '0' && 'Notification' in window && Notification.permission === 'granted' && document.hidden) {
@@ -251,6 +256,38 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
           timestamp: m.timestamp || Date.now(),
         }));
         if (history.length > 0) setMessages(history);
+      } else if (packet.type === 'text.delta') {
+        // Streaming text output from backend
+        const deltaData = packet.data as { chatId?: string; text?: string; done?: boolean; timestamp?: number };
+        setIsThinking(false); // Hide thinking indicator when streaming starts
+
+        if (deltaData.done) {
+          // Streaming finished - remove the streaming placeholder message
+          // The final message.send will replace it with a permanent message
+          setMessages((prev) => prev.filter((m) => !m.isStreaming));
+        } else if (typeof deltaData.text === 'string') {
+          // Update or create streaming bubble with accumulated text
+          setMessages((prev) => {
+            const streamingIdx = prev.findIndex((m) => m.isStreaming);
+            if (streamingIdx >= 0) {
+              // Update existing streaming message
+              const updated = [...prev];
+              updated[streamingIdx] = { ...updated[streamingIdx], text: deltaData.text! };
+              return updated;
+            }
+            // Create new streaming message
+            return [
+              ...prev,
+              {
+                id: `streaming-${Date.now()}`,
+                sender: 'ai',
+                text: deltaData.text,
+                isStreaming: true,
+                timestamp: deltaData.timestamp || Date.now(),
+              },
+            ];
+          });
+        }
       }
     });
 
@@ -598,6 +635,7 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
       <div className="flex-1 overflow-y-auto px-4 py-6 pb-4 flex flex-col gap-4">
         {messages.map((msg, i) => {
           const isUser = msg.sender === 'user';
+          const isStreaming = msg.isStreaming;
           const prevMsg = i > 0 ? messages[i - 1] : null;
           const showDateSep = isDifferentDay(prevMsg?.timestamp, msg.timestamp);
           return (
@@ -668,44 +706,51 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
                     ) : isUser ? (
                       <p className="whitespace-pre-wrap break-words">{msg.text}</p>
                     ) : (
-                      <Markdown
-                        components={{
-                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                          code: ({ children, className }) => {
-                            const lang = className?.replace('language-', '') || '';
-                            const isBlock = !!className?.includes('language-');
-                            if (isBlock) {
-                              const code = String(children).replace(/\n$/, '');
-                              let highlighted = code;
-                              try {
-                                highlighted = lang && hljs.getLanguage(lang)
-                                  ? hljs.highlight(code, { language: lang }).value
-                                  : hljs.highlightAuto(code).value;
-                              } catch { /* fallback to plain */ }
-                              return (
-                                <pre className="bg-[#1e1e2e] border border-[#313244] rounded-lg p-3 my-2 overflow-x-auto text-[13px]">
-                                  {lang && <span className="text-[10px] text-[#6c7086] float-right uppercase">{lang}</span>}
-                                  <code className="text-[#cdd6f4]" dangerouslySetInnerHTML={{ __html: highlighted }} />
-                                </pre>
-                              );
-                            }
-                            return <code className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-1.5 py-0.5 rounded text-[13px]">{children}</code>;
-                          },
-                          pre: ({ children }) => <>{children}</>,
-                          ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-                          h1: ({ children }) => <h1 className="text-lg font-bold mb-2">{children}</h1>,
-                          h2: ({ children }) => <h2 className="text-base font-bold mb-1.5">{children}</h2>,
-                          h3: ({ children }) => <h3 className="text-sm font-bold mb-1">{children}</h3>,
-                          a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-[#5B8DEF] underline">{children}</a>,
-                          blockquote: ({ children }) => <blockquote className="border-l-2 border-[#67B88B] pl-3 my-2 text-[#2D3436]/70 dark:text-[#e2e8f0]/70">{children}</blockquote>,
-                          strong: ({ children }) => <strong className="font-bold">{children}</strong>,
-                        }}
-                      >{msg.text}</Markdown>
+                      <div className="relative">
+                        <Markdown
+                          components={{
+                            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                            code: ({ children, className }) => {
+                              const lang = className?.replace('language-', '') || '';
+                              const isBlock = !!className?.includes('language-');
+                              if (isBlock) {
+                                const code = String(children).replace(/\n$/, '');
+                                let highlighted = code;
+                                try {
+                                  highlighted = lang && hljs.getLanguage(lang)
+                                    ? hljs.highlight(code, { language: lang }).value
+                                    : hljs.highlightAuto(code).value;
+                                } catch { /* fallback to plain */ }
+                                return (
+                                  <pre className="bg-[#1e1e2e] border border-[#313244] rounded-lg p-3 my-2 overflow-x-auto text-[13px]">
+                                    {lang && <span className="text-[10px] text-[#6c7086] float-right uppercase">{lang}</span>}
+                                    <code className="text-[#cdd6f4]" dangerouslySetInnerHTML={{ __html: highlighted }} />
+                                  </pre>
+                                );
+                              }
+                              return <code className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-1.5 py-0.5 rounded text-[13px]">{children}</code>;
+                            },
+                            pre: ({ children }) => <>{children}</>,
+                            ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+                            h1: ({ children }) => <h1 className="text-lg font-bold mb-2">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-base font-bold mb-1.5">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-sm font-bold mb-1">{children}</h3>,
+                            a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-[#5B8DEF] underline">{children}</a>,
+                            blockquote: ({ children }) => <blockquote className="border-l-2 border-[#67B88B] pl-3 my-2 text-[#2D3436]/70 dark:text-[#e2e8f0]/70">{children}</blockquote>,
+                            strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+                          }}
+                        >{msg.text}</Markdown>
+                        {/* Streaming cursor indicator */}
+                        {isStreaming && (
+                          <span className="inline-block w-2 h-4 bg-[#67B88B] ml-0.5 animate-pulse align-middle" />
+                        )}
+                      </div>
                     )}
                   </div>
                   
-                  {/* Reaction & Reply & Edit/Delete Buttons — show on hover */}
+                  {/* Reaction & Reply & Edit/Delete Buttons — show on hover (hide for streaming) */}
+                  {!isStreaming && (
                   <div className={`flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                     {/* Quick-react bar */}
                     <div className="flex items-center gap-0.5 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-full px-1 py-0.5 border border-gray-100 dark:border-gray-700 shadow-sm">
@@ -763,9 +808,10 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
                       </>
                     )}
                   </div>
+                  )}
 
-                {/* Action Card for AI messages */}
-                {!isUser && <ActionCard text={msg.text} onSend={quickSend} />}
+                {/* Action Card for AI messages (hide for streaming) */}
+                {!isUser && !isStreaming && <ActionCard text={msg.text} onSend={quickSend} />}
 
                 {/* Reactions Display */}
                 {msg.reactions && msg.reactions.length > 0 && (
