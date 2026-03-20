@@ -12,8 +12,24 @@ const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
 const VIEW_MODE_KEY = 'openclaw.chatlist.viewMode';
 const AGENT_ORDER_KEY = 'openclaw.chatlist.agentOrder';
 const SIDEBAR_WIDTH_KEY = 'openclaw.sidebar.width';
+const AGENT_AVATAR_KEY = 'openclaw.agentAvatars';
 
 type ViewMode = 'list' | 'grid';
+
+// Custom avatar storage
+function getCustomAvatars(): Record<string, string> {
+  try { const raw = localStorage.getItem(AGENT_AVATAR_KEY); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+}
+function setCustomAvatar(agentId: string, url: string) {
+  const avatars = getCustomAvatars();
+  avatars[agentId] = url;
+  localStorage.setItem(AGENT_AVATAR_KEY, JSON.stringify(avatars));
+}
+function removeCustomAvatar(agentId: string) {
+  const avatars = getCustomAvatars();
+  delete avatars[agentId];
+  localStorage.setItem(AGENT_AVATAR_KEY, JSON.stringify(avatars));
+}
 
 // Typing indicator dots component
 function TypingDots() {
@@ -167,6 +183,37 @@ export default function ChatList({
   const [customOrder, setCustomOrder] = useState<Record<string, string[]>>(() => {
     try { const raw = localStorage.getItem(AGENT_ORDER_KEY); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
   });
+  const [customAvatars, setCustomAvatarsState] = useState<Record<string, string>>(() => getCustomAvatars());
+  const [avatarMenuAgent, setAvatarMenuAgent] = useState<{ agentId: string; x: number; y: number } | null>(null);
+
+  const handleAvatarContextMenu = (e: React.MouseEvent, agentId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setAvatarMenuAgent({ agentId, x: e.clientX, y: e.clientY });
+  };
+
+  const handleSetCustomAvatar = (agentId: string) => {
+    const url = prompt('Enter avatar image URL:');
+    if (url && url.trim()) {
+      setCustomAvatar(agentId, url.trim());
+      setCustomAvatarsState(getCustomAvatars());
+    }
+    setAvatarMenuAgent(null);
+  };
+
+  const handleRemoveCustomAvatar = (agentId: string) => {
+    removeCustomAvatar(agentId);
+    setCustomAvatarsState(getCustomAvatars());
+    setAvatarMenuAgent(null);
+  };
+
+  // Close context menu on click outside
+  useEffect(() => {
+    if (!avatarMenuAgent) return;
+    const close = () => setAvatarMenuAgent(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [avatarMenuAgent]);
 
   const pendingOpenRef = useRef<Record<string, PendingOpen | undefined>>({});
   const agentMapRef = useRef(agentMap);
@@ -498,83 +545,113 @@ export default function ChatList({
       : null;
     const palette = getAgentPalette(agent.id);
     const initials = agent.name.slice(0, 2).toUpperCase();
+    const isTyping = typingAgents.has(`${connection.id}:${agent.id}`);
+    const isDragging = draggedAgent === agent.id;
 
     return (
-      <motion.button
+      <motion.div
         key={`${connection.id}-${agent.id}`}
-        type="button"
         initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
+        animate={{ opacity: isDragging ? 0.5 : 1, y: 0 }}
         transition={{ delay: Math.min(index * 0.02, 0.12), duration: 0.18 }}
-        whileTap={isDisabled ? undefined : { scale: 0.985 }}
-        onClick={() => handleAgentClick(connection, agent)}
-        disabled={isDisabled}
-        className={cn(
-          'relative w-full text-left flex items-center gap-3 transition-all duration-150',
-          compact ? 'px-2.5 py-2' : 'px-4 py-2.5',
-          'rounded-lg',
-          isDisabled && 'opacity-40 cursor-not-allowed',
-          !isDisabled && 'cursor-pointer',
-          isActive
-            ? 'bg-primary/10 dark:bg-primary/15 border-l-2 border-l-primary'
-            : 'border-l-2 border-l-transparent hover:bg-text/[0.04] dark:hover:bg-text-inv/[0.04]'
-        )}
+        draggable
+        onDragStart={() => handleDragStart(agent.id)}
+        onDragOver={handleDragOver}
+        onDrop={() => handleDrop(connection.id, agent.id, agentMap[connection.id] || [])}
+        onDragEnd={handleDragEnd}
       >
-        {/* Avatar with per-agent color + initials */}
-        <div
+        <button
+          type="button"
+          onClick={() => handleAgentClick(connection, agent)}
+          disabled={isDisabled}
           className={cn(
-            'flex-shrink-0 flex items-center justify-center text-white font-semibold',
-            compact ? 'w-8 h-8 text-[11px] rounded-lg' : 'w-10 h-10 text-[13px] rounded-xl'
+            'relative w-full text-left flex items-center gap-3 transition-all duration-150',
+            compact ? 'px-2.5 py-2' : 'px-4 py-2.5',
+            'rounded-lg',
+            isDisabled && 'opacity-40 cursor-not-allowed',
+            !isDisabled && 'cursor-pointer',
+            isActive
+              ? 'bg-primary/10 dark:bg-primary/15 border-l-2 border-l-primary'
+              : 'border-l-2 border-l-transparent hover:bg-text/[0.04] dark:hover:bg-text-inv/[0.04]'
           )}
-          style={{ background: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
         >
-          {agent.identityEmoji || initials}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <h3 className={cn('font-semibold truncate', compact ? 'text-[13px] text-text/90 dark:text-text-inv/90' : 'text-[15px]')}>
-              {agent.name}
-            </h3>
-            {agent.isDefault && (
-              <span className="text-[8px] font-medium text-text/40 dark:text-text-inv/35 bg-text/[0.05] dark:bg-text-inv/[0.05] rounded px-1 py-px leading-none shrink-0">
-                default
-              </span>
+          {/* Avatar with typing indicator */}
+          <div className="relative flex-shrink-0" onContextMenu={(e) => handleAvatarContextMenu(e, agent.id)}>
+            {customAvatars[agent.id] ? (
+              <img
+                src={customAvatars[agent.id]}
+                alt={agent.name}
+                className={cn(
+                  'object-cover',
+                  compact ? 'w-8 h-8 rounded-lg' : 'w-10 h-10 rounded-xl'
+                )}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            ) : (
+              <div
+                className={cn(
+                  'flex items-center justify-center text-white font-semibold',
+                  compact ? 'w-8 h-8 text-[11px] rounded-lg' : 'w-10 h-10 text-[13px] rounded-xl'
+                )}
+                style={{ background: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
+              >
+                {agent.identityEmoji || initials}
+              </div>
             )}
-            {agent.model && (
-              <span className={cn('text-[9px] truncate ml-auto shrink-0', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/30 dark:text-text-inv/30')}>
-                {agent.model.split('/').pop()}
+            {isTyping && (
+              <span className={cn(
+                'absolute -bottom-0.5 -right-0.5 bg-primary rounded-full border-2 border-white dark:border-surface-dark flex items-center justify-center',
+                compact ? 'w-3 h-3' : 'w-3.5 h-3.5'
+              )}>
+                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
               </span>
             )}
           </div>
-          {isTyping ? (
-            <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[11px]' : 'text-[13px]')}>
-              typing <TypingDots />
-            </p>
-          ) : preview ? (
-            <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/55 dark:text-text-inv/50' : 'text-[13px] text-text/50 dark:text-text-inv/45')}>
-              {preview}
-            </p>
-          ) : (
-            <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/30 dark:text-text-inv/25' : 'text-[13px] text-text/30 dark:text-text-inv/25')}>
-              Start a conversation
-            </p>
-          )}
-          {showSource && (
-            <p className="mt-0.5 text-[10px] text-text/35 dark:text-text-inv/30 truncate">
-              {getConnectionLabel(connection)}
-            </p>
-          )}
-        </div>
 
-        {/* Timestamp */}
-        {lastMessage?.timestamp && (
-          <span className={cn('text-[10px] shrink-0 self-start mt-0.5', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/35 dark:text-text-inv/30')}>
-            {formatRelativeTime(lastMessage.timestamp)}
-          </span>
-        )}
-      </button>
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h3 className={cn('font-semibold truncate', compact ? 'text-[13px] text-text/90 dark:text-text-inv/90' : 'text-[15px]')}>
+                {agent.name}
+              </h3>
+              {agent.isDefault && (
+                <span className="text-[8px] font-medium text-text/40 dark:text-text-inv/35 bg-text/[0.05] dark:bg-text-inv/[0.05] rounded px-1 py-px leading-none shrink-0">
+                  default
+                </span>
+              )}
+              {agent.model && (
+                <span className={cn('text-[9px] truncate ml-auto shrink-0', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/30 dark:text-text-inv/30')}>
+                  {agent.model.split('/').pop()}
+                </span>
+              )}
+            </div>
+            {isTyping ? (
+              <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[11px]' : 'text-[13px]')}>
+                typing <TypingDots />
+              </p>
+            ) : preview ? (
+              <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/55 dark:text-text-inv/50' : 'text-[13px] text-text/50 dark:text-text-inv/45')}>
+                {preview}
+              </p>
+            ) : (
+              <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/30 dark:text-text-inv/25' : 'text-[13px] text-text/30 dark:text-text-inv/25')}>
+                Start a conversation
+              </p>
+            )}
+            {showSource && (
+              <p className="mt-0.5 text-[10px] text-text/35 dark:text-text-inv/30 truncate">
+                {getConnectionLabel(connection)}
+              </p>
+            )}
+          </div>
+
+          {/* Timestamp */}
+          {lastMessage?.timestamp && (
+            <span className={cn('text-[10px] shrink-0 self-start mt-0.5', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/35 dark:text-text-inv/30')}>
+              {formatRelativeTime(lastMessage.timestamp)}
+            </span>
+          )}
+        </button>
       </motion.div>
     );
   };
@@ -616,13 +693,22 @@ export default function ChatList({
           )}
         >
           {/* Avatar */}
-          <div className="relative mb-2">
-            <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-base shadow-sm"
-              style={{ background: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
-            >
-              {agent.identityEmoji || initials}
-            </div>
+          <div className="relative mb-2" onContextMenu={(e) => handleAvatarContextMenu(e, agent.id)}>
+            {customAvatars[agent.id] ? (
+              <img
+                src={customAvatars[agent.id]}
+                alt={agent.name}
+                className="w-12 h-12 rounded-2xl object-cover shadow-sm"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            ) : (
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-base shadow-sm"
+                style={{ background: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
+              >
+                {agent.identityEmoji || initials}
+              </div>
+            )}
             {/* Typing indicator dot */}
             {isTyping && (
               <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-primary rounded-full border-2 border-white dark:border-card-alt flex items-center justify-center">
@@ -839,6 +925,30 @@ export default function ChatList({
           Add Server
         </button>
       </div>
+
+      {/* Avatar context menu */}
+      {avatarMenuAgent && (
+        <div
+          className="fixed z-50 bg-white dark:bg-card-alt rounded-lg shadow-lg border border-border/60 dark:border-border-dark/60 py-1 min-w-[140px]"
+          style={{ left: avatarMenuAgent.x, top: avatarMenuAgent.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-text/[0.04] dark:hover:bg-text-inv/[0.04] transition-colors"
+            onClick={() => handleSetCustomAvatar(avatarMenuAgent.agentId)}
+          >
+            {customAvatars[avatarMenuAgent.agentId] ? 'Change avatar' : 'Set custom avatar'}
+          </button>
+          {customAvatars[avatarMenuAgent.agentId] && (
+            <button
+              className="w-full text-left px-3 py-1.5 text-[12px] text-red-500 hover:bg-text/[0.04] dark:hover:bg-text-inv/[0.04] transition-colors"
+              onClick={() => handleRemoveCustomAvatar(avatarMenuAgent.agentId)}
+            >
+              Remove avatar
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
