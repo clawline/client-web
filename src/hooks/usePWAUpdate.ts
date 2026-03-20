@@ -35,10 +35,10 @@ export function usePWAUpdate() {
         // Check for updates on page load
         reg.update();
 
-        // Check for updates every hour
+        // Check for updates every 5 minutes (frequent deploys)
         updateInterval = setInterval(() => {
           reg.update();
-        }, 60 * 60 * 1000);
+        }, 5 * 60 * 1000);
 
         // Listen for new service worker waiting
         reg.addEventListener('updatefound', () => {
