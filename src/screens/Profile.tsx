@@ -80,16 +80,15 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
       <h1 className="text-3xl font-bold tracking-tight mb-8">Profile</h1>
 
       <div className="flex items-center gap-5 mb-8">
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#67B88B] to-[#4a9a70] flex items-center justify-center text-white shadow-md border-2 border-white overflow-hidden">
+        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#67B88B] to-[#4a9a70] flex items-center justify-center text-white shadow-md border-2 border-white overflow-hidden">
           {userClaims?.picture ? (
             <img src={userClaims.picture} alt="avatar" className="w-full h-full object-cover" />
           ) : (
-            <User size={36} />
+            <User size={32} />
           )}
         </div>
         <div>
           <h2 className="text-xl font-bold">{userClaims?.name || userClaims?.username || 'OpenClaw User'}</h2>
-          <p className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50 text-sm">{userClaims?.email || 'Signed in via Logto'}</p>
         </div>
       </div>
 
@@ -121,8 +120,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
                     {activeId === conn.id ? <Check size={18} /> : <Server size={18} />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-[15px] truncate">{conn.name}</p>
-                    <p className="text-[12px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 truncate">{conn.serverUrl}</p>
+                    <p className="font-medium text-[15px] truncate">{conn.displayName || conn.name}</p>
                   </div>
                   <motion.button
                     whileTap={{ scale: 0.8 }}
@@ -211,7 +209,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
             >
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-lg font-bold">Edit Server</h3>
-                <motion.button whileTap={{ scale: 0.8 }} onClick={() => setEditing(null)} className="p-1 text-[#2D3436]/30 dark:text-[#e2e8f0]/30">
+                <motion.button whileTap={{ scale: 0.8 }} onClick={() => setEditing(null)} className="p-1 text-[#2D3436]/50 dark:text-[#e2e8f0]/50">
                   <X size={20} />
                 </motion.button>
               </div>
@@ -228,17 +226,17 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
                 <Input value={editForm.serverUrl} onChange={(e) => setEditForm({ ...editForm, serverUrl: e.target.value })} />
               </div>
               <div>
-                <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1">Auth Token <span className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30 font-normal">(optional)</span></label>
+                <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1">Auth Token <span className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50 font-normal">(optional)</span></label>
                 <Input value={editForm.token} onChange={(e) => setEditForm({ ...editForm, token: e.target.value })} placeholder="gc_user_xxxxxxxxx" />
               </div>
               {!isTokenMode && (
                 <>
                   <div>
-                    <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1">Chat ID <span className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30 font-normal">(token auth)</span></label>
+                    <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1">Chat ID <span className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50 font-normal">(token auth)</span></label>
                     <Input value={editForm.chatId} onChange={(e) => setEditForm({ ...editForm, chatId: e.target.value })} placeholder="gc-test-main" />
                   </div>
                   <div>
-                    <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1">Sender ID <span className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30 font-normal">(token auth)</span></label>
+                    <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1">Sender ID <span className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50 font-normal">(token auth)</span></label>
                     <Input value={editForm.senderId} onChange={(e) => setEditForm({ ...editForm, senderId: e.target.value })} placeholder="gc-test-main" />
                   </div>
                 </>
@@ -272,7 +270,7 @@ function SettingItem({ icon: Icon, label, value, hasToggle, active, onClick }: a
             <div className={`w-5 h-5 rounded-full bg-white shadow-sm transform transition-transform ${active ? 'translate-x-5' : 'translate-x-0'}`} />
           </div>
         ) : (
-          <ChevronRight size={20} className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30" />
+          <ChevronRight size={20} className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50" />
         )}
       </div>
     </motion.div>

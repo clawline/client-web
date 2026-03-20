@@ -253,7 +253,16 @@ function AppShell() {
   const showBottomNav = ['chats', 'dashboard', 'profile', 'search'].includes(currentScreen);
 
   // ---- Desktop layout: sidebar + main ----
-  if (isDesktop && currentScreen !== 'onboarding') {
+  // Onboarding gets a special full-width desktop layout without sidebar
+  if (isDesktop && currentScreen === 'onboarding') {
+    return (
+      <div className="w-full h-full bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0] font-sans overflow-hidden">
+        <Onboarding onGetStarted={() => navigate('chats')} />
+      </div>
+    );
+  }
+
+  if (isDesktop) {
     return (
       <div className="flex flex-col w-full h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0] overflow-hidden font-sans">
         <div className="flex flex-1 min-h-0">
@@ -319,7 +328,7 @@ function AppShell() {
   return (
     <div className="relative w-full h-full pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-[#F8FAFB] dark:bg-[#1a1b2e] text-[#2D3436] dark:text-[#e2e8f0] overflow-hidden flex flex-col font-sans">
       <div className="flex-1 flex justify-center relative min-h-0">
-        <div className="w-full max-w-md h-full relative bg-[#F8FAFB] dark:bg-[#1a1b2e] shadow-2xl overflow-hidden">
+        <div className="w-full max-w-md h-full relative bg-[#F8FAFB] dark:bg-[#1a1b2e] overflow-hidden">
         {/* PWA Update Banner */}
         <UpdateBanner
           isVisible={updateAvailable}
@@ -338,12 +347,12 @@ function AppShell() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -40 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className={`absolute inset-0 ${currentScreen === 'chat_room' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+            className={`absolute inset-0 ${currentScreen === 'chat_room' || currentScreen === 'onboarding' ? 'overflow-hidden' : 'overflow-y-auto'}`}
           >
             {/* Inner motion.div: handles swipe-back drag (decoupled from transitions) */}
             <motion.div
               style={{ x: dragX }}
-              className={currentScreen === 'chat_room' ? 'h-full' : undefined}
+              className={currentScreen === 'chat_room' || currentScreen === 'onboarding' ? 'h-full' : undefined}
             >
               {renderScreen()}
             </motion.div>

@@ -587,16 +587,16 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
   const [showMemory, setShowMemory] = useState(false);
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 relative">
+    <div className="flex flex-col h-full bg-[#F8FAFB] dark:bg-[#1a1b2e] relative">
       {/* Header */}
-      <div className="px-4 py-3 sticky top-0 bg-white/70 dark:bg-gray-800/70 backdrop-blur-[20px] border-b border-gray-200 dark:border-gray-700 z-20 flex items-center justify-between min-h-[57px]">
+      <div className="px-4 py-3 sticky top-0 bg-white/70 dark:bg-[#232437]/70 backdrop-blur-[20px] border-b border-[#EDF2F0] dark:border-[#2d3748] z-20 flex items-center justify-between min-h-[57px]">
         {!isDesktop && (
-          <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="p-2 -ml-2 text-gray-800 dark:text-gray-200">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="p-2 -ml-2 text-[#2D3436] dark:text-[#e2e8f0]" aria-label="Go back">
             <ChevronLeft size={28} />
           </motion.button>
         )}
         <div className={`flex flex-col ${isDesktop ? 'items-start ml-2' : 'items-center'}`}>
-          <h2 className="font-semibold text-[17px] text-gray-800 dark:text-gray-100">{agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}</h2>
+          <h2 className="font-semibold text-[17px] text-[#2D3436] dark:text-[#e2e8f0]">{agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}</h2>
           <span className={`text-[11px] font-medium flex items-center gap-1 ${
             wsStatus === 'connected' ? 'text-[#67B88B]' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'text-amber-500' : 'text-red-400'
           }`}>
@@ -606,7 +606,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
             {wsStatus === 'disconnected' && <><WifiOff size={10} /> Disconnected</>}
           </span>
         </div>
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2 -mr-2 text-gray-800 dark:text-gray-200">
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2 -mr-2 text-[#2D3436] dark:text-[#e2e8f0]" aria-label="More options">
           <MoreHorizontal size={24} />
         </motion.button>
       </div>
@@ -624,11 +624,11 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
               initial={{ opacity: 0, y: -10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -10, scale: 0.95 }}
-              className="absolute top-[57px] right-4 z-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl p-1.5 min-w-[180px]"
+              className="absolute top-[57px] right-4 z-40 bg-white dark:bg-[#232437] border border-[#EDF2F0] dark:border-[#2d3748] rounded-2xl shadow-xl p-1.5 min-w-[180px]"
             >
               <button
                 onClick={() => { setShowHeaderMenu(false); setShowMemory(true); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-[#2D3436] dark:text-[#e2e8f0] hover:bg-[#F8FAFB] dark:hover:bg-[#1a1b2e] transition-colors"
               >
                 <Cpu size={16} />
                 View Memory
@@ -657,9 +657,9 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
               {/* Date separator */}
               {showDateSep && msg.timestamp && (
                 <div className="flex items-center gap-3 my-3">
-                  <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-                  <span className="text-[11px] text-gray-400 dark:text-gray-500 font-medium">{formatDate(msg.timestamp)}</span>
-                  <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                  <div className="flex-1 h-px bg-[#EDF2F0] dark:bg-[#2d3748]" />
+                  <span className="text-[11px] text-[#2D3436]/55 dark:text-[#e2e8f0]/55 font-medium">{formatDate(msg.timestamp)}</span>
+                  <div className="flex-1 h-px bg-[#EDF2F0] dark:bg-[#2d3748]" />
                 </div>
               )}
               <motion.div
@@ -679,15 +679,21 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                     className={`px-5 py-3.5 rounded-[24px] text-[15px] leading-relaxed relative ${
                       isUser
                         ? 'bg-[#67B88B] text-white rounded-tr-[8px] shadow-md shadow-[#67B88B]/20'
-                        : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-tl-[8px] shadow-sm'
+                        : 'bg-white dark:bg-[#232437] text-[#2D3436] dark:text-[#e2e8f0] border border-[#EDF2F0] dark:border-[#2d3748] rounded-tl-[8px] shadow-sm'
                     }`}
                   >
+                    {/* Model badge - small top-right indicator for AI messages */}
+                    {!isUser && agentInfo?.model && (
+                      <span className="absolute -top-1 -right-1 px-2 py-0.5 bg-[#5B8DEF] text-white text-[10px] font-medium rounded-full shadow-sm">
+                        {agentInfo.model.split('/').pop()}
+                      </span>
+                    )}
                     {/* Quote reference */}
                     {msg.replyTo && (() => {
                       const quoted = messages.find((m) => m.id === msg.replyTo);
                       return quoted ? (
                         <div className={`text-[12px] mb-2 px-3 py-1.5 rounded-lg border-l-2 ${
-                          isUser ? 'bg-white/15 border-white/40 text-white/80' : 'bg-gray-50 dark:bg-gray-900 border-[#67B88B] text-gray-600 dark:text-gray-400'
+                          isUser ? 'bg-white/15 border-white/40 text-white/80' : 'bg-[#F8FAFB] dark:bg-[#131420] border-[#67B88B] text-[#2D3436]/60 dark:text-[#e2e8f0]/60'
                         }`}>
                           <span className="font-medium">{quoted.sender === 'user' ? 'You' : 'Bot'}: </span>
                           {quoted.text.slice(0, 80)}{quoted.text.length > 80 ? '…' : ''}
@@ -708,7 +714,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                         {msg.text && <p className="text-[13px] opacity-80 px-1">{msg.text}</p>}
                       </div>
                     ) : msg.mediaType === 'file' && msg.mediaUrl ? (
-                      <div className="flex items-center gap-3 bg-[#F8FAFB] dark:bg-[#131420] p-3 rounded-xl border border-gray-100 dark:border-gray-700 min-w-[200px]">
+                      <div className="flex items-center gap-3 bg-[#F8FAFB] dark:bg-[#131420] p-3 rounded-xl border border-[#EDF2F0] dark:border-[#2d3748] min-w-[200px]">
                         <div className="w-10 h-10 rounded-lg bg-[#5B8DEF]/10 flex items-center justify-center text-[#5B8DEF] shrink-0">
                           <FileText size={20} />
                         </div>
@@ -742,7 +748,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                                   </pre>
                                 );
                               }
-                              return <code className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-1.5 py-0.5 rounded text-[13px]">{children}</code>;
+                              return <code className="bg-[#EDF2F0] dark:bg-[#2d3748] text-[#2D3436] dark:text-[#e2e8f0] px-1.5 py-0.5 rounded text-[13px]">{children}</code>;
                             },
                             pre: ({ children }) => <>{children}</>,
                             ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
@@ -767,7 +773,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                   {!isStreaming && (
                   <div className={`flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                     {/* Quick-react bar */}
-                    <div className="flex items-center gap-0.5 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-full px-1 py-0.5 border border-gray-100 dark:border-gray-700 shadow-sm">
+                    <div className="flex items-center gap-0.5 bg-white/80 dark:bg-[#232437]/80 backdrop-blur-sm rounded-full px-1 py-0.5 border border-[#EDF2F0] dark:border-[#2d3748] shadow-sm">
                       {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
                         <motion.button
                           key={e}
@@ -782,7 +788,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                             if (hasIt) { channel.removeReaction(msg.id, e); } else { channel.addReaction(msg.id, e); }
                           }}
                           className={`w-7 h-7 text-[15px] flex items-center justify-center rounded-full transition-colors ${
-                            msg.reactions?.includes(e) ? 'bg-[#67B88B]/20 scale-110' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                            msg.reactions?.includes(e) ? 'bg-[#67B88B]/20 scale-110' : 'hover:bg-[#EDF2F0] dark:hover:bg-[#2d3748]'
                           }`}
                         >
                           {e}
@@ -791,7 +797,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => openReactionPicker(msg.id)}
-                        className="w-7 h-7 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-[#67B88B] rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        className="w-7 h-7 flex items-center justify-center text-[#2D3436]/55 dark:text-[#e2e8f0]/55 hover:text-[#67B88B] rounded-full hover:bg-[#EDF2F0] dark:hover:bg-[#2d3748] transition-colors"
                       >
                         <SmilePlus size={13} />
                       </motion.button>
@@ -799,7 +805,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                     <motion.button
                       whileTap={{ scale: 0.9 }}
                       onClick={() => startReply(msg)}
-                      className="p-1 text-gray-400 dark:text-gray-500 hover:text-[#5B8DEF] transition-colors"
+                      className="p-1 text-[#2D3436]/55 dark:text-[#e2e8f0]/55 hover:text-[#5B8DEF] transition-colors"
                     >
                       <CornerDownLeft size={14} />
                     </motion.button>
@@ -808,14 +814,14 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                         <motion.button
                           whileTap={{ scale: 0.9 }}
                           onClick={() => handleEditMessage(msg)}
-                          className="p-1 text-gray-400 dark:text-gray-500 hover:text-amber-500 transition-colors"
+                          className="p-1 text-[#2D3436]/55 dark:text-[#e2e8f0]/55 hover:text-amber-500 transition-colors"
                         >
                           <Pencil size={14} />
                         </motion.button>
                         <motion.button
                           whileTap={{ scale: 0.9 }}
                           onClick={() => handleDeleteMessage(msg.id)}
-                          className="p-1 text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors"
+                          className="p-1 text-[#2D3436]/55 dark:text-[#e2e8f0]/55 hover:text-red-500 transition-colors"
                         >
                           <Trash2 size={14} />
                         </motion.button>
@@ -854,7 +860,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
 
                 {/* Message time */}
                 {msg.timestamp && (
-                  <span className={`text-[10px] text-gray-400 dark:text-gray-500 mt-1 ${isUser ? 'text-right' : 'text-left'}`}>
+                  <span className={`text-[10px] text-[#2D3436]/55 dark:text-[#e2e8f0]/55 mt-1 ${isUser ? 'text-right' : 'text-left'}`}>
                     {formatTime(msg.timestamp)}
                   </span>
                 )}
@@ -865,7 +871,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
         })}
         {/* Typing indicator */}
         {peerTyping && !isThinking && (
-          <div className="flex items-center gap-2 px-2 text-[12px] text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-2 px-2 text-[12px] text-[#2D3436]/55 dark:text-[#e2e8f0]/55">
             <span className="w-1.5 h-1.5 bg-[#67B88B] rounded-full animate-pulse" />
             {agentInfo?.name || 'Bot'} is typing…
           </div>
@@ -883,11 +889,11 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#67B88B] to-[#4a9a70] flex-shrink-0 mr-3 flex items-center justify-center text-white shadow-sm text-lg">
                 {agentInfo?.identityEmoji || '🤖'}
               </div>
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-[24px] rounded-tl-[8px] shadow-sm px-5 py-3.5">
+              <div className="bg-white dark:bg-[#232437] border border-[#EDF2F0] dark:border-[#2d3748] rounded-[24px] rounded-tl-[8px] shadow-sm px-5 py-3.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 bg-[#67B88B] rounded-full animate-bounce [animation-delay:0ms]" />
-                  <span className="w-2 h-2 bg-[#67B88B] rounded-full animate-bounce [animation-delay:150ms]" />
-                  <span className="w-2 h-2 bg-[#67B88B] rounded-full animate-bounce [animation-delay:300ms]" />
+                  <span className="w-2 h-2 bg-[#67B88B] rounded-full animate-pulse" />
+                  <span className="w-2 h-2 bg-[#67B88B] rounded-full animate-pulse [animation-delay:200ms]" />
+                  <span className="w-2 h-2 bg-[#67B88B] rounded-full animate-pulse [animation-delay:400ms]" />
                 </div>
               </div>
             </motion.div>
@@ -897,20 +903,20 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
       </div>
 
       {/* Input Area */}
-      <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-gray-50 via-gray-50 dark:from-gray-900 dark:via-gray-900 to-transparent z-30 flex-shrink-0">
+      <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-[#F8FAFB] via-[#F8FAFB] dark:from-[#1a1b2e] dark:via-[#1a1b2e] to-transparent z-30 flex-shrink-0">
         <AnimatePresence>
           {showSlashMenu && (
             <>
               <motion.div
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-gray-50/40 dark:bg-gray-900/40 backdrop-blur-md -z-10"
+                className="fixed inset-0 bg-[#F8FAFB]/40 dark:bg-[#1a1b2e]/40 backdrop-blur-md -z-10"
                 onClick={() => setShowSlashMenu(false)}
               />
               <motion.div
                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute bottom-full left-4 right-4 mb-2 bg-white/70 dark:bg-gray-800/70 backdrop-blur-[20px] border border-white/50 dark:border-gray-700/50 shadow-2xl rounded-[24px] p-2 overflow-hidden"
+                className="absolute bottom-full left-4 right-4 mb-2 bg-white/70 dark:bg-[#232437]/70 backdrop-blur-[20px] border border-white/50 dark:border-[#2d3748]/50 shadow-2xl rounded-[24px] p-2 overflow-hidden"
               >
                 {slashCommands
                   .filter((cmd) => cmd.label.startsWith(inputValue) || inputValue === '/')
@@ -921,12 +927,12 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                     onClick={() => handleCommandSelect(cmd.label)}
                     className="w-full flex items-center gap-3 p-3 rounded-[16px] text-left transition-colors"
                   >
-                    <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-[#67B88B]">
+                    <div className="w-10 h-10 rounded-full bg-[#EDF2F0] dark:bg-[#2d3748] flex items-center justify-center text-[#67B88B]">
                       <cmd.icon size={18} />
                     </div>
                     <div>
-                      <div className="font-semibold text-[15px] text-gray-800 dark:text-gray-100">{cmd.label}</div>
-                      <div className="text-[13px] text-gray-600 dark:text-gray-400">{cmd.desc}</div>
+                      <div className="font-semibold text-[15px] text-[#2D3436] dark:text-[#e2e8f0]">{cmd.label}</div>
+                      <div className="text-[13px] text-[#2D3436]/55 dark:text-[#e2e8f0]/55">{cmd.desc}</div>
                     </div>
                   </motion.button>
                 ))}
@@ -938,21 +944,21 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
             <>
               <motion.div
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-gray-50/40 dark:bg-gray-900/40 backdrop-blur-md -z-10"
+                className="fixed inset-0 bg-[#F8FAFB]/40 dark:bg-[#1a1b2e]/40 backdrop-blur-md -z-10"
                 onClick={() => { setShowEmojiPicker(false); setReactingToMsgId(null); }}
               />
               <motion.div
                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute bottom-full left-4 right-4 mb-2 bg-white/70 dark:bg-gray-800/70 backdrop-blur-[20px] border border-white/50 dark:border-gray-700/50 shadow-2xl rounded-[24px] p-4 flex flex-wrap gap-2 justify-center"
+                className="absolute bottom-full left-4 right-4 mb-2 bg-white/70 dark:bg-[#232437]/70 backdrop-blur-[20px] border border-white/50 dark:border-[#2d3748]/50 shadow-2xl rounded-[24px] p-4 flex flex-wrap gap-2 justify-center"
               >
                 {EMOJI_LIST.map((emoji) => (
                   <motion.button
                     key={emoji}
                     whileTap={{ scale: 0.8 }}
                     onClick={() => handleEmojiSelect(emoji)}
-                    className="w-10 h-10 text-2xl flex items-center justify-center hover:bg-white/50 dark:hover:bg-gray-700/50 rounded-full transition-colors"
+                    className="w-10 h-10 text-2xl flex items-center justify-center hover:bg-white/50 dark:hover:bg-[#2d3748]/50 rounded-full transition-colors"
                   >
                     {emoji}
                   </motion.button>
@@ -977,7 +983,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                   key={sug.label}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setInputValue(sug.label)}
-                  className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-full text-[12px] font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#EDF2F0] dark:bg-[#2d3748]/50 border border-[#EDF2F0] dark:border-[#2d3748] rounded-full text-[12px] font-medium text-[#2D3436]/60 dark:text-[#e2e8f0]/60 hover:bg-[#EDF2F0]/70 dark:hover:bg-[#2d3748] transition-colors"
                 >
                   <span>{sug.emoji}</span>
                   {sug.label}
@@ -999,7 +1005,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                   key={cmd.label}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => quickSend(cmd.label)}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-[12px] font-medium text-gray-600 dark:text-gray-300 hover:border-[#67B88B] hover:text-[#67B88B] transition-colors"
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-[#232437] border border-[#EDF2F0] dark:border-[#2d3748] rounded-full text-[12px] font-medium text-[#2D3436]/60 dark:text-[#e2e8f0]/60 hover:border-[#67B88B] hover:text-[#67B88B] transition-colors"
                 >
                   <span>{cmd.emoji}</span>
                   {cmd.label}
@@ -1032,15 +1038,15 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="flex items-center gap-2 px-4 py-2 mb-2 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded-[16px]">
+              <div className="flex items-center gap-2 px-4 py-2 mb-2 bg-white dark:bg-[#232437] border border-blue-200 dark:border-blue-700 rounded-[16px]">
                 <div className="w-1 h-8 bg-[#5B8DEF] rounded-full flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] text-[#5B8DEF] font-medium">
                     Replying to {replyingTo.sender === 'user' ? 'yourself' : 'Bot'}
                   </p>
-                  <p className="text-[13px] text-gray-600 dark:text-gray-400 truncate">{replyingTo.text}</p>
+                  <p className="text-[13px] text-[#2D3436]/55 dark:text-[#e2e8f0]/55 truncate">{replyingTo.text}</p>
                 </div>
-                <motion.button whileTap={{ scale: 0.8 }} onClick={() => setReplyingTo(null)} className="p-1 text-gray-400 dark:text-gray-500">
+                <motion.button whileTap={{ scale: 0.8 }} onClick={() => setReplyingTo(null)} className="p-1 text-[#2D3436]/55 dark:text-[#e2e8f0]/55">
                   <X size={16} />
                 </motion.button>
               </div>
@@ -1048,12 +1054,13 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
           )}
         </AnimatePresence>
 
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full p-2 flex items-center gap-1 shadow-lg shadow-black/5 relative">
+        <div className="bg-white dark:bg-[#232437] border border-[#EDF2F0] dark:border-[#2d3748] rounded-full p-2 flex items-center gap-1 shadow-lg shadow-black/5 relative">
           {/* Action menu toggle (+ button) */}
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowMoreIcons(!showMoreIcons)}
-            className={`p-2 rounded-full transition-colors ${showMoreIcons ? 'bg-[#67B88B]/10 text-[#67B88B]' : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}`}
+            className={`p-2 rounded-full transition-colors ${showMoreIcons ? 'bg-[#67B88B]/10 text-[#67B88B]' : 'text-[#2D3436]/55 dark:text-[#e2e8f0]/55 hover:text-[#2D3436] dark:hover:text-[#e2e8f0]'}`}
+            aria-label="Attach"
           >
             <Plus size={22} />
           </motion.button>
@@ -1071,25 +1078,25 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute bottom-full left-0 mb-2 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl p-2 flex flex-col gap-1 min-w-[140px]"
+                  className="absolute bottom-full left-0 mb-2 z-30 bg-white dark:bg-[#232437] border border-[#EDF2F0] dark:border-[#2d3748] rounded-2xl shadow-xl p-2 flex flex-col gap-1 min-w-[140px]"
                 >
                   <button
                     onClick={() => { handleImagePick(); setShowMoreIcons(false); }}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-[#2D3436] dark:text-[#e2e8f0] hover:bg-[#F8FAFB] dark:hover:bg-[#1a1b2e] transition-colors"
                   >
                     <Image size={18} />
                     Image
                   </button>
                   <button
                     onClick={() => { handleFilePick(); setShowMoreIcons(false); }}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-[#2D3436] dark:text-[#e2e8f0] hover:bg-[#F8FAFB] dark:hover:bg-[#1a1b2e] transition-colors"
                   >
                     <Paperclip size={18} />
                     File
                   </button>
                   <button
                     onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowMoreIcons(false); }}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-[#2D3436] dark:text-[#e2e8f0] hover:bg-[#F8FAFB] dark:hover:bg-[#1a1b2e] transition-colors"
                   >
                     <Smile size={18} />
                     Emoji
@@ -1108,7 +1115,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
             onFocus={() => { setShowEmojiPicker(false); }}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Message..."
-            className="flex-1 bg-transparent border-none focus:outline-none text-[15px] py-2 px-2 text-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+            className="flex-1 bg-transparent border-none focus:outline-none text-[15px] py-2 px-2 text-[#2D3436] dark:text-[#e2e8f0] placeholder:text-[#2D3436]/45 dark:placeholder:text-[#e2e8f0]/45"
           />
 
           {/* Voice button when no text, Send button when has text */}
@@ -1118,6 +1125,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
               animate={{ scale: 1, opacity: 1 }}
               whileTap={{ scale: 0.9 }}
               onClick={handleSend}
+              aria-label="Send message"
               className="p-3 rounded-full flex items-center justify-center bg-[#67B88B] text-white shadow-md shadow-[#67B88B]/30"
             >
               <Send size={20} />
@@ -1137,8 +1145,9 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
               <motion.button
                 whileTap={{ scale: 0.9 }}
                 onClick={toggleRecording}
+                aria-label={isRecording ? 'Stop recording' : 'Start voice recording'}
                 className={`p-3 rounded-full flex items-center justify-center transition-colors ${
-                  isRecording ? 'bg-red-500 text-white shadow-md shadow-red-500/30 animate-pulse' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                  isRecording ? 'bg-red-500 text-white shadow-md shadow-red-500/30 animate-pulse' : 'bg-[#EDF2F0] dark:bg-[#2d3748] text-[#2D3436]/55 dark:text-[#e2e8f0]/55'
                 }`}
               >
                 {isRecording ? <MicOff size={20} /> : <Mic size={20} />}

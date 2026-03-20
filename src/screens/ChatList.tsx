@@ -229,10 +229,10 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
         </div>
         <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
           <div className="w-16 h-16 bg-[#EDF2F0] dark:bg-[#2d3748] rounded-full flex items-center justify-center mb-4">
-            <Server size={28} className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30" />
+            <Server size={28} className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50" />
           </div>
           <p className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50 text-[15px] mb-1">No server connected</p>
-          <p className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30 text-[13px] mb-6">Add a server in Profile to get started</p>
+          <p className="text-[#2D3436]/50 dark:text-[#e2e8f0]/50 text-[13px] mb-6">Add a server in Profile to get started</p>
           <Button onClick={onAddServer}>
             <Server size={16} /> Add Server
           </Button>
@@ -274,7 +274,7 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleRefresh}
-              className="p-2 text-[#2D3436]/30 dark:text-[#e2e8f0]/30 hover:text-[#67B88B] transition-colors"
+              className="p-2 text-[#2D3436]/50 dark:text-[#e2e8f0]/50 hover:text-[#67B88B] transition-colors"
             >
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
             </motion.button>
@@ -381,7 +381,7 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
               const lastMsg = getLastMessagePreview(agent.id, connId);
               const preview = lastMsg?.text
                 ? (lastMsg.text.length > 50 ? `${lastMsg.text.slice(0, 50)}…` : lastMsg.text)
-                : (agent.model || `Agent: ${agent.id}`);
+                : 'No messages yet';
 
               return (
                 <motion.div
@@ -392,13 +392,19 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
                   whileTap={{ scale: 0.98 }}
                   onClick={() => requestConversations(agent, true)}
                   className={cn(
-                    'bg-white dark:bg-[#232437] rounded-[24px] flex items-center gap-4 shadow-sm border cursor-pointer transition-colors',
+                    'relative bg-white dark:bg-[#232437] rounded-[24px] flex items-center gap-4 shadow-sm border cursor-pointer transition-colors',
                     compact ? 'p-3 rounded-[16px] gap-3' : 'p-4',
                     isActive
                       ? 'border-[#67B88B] bg-[#67B88B]/5 dark:bg-[#67B88B]/10'
                       : 'border-[#EDF2F0]/50 dark:border-[#2d3748]/50 hover:border-[#67B88B]/30'
                   )}
                 >
+                  {/* Model badge - small top-right indicator */}
+                  {agent.model && (
+                    <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-[#5B8DEF]/10 text-[#5B8DEF] text-[9px] font-medium rounded">
+                      {agent.model.split('/').pop()}
+                    </span>
+                  )}
                   <div className={cn(
                     'rounded-full bg-gradient-to-br from-[#67B88B] to-[#4a9a70] flex-shrink-0 flex items-center justify-center text-white shadow-sm',
                     compact ? 'w-10 h-10 text-lg' : 'w-14 h-14 text-2xl'
@@ -414,7 +420,7 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
                         )}
                       </div>
                       {lastMsg?.timestamp && (
-                        <span className="text-[11px] text-[#2D3436]/30 dark:text-[#e2e8f0]/30 shrink-0">{formatRelativeTime(lastMsg.timestamp)}</span>
+                        <span className="text-[11px] text-[#2D3436]/50 dark:text-[#e2e8f0]/50 shrink-0">{formatRelativeTime(lastMsg.timestamp)}</span>
                       )}
                     </div>
                     <p className={cn('text-[#2D3436]/40 dark:text-[#e2e8f0]/40 truncate', compact ? 'text-[12px]' : 'text-[13px]')}>{preview}</p>

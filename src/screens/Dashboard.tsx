@@ -184,7 +184,7 @@ export default function Dashboard() {
           <p className="text-[13px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 mt-0.5">{activeConn.name || 'Server'}</p>
         </div>
         <div className="flex items-center gap-2">
-          <motion.button whileTap={{ scale: 0.9 }} onClick={refresh} className="p-2 text-[#2D3436]/30 dark:text-[#e2e8f0]/30 hover:text-[#67B88B] transition-colors">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={refresh} className="p-2 text-[#2D3436]/50 dark:text-[#e2e8f0]/50 hover:text-[#67B88B] transition-colors">
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </motion.button>
           <StatusPill connected={isConnected} uptime={uptimeStr} />
@@ -209,7 +209,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             {agents.length === 0 ? (
-              <div className="py-4 text-center text-[13px] text-[#2D3436]/30 dark:text-[#e2e8f0]/30">
+              <div className="py-4 text-center text-[13px] text-[#2D3436]/50 dark:text-[#e2e8f0]/50">
                 {loading ? 'Loading agents…' : 'No agents available'}
               </div>
             ) : (

@@ -19,7 +19,7 @@ export default function BottomNav({ currentScreen, onNavigate }: BottomNavProps)
 
   return (
     <div className="absolute left-6 right-6 z-50" style={{ bottom: 'max(1.5rem, env(safe-area-inset-bottom, 1.5rem))' }}>
-      <GlassCard className="p-2 flex justify-between items-center px-6">
+      <GlassCard className="p-2 flex justify-between items-center px-6" role="navigation" aria-label="Main navigation">
         {navItems.map((item) => {
           const isActive = currentScreen === item.id;
           const Icon = item.icon;
@@ -28,6 +28,8 @@ export default function BottomNav({ currentScreen, onNavigate }: BottomNavProps)
               key={item.id}
               whileTap={{ scale: 0.9 }}
               onClick={() => onNavigate(item.id as Screen)}
+              aria-label={item.label}
+              aria-current={isActive ? 'page' : undefined}
               className={cn(
                 "p-3 rounded-2xl flex flex-col items-center justify-center transition-colors relative",
                 isActive ? 'text-[#67B88B]' : 'text-[#2D3436]/40 dark:text-[#e2e8f0]/40 hover:text-[#2D3436]/70 dark:hover:text-[#e2e8f0]/70'
