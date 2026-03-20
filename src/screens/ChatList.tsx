@@ -9,6 +9,7 @@ import type { AgentInfo, ConversationSummary, ChannelStatus } from '../services/
 import { getUserId } from '../App';
 
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
+const EXPANDED_KEY = 'openclaw.chatlist.expandedIds';
 const VIEW_MODE_KEY = 'openclaw.chatlist.viewMode';
 const AGENT_ORDER_KEY = 'openclaw.chatlist.agentOrder';
 const SIDEBAR_WIDTH_KEY = 'openclaw.sidebar.width';
@@ -167,6 +168,15 @@ export default function ChatList({
     try { return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || 'list'; } catch { return 'list'; }
   });
   const [expandedIds, setExpandedIds] = useState<string[]>(() => {
+    // Restore from localStorage first
+    try {
+      const saved = localStorage.getItem(EXPANDED_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch { /* noop */ }
+    // Fallback: expand first or active connection
     const initialConnections = getConnections();
     if (initialConnections.length <= 1) {
       return initialConnections[0] ? [initialConnections[0].id] : [];
@@ -461,10 +471,11 @@ export default function ChatList({
 
   const handleToggleGroup = (connectionId: string) => {
     setExpandedIds((prev) => {
-      if (prev.includes(connectionId)) {
-        return prev.filter((id) => id !== connectionId);
-      }
-      return [...prev, connectionId];
+      const next = prev.includes(connectionId)
+        ? prev.filter((id) => id !== connectionId)
+        : [...prev, connectionId];
+      try { localStorage.setItem(EXPANDED_KEY, JSON.stringify(next)); } catch { /* noop */ }
+      return next;
     });
   };
 
@@ -518,12 +529,14 @@ export default function ChatList({
     });
   }, [customOrder]);
 
-  // Reorder handler for Reorder.Group
+  // Reorder handler for Reorder.Group — functional setState to avoid stale closure / render loops
   const handleReorder = useCallback((connectionId: string, newOrder: string[]) => {
-    const updated = { ...customOrder, [connectionId]: newOrder };
-    setCustomOrder(updated);
-    try { localStorage.setItem(AGENT_ORDER_KEY, JSON.stringify(updated)); } catch { /* noop */ }
-  }, [customOrder]);
+    setCustomOrder(prev => {
+      const updated = { ...prev, [connectionId]: newOrder };
+      try { localStorage.setItem(AGENT_ORDER_KEY, JSON.stringify(updated)); } catch { /* noop */ }
+      return updated;
+    });
+  }, []);
 
   const renderAgentCard = (connection: ServerConnection, agent: AgentInfo, index: number, showSource = false) => {
     const status = statusMap[connection.id] || 'disconnected';
