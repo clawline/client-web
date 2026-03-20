@@ -118,7 +118,7 @@ export default function Pairing({ onBack, onPaired }: { onBack: () => void; onPa
       parsedUrl.serverUrl,
       parsedUrl.displayName || parsedUrl.senderId || 'OpenClaw User',
       parsedUrl.token,
-      parsedUrl.chatId,
+      parsedUrl.chatId || parsedUrl.channelId,
       parsedUrl.senderId,
     );
     onPaired(conn.id);
