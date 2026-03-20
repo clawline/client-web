@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List, ChevronUp, Pencil } from 'lucide-react';
+import { AnimatePresence, motion, Reorder } from 'motion/react';
+import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
 import { CONNECTIONS_UPDATED_EVENT, getConnections, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
@@ -179,8 +179,6 @@ export default function ChatList({
   const [refreshingMap, setRefreshingMap] = useState<Record<string, boolean>>({});
   const [attemptedMap, setAttemptedMap] = useState<Record<string, boolean>>({});
   const [typingAgents, setTypingAgents] = useState<Set<string>>(new Set());
-  const [draggedAgent, setDraggedAgent] = useState<string | null>(null);
-  const [editMode, setEditMode] = useState(false);
   const [customOrder, setCustomOrder] = useState<Record<string, string[]>>(() => {
     try { const raw = localStorage.getItem(AGENT_ORDER_KEY); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
   });
@@ -520,49 +518,12 @@ export default function ChatList({
     });
   }, [customOrder]);
 
-  // Drag-and-drop handlers (HTML5 native)
-  const handleDragStart = (agentId: string) => {
-    setDraggedAgent(agentId);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-
-  const handleDrop = (connectionId: string, targetAgentId: string, agents: AgentInfo[]) => {
-    if (!draggedAgent || draggedAgent === targetAgentId) {
-      setDraggedAgent(null);
-      return;
-    }
-    const currentOrder = customOrder[connectionId] || agents.map((a) => a.id);
-    const fromIdx = currentOrder.indexOf(draggedAgent);
-    const toIdx = currentOrder.indexOf(targetAgentId);
-    if (fromIdx === -1 || toIdx === -1) { setDraggedAgent(null); return; }
-    const next = [...currentOrder];
-    next.splice(fromIdx, 1);
-    next.splice(toIdx, 0, draggedAgent);
-    const updated = { ...customOrder, [connectionId]: next };
+  // Reorder handler for Reorder.Group
+  const handleReorder = useCallback((connectionId: string, newOrder: string[]) => {
+    const updated = { ...customOrder, [connectionId]: newOrder };
     setCustomOrder(updated);
     try { localStorage.setItem(AGENT_ORDER_KEY, JSON.stringify(updated)); } catch { /* noop */ }
-    setDraggedAgent(null);
-  };
-
-  const handleDragEnd = () => { setDraggedAgent(null); };
-
-  // Mobile: move agent up/down in edit mode
-  const handleMoveAgent = (connectionId: string, agentId: string, direction: 'up' | 'down', agents: AgentInfo[]) => {
-    const currentOrder = customOrder[connectionId] || agents.map((a) => a.id);
-    const idx = currentOrder.indexOf(agentId);
-    if (idx === -1) return;
-    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= currentOrder.length) return;
-    const next = [...currentOrder];
-    [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
-    const updated = { ...customOrder, [connectionId]: next };
-    setCustomOrder(updated);
-    try { localStorage.setItem(AGENT_ORDER_KEY, JSON.stringify(updated)); } catch { /* noop */ }
-  };
+  }, [customOrder]);
 
   const renderAgentCard = (connection: ServerConnection, agent: AgentInfo, index: number, showSource = false) => {
     const status = statusMap[connection.id] || 'disconnected';
@@ -575,49 +536,19 @@ export default function ChatList({
     const palette = getAgentPalette(agent.id);
     const initials = agent.name.slice(0, 2).toUpperCase();
     const isTyping = typingAgents.has(`${connection.id}:${agent.id}`);
-    const isDragging = draggedAgent === agent.id;
-    const agents = agentMap[connection.id] || [];
-    const sortedOrder = customOrder[connection.id] || agents.map((a) => a.id);
-    const sortedIdx = sortedOrder.indexOf(agent.id);
-    const isFirst = sortedIdx === 0;
-    const isLast = sortedIdx === sortedOrder.length - 1;
 
     return (
-      <motion.div
-        key={`${connection.id}-${agent.id}`}
+      <Reorder.Item
+        key={agent.id}
+        value={agent.id}
         initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: isDragging ? 0.5 : 1, y: 0 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -6 }}
         transition={{ delay: Math.min(index * 0.02, 0.12), duration: 0.18 }}
-        layout={editMode}
-        draggable={compact && !editMode}
-        onDragStart={compact ? () => handleDragStart(agent.id) : undefined}
-        onDragOver={compact ? handleDragOver : undefined}
-        onDrop={compact ? () => handleDrop(connection.id, agent.id, agents) : undefined}
-        onDragEnd={compact ? handleDragEnd : undefined}
+        whileDrag={{ scale: 1.02, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: 50 }}
+        style={{ touchAction: 'none' }}
       >
-        <div className="flex items-center">
-          {/* Edit mode: reorder buttons (mobile only) */}
-          {editMode && !compact && (
-            <div className="flex flex-col mr-1 shrink-0">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handleMoveAgent(connection.id, agent.id, 'up', agents); }}
-                disabled={isFirst}
-                className={cn('p-0.5 rounded', isFirst ? 'text-text/15' : 'text-text/40 active:bg-text/10')}
-              >
-                <ChevronUp size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handleMoveAgent(connection.id, agent.id, 'down', agents); }}
-                disabled={isLast}
-                className={cn('p-0.5 rounded', isLast ? 'text-text/15' : 'text-text/40 active:bg-text/10')}
-              >
-                <ChevronDown size={14} />
-              </button>
-            </div>
-          )}
-          <button
+        <button
           type="button"
           onClick={() => handleAgentClick(connection, agent)}
           disabled={isDisabled}
@@ -709,8 +640,7 @@ export default function ChatList({
             </span>
           )}
         </button>
-        </div>
-      </motion.div>
+      </Reorder.Item>
     );
   };
 
@@ -722,20 +652,17 @@ export default function ChatList({
     const initials = agent.name.slice(0, 2).toUpperCase();
     const lastMessage = getLastMessagePreview(agent.id, connection.id);
     const isTyping = typingAgents.has(`${connection.id}:${agent.id}`);
-    const isDragging = draggedAgent === agent.id;
 
     return (
-      <motion.div
-        key={`${connection.id}-${agent.id}`}
+      <Reorder.Item
+        key={agent.id}
+        value={agent.id}
         initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: isDragging ? 0.5 : 1, scale: 1 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
         transition={{ delay: Math.min(index * 0.03, 0.15), duration: 0.2 }}
-        layout={editMode}
-        draggable={compact && !editMode}
-        onDragStart={compact ? () => handleDragStart(agent.id) : undefined}
-        onDragOver={compact ? handleDragOver : undefined}
-        onDrop={compact ? () => handleDrop(connection.id, agent.id, agentMap[connection.id] || []) : undefined}
-        onDragEnd={compact ? handleDragEnd : undefined}
+        whileDrag={{ scale: 1.05, boxShadow: '0 8px 30px rgba(0,0,0,0.15)', zIndex: 50 }}
+        style={{ touchAction: 'none' }}
       >
         <button
           type="button"
@@ -803,9 +730,29 @@ export default function ChatList({
             </span>
           )}
         </button>
-      </motion.div>
+      </Reorder.Item>
     );
   };
+
+  // Get sorted agent IDs for a connection (for Reorder.Group values)
+  const getSortedAgentIds = useCallback((connectionId: string): string[] => {
+    const agents = agentMap[connectionId] || [];
+    const order = customOrder[connectionId];
+    if (!order) return agents.map(a => a.id);
+    const sorted = [...agents].sort((a, b) => {
+      const ai = order.indexOf(a.id);
+      const bi = order.indexOf(b.id);
+      if (ai === -1 && bi === -1) return 0;
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+    return sorted.map(a => a.id);
+  }, [agentMap, customOrder]);
+
+  const getAgentById = useCallback((connectionId: string, agentId: string): AgentInfo | undefined => {
+    return (agentMap[connectionId] || []).find(a => a.id === agentId);
+  }, [agentMap]);
 
   if (connections.length === 0) {
     return (
@@ -842,16 +789,6 @@ export default function ChatList({
             {compact && <span className="font-semibold text-[15px] block truncate">Chats</span>}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {!compact && (
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setEditMode(!editMode)}
-                className={cn('p-1.5 transition-colors', editMode ? 'text-primary' : 'text-text/35 dark:text-text-inv/30 hover:text-primary')}
-                title={editMode ? 'Done editing' : 'Reorder agents'}
-              >
-                <Pencil size={14} />
-              </motion.button>
-            )}
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={toggleViewMode}
@@ -940,17 +877,29 @@ export default function ChatList({
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden"
                       >
-                        <div className={effectiveView === 'grid' ? 'grid gap-2 px-1 pb-1' : 'space-y-0.5 pb-1'} style={effectiveView === 'grid' ? { gridTemplateColumns: 'repeat(auto-fill, minmax(68px, 1fr))' } : undefined}>
+                        <div className="overflow-hidden">
                           {isLoading ? (
                             <div className={cn('flex items-center justify-center gap-2 py-6', effectiveView === 'grid' && 'col-span-full')}>
                               <Loader2 size={16} className="text-text/30 animate-spin" />
                               <span className="text-text/30 dark:text-text-inv/25 text-[12px]">Loading…</span>
                             </div>
-                          ) : agents.length > 0 ? agents.map((agent, index) => (
-                            effectiveView === 'grid'
-                              ? renderAgentGridCard(connection, agent, index)
-                              : renderAgentCard(connection, agent, index)
-                          )) : (
+                          ) : agents.length > 0 ? (
+                            <Reorder.Group
+                              axis={effectiveView === 'grid' ? 'x' : 'y'}
+                              values={getSortedAgentIds(connection.id)}
+                              onReorder={(newOrder) => handleReorder(connection.id, newOrder)}
+                              className={effectiveView === 'grid' ? 'grid gap-2 px-1 pb-1' : 'space-y-0.5 pb-1'}
+                              style={effectiveView === 'grid' ? { gridTemplateColumns: 'repeat(auto-fill, minmax(68px, 1fr))' } : undefined}
+                            >
+                              {getSortedAgentIds(connection.id).map((agentId, index) => {
+                                const agent = getAgentById(connection.id, agentId);
+                                if (!agent) return null;
+                                return effectiveView === 'grid'
+                                  ? renderAgentGridCard(connection, agent, index)
+                                  : renderAgentCard(connection, agent, index);
+                              })}
+                            </Reorder.Group>
+                          ) : (
                             <div className={cn('text-center text-text/25 dark:text-text-inv/20 py-6 text-[12px]', effectiveView === 'grid' && 'col-span-full')}>No agents</div>
                           )}
                         </div>
@@ -962,22 +911,44 @@ export default function ChatList({
             })}
           </div>
         ) : (
-          <div className={effectiveView === 'grid' ? 'grid gap-2 px-1' : 'space-y-0.5'} style={effectiveView === 'grid' ? { gridTemplateColumns: 'repeat(auto-fill, minmax(68px, 1fr))' } : undefined}>
-            {loadingMap[connections[0].id] && (agentMap[connections[0].id] || []).length === 0 ? (
-              <div className={cn('flex items-center justify-center gap-2 py-12', effectiveView === 'grid' && 'col-span-full')}>
-                <Loader2 size={18} className="text-text/30 animate-spin" />
-                <span className="text-text/30 dark:text-text-inv/25 text-[13px]">Loading agents…</span>
-              </div>
-            ) : (agentMap[connections[0].id] || []).length > 0 ? (
-              (agentMap[connections[0].id] || []).map((agent, index) =>
-                effectiveView === 'grid'
-                  ? renderAgentGridCard(connections[0], agent, index)
-                  : renderAgentCard(connections[0], agent, index)
-              )
-            ) : (
-              <div className={cn('text-center text-text/25 dark:text-text-inv/20 mt-10 text-[13px]', effectiveView === 'grid' && 'col-span-full')}>No agents</div>
-            )}
-          </div>
+          (() => {
+            const conn = connections[0];
+            const connId = conn.id;
+            const agents = agentMap[connId] || [];
+            const sortedIds = getSortedAgentIds(connId);
+            const isLoading = loadingMap[connId] && agents.length === 0;
+
+            if (isLoading) {
+              return (
+                <div className="flex items-center justify-center gap-2 py-12">
+                  <Loader2 size={18} className="text-text/30 animate-spin" />
+                  <span className="text-text/30 dark:text-text-inv/25 text-[13px]">Loading agents…</span>
+                </div>
+              );
+            }
+
+            if (agents.length === 0) {
+              return <div className="text-center text-text/25 dark:text-text-inv/20 mt-10 text-[13px]">No agents</div>;
+            }
+
+            return (
+              <Reorder.Group
+                axis={effectiveView === 'grid' ? 'x' : 'y'}
+                values={sortedIds}
+                onReorder={(newOrder) => handleReorder(connId, newOrder)}
+                className={effectiveView === 'grid' ? 'grid gap-2 px-1' : 'space-y-0.5'}
+                style={effectiveView === 'grid' ? { gridTemplateColumns: 'repeat(auto-fill, minmax(68px, 1fr))' } : undefined}
+              >
+                {sortedIds.map((agentId, index) => {
+                  const agent = getAgentById(connId, agentId);
+                  if (!agent) return null;
+                  return effectiveView === 'grid'
+                    ? renderAgentGridCard(conn, agent, index)
+                    : renderAgentCard(conn, agent, index);
+                })}
+              </Reorder.Group>
+            );
+          })()
         )}
 
         <button
