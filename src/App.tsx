@@ -55,7 +55,7 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   onboarding: '/',
   callback: '/callback',
   chats: '/chats',
-  chat_room: '/chat',  // + /:chatId
+  chat_room: '/chat',  // + /:agentId?chatId=...
   dashboard: '/dashboard',
   profile: '/profile',
   search: '/search',
@@ -63,9 +63,14 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   pairing: '/pairing',
 };
 
-function pathToScreen(pathname: string): { screen: Screen; chatId?: string } {
+function pathToScreen(pathname: string, search: string): { screen: Screen; agentId?: string; chatId?: string } {
   if (pathname.startsWith('/chat/')) {
-    return { screen: 'chat_room', chatId: pathname.slice('/chat/'.length) };
+    const params = new URLSearchParams(search);
+    return {
+      screen: 'chat_room',
+      agentId: decodeURIComponent(pathname.slice('/chat/'.length)),
+      chatId: params.get('chatId') || undefined,
+    };
   }
   for (const [screen, path] of Object.entries(SCREEN_TO_PATH)) {
     if (pathname === path) return { screen: screen as Screen };
@@ -112,11 +117,12 @@ function AppShell() {
   // ── All hooks MUST be called before any conditional return ──
   // (React Rules of Hooks — Error #310 fix)
 
-  const initialFromUrl = pathToScreen(location.pathname);
+  const initialFromUrl = pathToScreen(location.pathname, location.search);
   const initialScreen: Screen = effectivelyAuthenticated ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
 
   const [currentScreen, setCurrentScreen] = useState<Screen>(initialScreen);
-  const [activeAgentId, setActiveAgentId] = useState<string | null>(initialFromUrl.chatId ?? null);
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(initialFromUrl.agentId ?? null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(initialFromUrl.chatId ?? null);
 
   // PWA update detection
   const { updateAvailable, applyUpdate, dismissUpdate } = usePWAUpdate();
@@ -126,18 +132,25 @@ function AppShell() {
 
   // URL → Screen（浏览器前进/后退）
   useEffect(() => {
-    const { screen, chatId } = pathToScreen(location.pathname);
+    const { screen, agentId, chatId } = pathToScreen(location.pathname, location.search);
     setCurrentScreen(screen);
-    if (chatId) setActiveAgentId(chatId);
-  }, [location.pathname]);
+    setActiveAgentId(agentId ?? null);
+    setActiveChatId(chatId ?? null);
+  }, [location.pathname, location.search]);
 
-  const navigate = useCallback((screen: Screen, chatId?: string) => {
+  const navigate = useCallback((screen: Screen, agentId?: string, chatId?: string) => {
     setCurrentScreen(screen);
-    if (chatId) setActiveAgentId(chatId);
+    setActiveAgentId(agentId ?? null);
+    setActiveChatId(chatId ?? null);
 
     // Screen → URL
-    if (screen === 'chat_room' && chatId) {
-      routerNavigate(`/chat/${chatId}`);
+    if (screen === 'chat_room' && agentId) {
+      const params = new URLSearchParams();
+      if (chatId) params.set('chatId', chatId);
+      routerNavigate({
+        pathname: `/chat/${encodeURIComponent(agentId)}`,
+        search: params.toString() ? `?${params.toString()}` : '',
+      });
     } else {
       routerNavigate(SCREEN_TO_PATH[screen]);
     }
@@ -188,9 +201,9 @@ function AppShell() {
       case 'callback':
         return <Callback />;
       case 'chats':
-        return <ChatList onOpenChat={(agentId) => navigate('chat_room', agentId)} onAddServer={() => navigate('pairing')} />;
+        return <ChatList onOpenChat={(agentId, chatId) => navigate('chat_room', agentId, chatId)} onAddServer={() => navigate('pairing')} />;
       case 'chat_room':
-        return <ChatRoom agentId={activeAgentId} onBack={() => navigate('chats')} />;
+        return <ChatRoom agentId={activeAgentId} chatId={activeChatId} onBack={() => navigate('chats')} />;
       case 'dashboard':
         return <Dashboard />;
       case 'profile':
@@ -210,7 +223,7 @@ function AppShell() {
   const renderDesktopMain = () => {
     switch (currentScreen) {
       case 'chat_room':
-        return <ChatRoom agentId={activeAgentId} onBack={() => navigate('chats')} isDesktop />;
+        return <ChatRoom agentId={activeAgentId} chatId={activeChatId} onBack={() => navigate('chats')} isDesktop />;
       case 'dashboard':
         return <Dashboard />;
       case 'profile':
@@ -272,7 +285,7 @@ function AppShell() {
           {/* Sidebar content: ChatList */}
           <div className="flex-1 overflow-y-auto">
             <ChatList
-              onOpenChat={(agentId) => navigate('chat_room', agentId)}
+              onOpenChat={(agentId, chatId) => navigate('chat_room', agentId, chatId)}
               onAddServer={() => navigate('pairing')}
               compact
               activeAgentId={activeAgentId}
@@ -285,7 +298,7 @@ function AppShell() {
           <UpdateBanner isVisible={updateAvailable} onUpdate={applyUpdate} onDismiss={dismissUpdate} />
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.div
-              key={currentScreen + (activeAgentId || '')}
+              key={currentScreen + (activeAgentId || '') + (activeChatId || '')}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}

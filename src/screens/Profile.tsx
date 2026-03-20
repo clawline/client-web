@@ -73,6 +73,8 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
     refresh();
   };
 
+  const isTokenMode = editForm.token.trim().length > 0;
+
   return (
     <div className="flex flex-col h-full pb-32 px-6 pt-12 overflow-y-auto max-w-2xl mx-auto w-full">
       <h1 className="text-3xl font-bold tracking-tight mb-8">Profile</h1>
@@ -229,14 +231,18 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
                 <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1">Auth Token <span className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30 font-normal">(optional)</span></label>
                 <Input value={editForm.token} onChange={(e) => setEditForm({ ...editForm, token: e.target.value })} placeholder="gc_user_xxxxxxxxx" />
               </div>
-              <div>
-                <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1">Chat ID <span className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30 font-normal">(token auth)</span></label>
-                <Input value={editForm.chatId} onChange={(e) => setEditForm({ ...editForm, chatId: e.target.value })} placeholder="gc-test-main" />
-              </div>
-              <div>
-                <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1">Sender ID <span className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30 font-normal">(token auth)</span></label>
-                <Input value={editForm.senderId} onChange={(e) => setEditForm({ ...editForm, senderId: e.target.value })} placeholder="gc-test-main" />
-              </div>
+              {!isTokenMode && (
+                <>
+                  <div>
+                    <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1">Chat ID <span className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30 font-normal">(token auth)</span></label>
+                    <Input value={editForm.chatId} onChange={(e) => setEditForm({ ...editForm, chatId: e.target.value })} placeholder="gc-test-main" />
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-medium text-[#2D3436]/70 dark:text-[#e2e8f0]/70 mb-1">Sender ID <span className="text-[#2D3436]/30 dark:text-[#e2e8f0]/30 font-normal">(token auth)</span></label>
+                    <Input value={editForm.senderId} onChange={(e) => setEditForm({ ...editForm, senderId: e.target.value })} placeholder="gc-test-main" />
+                  </div>
+                </>
+              )}
               <Button className="w-full" onClick={saveEdit}>Save Changes</Button>
             </motion.div>
           </motion.div>

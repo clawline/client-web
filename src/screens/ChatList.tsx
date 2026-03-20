@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion } from 'motion/react';
-import { Search, Bot, Server, WifiOff, Loader2, RefreshCw } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { Search, Bot, Server, Loader2, RefreshCw, ChevronLeft, Plus } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -32,75 +32,154 @@ function formatRelativeTime(ts?: number): string {
 
 function getLastMessagePreview(agentId: string, connId: string): { text: string; timestamp?: number } | null {
   try {
-    const raw = localStorage.getItem(`openclaw.messages.${agentId}.${connId}`);
+    const raw = localStorage.getItem(`openclaw.messages.${connId}.${agentId}`);
     if (!raw) return null;
-    const msgs = JSON.parse(raw) as Array<{ text?: string; timestamp?: number; sender?: string }>;
+    const msgs = JSON.parse(raw) as Array<{ text?: string; timestamp?: number }>;
     if (msgs.length === 0) return null;
     const last = msgs[msgs.length - 1];
     return { text: last?.text ?? '', timestamp: last?.timestamp };
   } catch { return null; }
 }
 
-export default function ChatList({ onOpenChat, onAddServer, compact, activeAgentId }: { onOpenChat: (agentId: string) => void; onAddServer: () => void; compact?: boolean; activeAgentId?: string | null }) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const cached = loadCachedAgents();
-  const [agents, setAgents] = useState<AgentInfo[]>(cached);
-  const [wsStatus, setWsStatus] = useState<string>(channel.getStatus());
-  const [loading, setLoading] = useState(cached.length === 0);
-  const [activeConnId, setActiveConnId] = useState(() => getActiveConnection()?.id ?? null);
-  const activeConn = getActiveConnection();
-  const hasFetched = useRef(false);
-  const [refreshing, setRefreshing] = useState(false);
+function connectActiveChannel() {
+  const conn = getActiveConnection();
+  if (!conn) return null;
 
-  const fetchAgents = useCallback(() => {
-    const conn = getActiveConnection();
-    if (!conn) { setLoading(false); return; }
+  channel.connect({
+    chatId: conn.chatId,
+    senderId: conn.senderId || getUserId(),
+    senderName: conn.displayName,
+    serverUrl: conn.serverUrl,
+    token: conn.token,
+  });
+
+  return conn;
+}
+
+export default function ChatList({ onOpenChat, onAddServer, compact, activeAgentId }: { onOpenChat: (agentId: string, chatId?: string) => void; onAddServer: () => void; compact?: boolean; activeAgentId?: string | null }) {
+  const activeConn = getActiveConnection();
+  const activeConnId = activeConn?.id ?? null;
+  const [searchQuery, setSearchQuery] = useState('');
+  const [agents, setAgents] = useState<AgentInfo[]>(() => loadCachedAgents());
+  const [selectedAgent, setSelectedAgent] = useState<AgentInfo | null>(null);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [wsStatus, setWsStatus] = useState<string>(channel.getStatus());
+  const [loadingAgents, setLoadingAgents] = useState(() => loadCachedAgents().length === 0);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const autoOpenNewChatRef = useRef(false);
+
+  const requestAgents = useCallback(() => {
+    if (!connectActiveChannel()) {
+      setLoadingAgents(false);
+      setRefreshing(false);
+      return;
+    }
 
     setRefreshing(true);
-    channel.connect({
-      chatId: conn.chatId,
-      senderId: conn.senderId || getUserId(),
-      senderName: conn.displayName,
-      serverUrl: conn.serverUrl,
-      token: conn.token,
-    });
-
-    // If already connected (connect skipped due to same target),
-    // status/connection.open callbacks won't fire — request agents directly
     if (channel.getStatus() === 'connected') {
-      try { channel.requestAgentList(); } catch { /* ignore */ }
+      try { channel.requestAgentList(); } catch { setRefreshing(false); }
     }
   }, []);
 
-  // Connect only on first mount or when activeConnId changes
+  const requestConversations = useCallback((agent: AgentInfo, autoOpenIfEmpty = false) => {
+    setSelectedAgent(agent);
+    setConversations([]);
+    setLoadingConversations(true);
+    setRefreshing(true);
+    autoOpenNewChatRef.current = autoOpenIfEmpty;
+
+    if (!connectActiveChannel()) {
+      setLoadingConversations(false);
+      setRefreshing(false);
+      autoOpenNewChatRef.current = false;
+      return;
+    }
+
+    if (channel.getStatus() === 'connected') {
+      try {
+        channel.requestConversationList(agent.id);
+      } catch {
+        setLoadingConversations(false);
+        setRefreshing(false);
+        autoOpenNewChatRef.current = false;
+      }
+    }
+  }, []);
+
   useEffect(() => {
-    if (!activeConnId) { setLoading(false); return; }
+    if (!activeConnId) {
+      setAgents([]);
+      setSelectedAgent(null);
+      setConversations([]);
+      setLoadingAgents(false);
+      setLoadingConversations(false);
+      setRefreshing(false);
+      return;
+    }
 
-    // If we have cached agents and already fetched, skip
-    if (agents.length > 0 && hasFetched.current) return;
+    const cached = loadCachedAgents();
+    setAgents(cached);
+    setSelectedAgent(null);
+    setConversations([]);
+    setLoadingAgents(cached.length === 0);
+    setLoadingConversations(false);
+    requestAgents();
+  }, [activeConnId, requestAgents]);
 
-    fetchAgents();
-    hasFetched.current = true;
+  useEffect(() => {
+    const requestCurrentView = () => {
+      try {
+        if (selectedAgent) {
+          channel.requestConversationList(selectedAgent.id);
+        } else {
+          channel.requestAgentList();
+        }
+      } catch {
+        setRefreshing(false);
+        setLoadingAgents(false);
+        setLoadingConversations(false);
+      }
+    };
 
     const unsubMsg = channel.onMessage((packet) => {
       if (packet.type === 'connection.open') {
-        try { channel.requestAgentList(); } catch { /* ignore */ }
-      }
-      if (packet.type === 'agent.list') {
+        requestCurrentView();
+      } else if (packet.type === 'agent.list') {
         const data = packet.data as { agents?: AgentInfo[] };
         if (Array.isArray(data.agents)) {
           setAgents(data.agents);
           try { localStorage.setItem('openclaw.agentList', JSON.stringify(data.agents)); } catch {}
         }
-        setLoading(false);
+        setLoadingAgents(false);
         setRefreshing(false);
+      } else if (packet.type === 'conversation.list') {
+        const data = packet.data as { conversations?: ConversationSummary[] };
+        const nextConversations = Array.isArray(data.conversations)
+          ? [...data.conversations].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+          : [];
+
+        setConversations(nextConversations);
+        setLoadingConversations(false);
+        setRefreshing(false);
+
+        if (selectedAgent && autoOpenNewChatRef.current && nextConversations.length === 0) {
+          autoOpenNewChatRef.current = false;
+          onOpenChat(selectedAgent.id);
+          return;
+        }
+
+        autoOpenNewChatRef.current = false;
       }
     });
 
     const unsubStatus = channel.onStatus((status) => {
       setWsStatus(status);
       if (status === 'connected') {
-        try { channel.requestAgentList(); } catch { /* ignore */ }
+        requestCurrentView();
+      }
+      if (status === 'disconnected') {
+        setRefreshing(false);
       }
     });
 
@@ -108,30 +187,44 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
       unsubMsg();
       unsubStatus();
     };
-  }, [activeConnId]);
+  }, [onOpenChat, selectedAgent]);
 
-  // If no agent.list response within 5s, show default agent
   useEffect(() => {
-    if (!activeConn) return;
+    if (!activeConn || selectedAgent) return;
     const timer = setTimeout(() => {
       if (agents.length === 0) {
         setAgents([{ id: 'main', name: 'Claw', isDefault: true }]);
-        setLoading(false);
+        setLoadingAgents(false);
+        setRefreshing(false);
       }
     }, 5000);
     return () => clearTimeout(timer);
-  }, [activeConnId, agents.length]);
+  }, [activeConn, activeConnId, agents.length, selectedAgent]);
 
-  const filtered = agents.filter((a) =>
-    a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    a.id.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredAgents = agents.filter((agent) =>
+    agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    agent.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // No active server
+  const handleRefresh = () => {
+    if (selectedAgent) {
+      requestConversations(selectedAgent, false);
+      return;
+    }
+    requestAgents();
+  };
+
+  const handleBackToAgents = () => {
+    autoOpenNewChatRef.current = false;
+    setSelectedAgent(null);
+    setConversations([]);
+    setLoadingConversations(false);
+  };
+
   if (!activeConn) {
     return (
-      <div className={cn("flex flex-col h-full", !compact && "pb-32")}>
-        <div className={cn("px-6 pb-4", compact ? "pt-4" : "pt-12")}>
+      <div className={cn('flex flex-col h-full', !compact && 'pb-32')}>
+        <div className={cn('px-6 pb-4', compact ? 'pt-4' : 'pt-12')}>
           {!compact && <h1 className="text-3xl font-bold tracking-tight mb-6">Chats</h1>}
         </div>
         <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
@@ -149,20 +242,38 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
   }
 
   return (
-    <div className={cn("flex flex-col h-full", !compact && "pb-32")}>
+    <div className={cn('flex flex-col h-full min-h-0', !compact && 'pb-32')}>
       <div className={cn(
-        "sticky top-0 bg-[#F8FAFB]/80 dark:bg-[#1a1b2e]/80 backdrop-blur-xl z-10",
-        compact ? "px-4 pt-3 pb-3" : "px-6 pt-12 pb-4"
+        'sticky top-0 bg-[#F8FAFB]/80 dark:bg-[#1a1b2e]/80 backdrop-blur-xl z-10',
+        compact ? 'px-4 pt-3 pb-3' : 'px-6 pt-12 pb-4'
       )}>
-        <div className="flex justify-between items-center mb-2">
-          {!compact && <h1 className="text-3xl font-bold tracking-tight">Chats</h1>}
-          <div className={cn("flex items-center gap-2", compact && "w-full")}>
-            {compact && (
-              <span className="font-semibold text-[15px] flex-1 truncate">{activeConn.name}</span>
+        <div className="flex justify-between items-center mb-2 gap-3">
+          <div className="min-w-0 flex-1">
+            {selectedAgent ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={handleBackToAgents}
+                  className="p-2 -ml-2 text-[#2D3436]/50 dark:text-[#e2e8f0]/50 hover:text-[#67B88B] transition-colors"
+                >
+                  <ChevronLeft size={20} />
+                </motion.button>
+                <div className="min-w-0">
+                  <h2 className={cn('font-semibold truncate', compact ? 'text-[15px]' : 'text-2xl')}>{selectedAgent.name}</h2>
+                  <p className="text-[12px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 truncate">Conversation history</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {!compact && <h1 className="text-3xl font-bold tracking-tight">Chats</h1>}
+                {compact && <span className="font-semibold text-[15px] block truncate">{activeConn.name}</span>}
+              </>
             )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
             <motion.button
               whileTap={{ scale: 0.9 }}
-              onClick={() => { hasFetched.current = false; fetchAgents(); }}
+              onClick={handleRefresh}
               className="p-2 text-[#2D3436]/30 dark:text-[#e2e8f0]/30 hover:text-[#67B88B] transition-colors"
             >
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
@@ -172,74 +283,150 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
             </Badge>
           </div>
         </div>
-        {!compact && <p className="text-[12px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 mb-4 truncate">{activeConn.serverUrl}</p>}
 
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#2D3436]/40 dark:text-[#e2e8f0]/40" size={compact ? 16 : 20} />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search agents..."
-            className={cn("pl-12 rounded-full bg-white dark:bg-[#232437]", compact && "pl-10 py-1.5 text-[13px]")}
-          />
-        </div>
-      </div>
+        {!selectedAgent && !compact && (
+          <p className="text-[12px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40 mb-4 truncate">{activeConn.serverUrl}</p>
+        )}
 
-      <div className={cn("flex flex-col gap-2", compact ? "px-2" : "px-4")}>
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-16">
-            <Loader2 size={28} className="text-[#67B88B] animate-spin mb-3" />
-            <p className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40 text-[14px]">Loading agents…</p>
+        {!selectedAgent && (
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#2D3436]/40 dark:text-[#e2e8f0]/40" size={compact ? 16 : 20} />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search agents..."
+              className={cn('pl-12 rounded-full bg-white dark:bg-[#232437]', compact && 'pl-10 py-1.5 text-[13px]')}
+            />
           </div>
-        ) : filtered.length > 0 ? filtered.map((agent, index) => {
-          const isActive = compact && activeAgentId === agent.id;
-          const connId = activeConn?.id ?? '';
-          const lastMsg = getLastMessagePreview(agent.id, connId);
-          const preview = lastMsg?.text
-            ? (lastMsg.text.length > 50 ? lastMsg.text.slice(0, 50) + '…' : lastMsg.text)
-            : (agent.model || `Agent: ${agent.id}`);
-          return (
-          <motion.div
-            key={agent.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => onOpenChat(agent.id)}
-            className={cn(
-              "bg-white dark:bg-[#232437] rounded-[24px] flex items-center gap-4 shadow-sm border cursor-pointer transition-colors",
-              compact ? "p-3 rounded-[16px] gap-3" : "p-4",
-              isActive
-                ? "border-[#67B88B] bg-[#67B88B]/5 dark:bg-[#67B88B]/10"
-                : "border-[#EDF2F0]/50 dark:border-[#2d3748]/50 hover:border-[#67B88B]/30"
-            )}
-          >
-            <div className={cn(
-              "rounded-full bg-gradient-to-br from-[#67B88B] to-[#4a9a70] flex-shrink-0 flex items-center justify-center text-white shadow-sm",
-              compact ? "w-10 h-10 text-lg" : "w-14 h-14 text-2xl"
-            )}>
-              {agent.identityEmoji || <Bot size={compact ? 18 : 24} />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2 mb-0.5">
-                <div className="flex items-center gap-2 min-w-0">
-                  <h3 className={cn("font-semibold truncate", compact ? "text-[14px]" : "text-[16px]")}>{agent.name}</h3>
-                  {agent.isDefault && (
-                    <Badge className="text-[10px] shrink-0">default</Badge>
-                  )}
-                </div>
-                {lastMsg?.timestamp && (
-                  <span className="text-[11px] text-[#2D3436]/30 dark:text-[#e2e8f0]/30 shrink-0">{formatRelativeTime(lastMsg.timestamp)}</span>
-                )}
-              </div>
-              <p className={cn("text-[#2D3436]/40 dark:text-[#e2e8f0]/40 truncate", compact ? "text-[12px]" : "text-[13px]")}>{preview}</p>
-            </div>
-          </motion.div>
-          );
-        }) : (
-          <div className="text-center text-[#2D3436]/40 dark:text-[#e2e8f0]/40 mt-10">No agents found</div>
         )}
       </div>
+
+      <AnimatePresence mode="wait" initial={false}>
+        {selectedAgent ? (
+          <motion.div
+            key={`conversations-${selectedAgent.id}`}
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -24 }}
+            transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+            className="flex-1 min-h-0 flex flex-col"
+          >
+            <div className={cn('flex-1 overflow-y-auto space-y-2', compact ? 'px-2' : 'px-4')}>
+              {loadingConversations ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 size={28} className="text-[#67B88B] animate-spin mb-3" />
+                  <p className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40 text-[14px]">Loading conversations…</p>
+                </div>
+              ) : conversations.length > 0 ? conversations.map((conversation, index) => (
+                <motion.button
+                  key={`${conversation.chatId}-${index}`}
+                  type="button"
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.04 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => onOpenChat(selectedAgent.id, conversation.chatId)}
+                  className={cn(
+                    'w-full text-left bg-white dark:bg-[#232437] rounded-[24px] p-4 border border-[#EDF2F0]/70 dark:border-[#2d3748]/70 shadow-sm hover:border-[#67B88B]/40 transition-colors'
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <h3 className="font-semibold text-[15px] truncate text-[#2D3436] dark:text-[#e2e8f0]">{conversation.chatId || 'New conversation'}</h3>
+                    {conversation.timestamp && (
+                      <span className="text-[11px] text-[#2D3436]/35 dark:text-[#e2e8f0]/35 shrink-0">{formatRelativeTime(conversation.timestamp)}</span>
+                    )}
+                  </div>
+                  <p className="text-[13px] text-[#2D3436]/45 dark:text-[#e2e8f0]/45 line-clamp-2">
+                    {conversation.lastMessage || 'No messages yet'}
+                  </p>
+                </motion.button>
+              )) : (
+                <div className="flex flex-col items-center justify-center text-center py-16 px-6">
+                  <div className="w-16 h-16 rounded-full bg-[#67B88B]/10 dark:bg-[#67B88B]/15 flex items-center justify-center mb-4">
+                    <Bot size={24} className="text-[#67B88B]" />
+                  </div>
+                  <p className="text-[15px] font-medium text-[#2D3436] dark:text-[#e2e8f0] mb-1">No saved conversations</p>
+                  <p className="text-[13px] text-[#2D3436]/40 dark:text-[#e2e8f0]/40">Start a new chat with {selectedAgent.name}</p>
+                </div>
+              )}
+            </div>
+
+            <div className={cn(
+              'px-4 pb-4 pt-3 border-t border-[#EDF2F0]/70 dark:border-[#2d3748]/70 bg-[#F8FAFB]/95 dark:bg-[#1a1b2e]/95 backdrop-blur-xl',
+              !compact && 'mb-4'
+            )}>
+              <Button className="w-full rounded-[24px]" onClick={() => onOpenChat(selectedAgent.id)}>
+                <Plus size={16} />
+                New Chat
+              </Button>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="agents"
+            initial={{ opacity: 0, x: -24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 24 }}
+            transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+            className={cn('flex flex-col gap-2', compact ? 'px-2' : 'px-4')}
+          >
+            {loadingAgents ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <Loader2 size={28} className="text-[#67B88B] animate-spin mb-3" />
+                <p className="text-[#2D3436]/40 dark:text-[#e2e8f0]/40 text-[14px]">Loading agents…</p>
+              </div>
+            ) : filteredAgents.length > 0 ? filteredAgents.map((agent, index) => {
+              const isActive = selectedAgent?.id === agent.id || (compact && activeAgentId === agent.id);
+              const connId = activeConn.id;
+              const lastMsg = getLastMessagePreview(agent.id, connId);
+              const preview = lastMsg?.text
+                ? (lastMsg.text.length > 50 ? `${lastMsg.text.slice(0, 50)}…` : lastMsg.text)
+                : (agent.model || `Agent: ${agent.id}`);
+
+              return (
+                <motion.div
+                  key={agent.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => requestConversations(agent, true)}
+                  className={cn(
+                    'bg-white dark:bg-[#232437] rounded-[24px] flex items-center gap-4 shadow-sm border cursor-pointer transition-colors',
+                    compact ? 'p-3 rounded-[16px] gap-3' : 'p-4',
+                    isActive
+                      ? 'border-[#67B88B] bg-[#67B88B]/5 dark:bg-[#67B88B]/10'
+                      : 'border-[#EDF2F0]/50 dark:border-[#2d3748]/50 hover:border-[#67B88B]/30'
+                  )}
+                >
+                  <div className={cn(
+                    'rounded-full bg-gradient-to-br from-[#67B88B] to-[#4a9a70] flex-shrink-0 flex items-center justify-center text-white shadow-sm',
+                    compact ? 'w-10 h-10 text-lg' : 'w-14 h-14 text-2xl'
+                  )}>
+                    {agent.identityEmoji || <Bot size={compact ? 18 : 24} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h3 className={cn('font-semibold truncate', compact ? 'text-[14px]' : 'text-[16px]')}>{agent.name}</h3>
+                        {agent.isDefault && (
+                          <Badge className="text-[10px] shrink-0">default</Badge>
+                        )}
+                      </div>
+                      {lastMsg?.timestamp && (
+                        <span className="text-[11px] text-[#2D3436]/30 dark:text-[#e2e8f0]/30 shrink-0">{formatRelativeTime(lastMsg.timestamp)}</span>
+                      )}
+                    </div>
+                    <p className={cn('text-[#2D3436]/40 dark:text-[#e2e8f0]/40 truncate', compact ? 'text-[12px]' : 'text-[13px]')}>{preview}</p>
+                  </div>
+                </motion.div>
+              );
+            }) : (
+              <div className="text-center text-[#2D3436]/40 dark:text-[#e2e8f0]/40 mt-10">No agents found</div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

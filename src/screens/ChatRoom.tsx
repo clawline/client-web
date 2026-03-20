@@ -106,19 +106,23 @@ function isDifferentDay(ts1?: number, ts2?: number) {
 }
 
 // --- Message persistence ---
-function getStorageKey(agentId: string | null | undefined, connId: string) {
-  return `openclaw.messages.${connId}.${agentId || 'default'}`;
+function getStorageKey(agentId: string | null | undefined, connId: string, chatId?: string | null) {
+  return `openclaw.messages.${connId}.${chatId || agentId || 'default'}`;
 }
-function loadMessages(agentId: string | null | undefined, connId: string): Message[] {
+function loadMessages(agentId: string | null | undefined, connId: string, chatId?: string | null): Message[] {
   try {
-    const raw = localStorage.getItem(getStorageKey(agentId, connId));
-    return raw ? JSON.parse(raw) : [];
+    const raw = localStorage.getItem(getStorageKey(agentId, connId, chatId));
+    if (raw) return JSON.parse(raw);
+    if (!chatId) return [];
+
+    const fallback = localStorage.getItem(getStorageKey(agentId, connId));
+    return fallback ? JSON.parse(fallback) : [];
   } catch { return []; }
 }
-function saveMessages(agentId: string | null | undefined, connId: string, msgs: Message[]) {
+function saveMessages(agentId: string | null | undefined, connId: string, msgs: Message[], chatId?: string | null) {
   try {
     // Keep last 200 messages to avoid localStorage quota
-    localStorage.setItem(getStorageKey(agentId, connId), JSON.stringify(msgs.slice(-200)));
+    localStorage.setItem(getStorageKey(agentId, connId, chatId), JSON.stringify(msgs.slice(-200)));
   } catch { /* ignore */ }
 }
 
@@ -142,11 +146,11 @@ function getAgentInfo(agentId: string | null | undefined) {
   } catch { return null; }
 }
 
-export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: string | null; onBack: () => void; isDesktop?: boolean }) {
+export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agentId?: string | null; chatId?: string | null; onBack: () => void; isDesktop?: boolean }) {
   const activeConn = getActiveConnection();
   const connId = activeConn?.id || '';
   const agentInfo = getAgentInfo(agentId);
-  const [messages, setMessages] = useState<Message[]>(() => loadMessages(agentId, connId));
+  const [messages, setMessages] = useState<Message[]>(() => loadMessages(agentId, connId, chatId));
   const [inputValue, setInputValue] = useState('');
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -167,8 +171,8 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
 
   // Persist messages on change
   useEffect(() => {
-    if (connId && messages.length > 0) saveMessages(agentId, connId, messages);
-  }, [messages, agentId, connId]);
+    if (connId && messages.length > 0) saveMessages(agentId, connId, messages, chatId);
+  }, [messages, agentId, connId, chatId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -177,16 +181,18 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
   // WebSocket 连接 & 消息监听
   useEffect(() => {
     if (!activeConn) return;
-    // chatId for the WebSocket must match token binding, but we still
-    // differentiate local cache and agentId in the URL query param
-    const conversationId = activeConn.chatId || (agentId ? `openclaw-web-agent-${agentId}-${activeConn.id}` : `openclaw-web-default-${activeConn.id}`);
+    const conversationId = chatId || activeConn.chatId || (agentId ? `openclaw-web-agent-${agentId}-${activeConn.id}` : `openclaw-web-default-${activeConn.id}`);
+    const requestSelectedHistory = () => {
+      if (!chatId) return;
+      try { channel.requestHistory(chatId); } catch { /* ignore */ }
+    };
 
     // Clear messages from previous agent before connecting to new one
-    setMessages(loadMessages(agentId, connId));
+    setMessages(loadMessages(agentId, connId, chatId));
     setIsThinking(false);
 
     channel.connect({
-      chatId: activeConn.chatId,
+      chatId: conversationId,
       senderId: activeConn.senderId || getUserId(),
       senderName: activeConn.displayName,
       serverUrl: activeConn.serverUrl,
@@ -194,8 +200,14 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
       token: activeConn.token,
     });
 
+    if (channel.getStatus() === 'connected') {
+      requestSelectedHistory();
+    }
+
     const unsubMsg = channel.onMessage((packet) => {
-      if (packet.type === 'message.send' && packet.data?.content) {
+      if (packet.type === 'connection.open') {
+        requestSelectedHistory();
+      } else if (packet.type === 'message.send' && packet.data?.content) {
         setIsThinking(false);
         const content = packet.data.content as string;
         // Remove any streaming placeholder before adding the final message
@@ -257,6 +269,8 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
         }));
         if (history.length > 0) setMessages(history);
       } else if (packet.type === 'text.delta') {
+        if (localStorage.getItem('openclaw.streaming.enabled') === 'false') return;
+
         // Streaming text output from backend
         const deltaData = packet.data as { chatId?: string; text?: string; done?: boolean; timestamp?: number };
         setIsThinking(false); // Hide thinking indicator when streaming starts
@@ -301,7 +315,7 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
       // Don't close channel here — next connect() will replace it,
       // and StrictMode double-invoke would kill the connection prematurely
     };
-  }, [agentId, activeConn?.id]);
+  }, [agentId, chatId, activeConn?.id]);
 
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -620,7 +634,7 @@ export default function ChatRoom({ agentId, onBack, isDesktop }: { agentId?: str
                 View Memory
               </button>
               <button
-                onClick={() => { setMessages([]); if (connId && agentId) saveMessages(agentId, connId, []); setShowHeaderMenu(false); }}
+                onClick={() => { setMessages([]); if (connId) saveMessages(agentId, connId, [], chatId); setShowHeaderMenu(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
               >
                 <Trash2 size={16} />
