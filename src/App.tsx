@@ -97,12 +97,12 @@ function useIsDesktop() {
   
   const [isDesktop, setIsDesktop] = useState(() => {
     if (forcedMobile) return false;
-    return typeof window !== 'undefined' && window.innerWidth >= 768;
+    return typeof window !== 'undefined' && window.innerWidth >= 1024;
   });
   
   useEffect(() => {
     if (forcedMobile) return; // Skip listener if forced
-    const mql = window.matchMedia('(min-width: 768px)');
+    const mql = window.matchMedia('(min-width: 1024px)');
     const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
     mql.addEventListener('change', handler);
     return () => mql.removeEventListener('change', handler);
@@ -344,7 +344,7 @@ function AppShell() {
   return (
     <div className="relative w-full h-full pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-surface dark:bg-surface-dark text-text dark:text-text-inv overflow-hidden flex flex-col font-sans">
       <div className="flex-1 flex justify-center relative min-h-0">
-        <div className="w-full max-w-md h-full relative bg-surface dark:bg-surface-dark overflow-hidden">
+        <div className="w-full max-w-md md:max-w-lg h-full relative bg-surface dark:bg-surface-dark overflow-hidden">
         {/* PWA Update Banner */}
         <UpdateBanner
           isVisible={updateAvailable}

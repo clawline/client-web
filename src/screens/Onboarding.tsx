@@ -1,45 +1,18 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, MessageSquare, Server, Zap, Shield } from 'lucide-react';
 import { useLogto } from '@logto/react';
 import { Button } from '../components/ui/button';
 
-const SLIDES = [
-  {
-    icon: MessageSquare,
-    color: 'from-primary to-primary-deep',
-    shadow: 'shadow-primary/30',
-    title: 'Real-time Chat',
-    desc: 'Chat with OpenClaw agents in real time via WebSocket. Get instant code reviews, explanations, and deployments.',
-  },
-  {
-    icon: Server,
-    color: 'from-[#5B8DEF] to-[#3A6BD5]',
-    shadow: 'shadow-[#5B8DEF]/30',
-    title: 'Multi-Server',
-    desc: 'Connect to multiple OpenClaw workspaces simultaneously. Switch between projects without losing context.',
-  },
-  {
-    icon: Zap,
-    color: 'from-[#F59E0B] to-[#D97706]',
-    shadow: 'shadow-[#F59E0B]/30',
-    title: 'Slash Commands',
-    desc: 'Use /help, /model, /think, /status and more to trigger specialized workflows at your fingertips.',
-  },
-  {
-    icon: Shield,
-    color: 'from-accent to-[#7C3AED]',
-    shadow: 'shadow-[#8B5CF6]/30',
-    title: 'Secure & Local',
-    desc: 'All connection data stays on your device. No cloud accounts needed — pair directly to your own server.',
-  },
+const FEATURES = [
+  { icon: MessageSquare, text: 'Real-time chat with OpenClaw agents via WebSocket', color: '#67B88B' },
+  { icon: Server, text: 'Connect to multiple workspaces at once', color: '#5B8DEF' },
+  { icon: Zap, text: '/slash commands for specialized workflows', color: '#F59E0B' },
+  { icon: Shield, text: 'All data stays on your device — no cloud needed', color: '#8B5CF6' },
 ];
 
 export default function Onboarding({ onGetStarted }: { onGetStarted: () => void }) {
-  const [activeSlide, setActiveSlide] = useState(0);
-  const touchStartX = useRef(0);
-  const touchDelta = useRef(0);
-  const autoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [visibleCount, setVisibleCount] = useState(0);
   const { signIn, isAuthenticated } = useLogto();
 
   const handleGetStarted = () => {
@@ -50,102 +23,92 @@ export default function Onboarding({ onGetStarted }: { onGetStarted: () => void 
     }
   };
 
-  const goTo = useCallback((index: number) => {
-    setActiveSlide((index + SLIDES.length) % SLIDES.length);
-  }, []);
-
-  // auto-advance
+  // Stagger feature bubbles in
   useEffect(() => {
-    autoTimer.current = setInterval(() => goTo(activeSlide + 1), 4000);
-    return () => { if (autoTimer.current) clearInterval(autoTimer.current); };
-  }, [activeSlide, goTo]);
+    if (visibleCount >= FEATURES.length) return;
+    const timer = setTimeout(() => setVisibleCount((c) => c + 1), 600);
+    return () => clearTimeout(timer);
+  }, [visibleCount]);
 
-  const onTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0].clientX; };
-  const onTouchMove = (e: React.TouchEvent) => { touchDelta.current = e.touches[0].clientX - touchStartX.current; };
-  const onTouchEnd = () => {
-    if (Math.abs(touchDelta.current) > 50) {
-      goTo(activeSlide + (touchDelta.current < 0 ? 1 : -1));
-    }
-    touchDelta.current = 0;
-  };
-
-  const slide = SLIDES[activeSlide];
-  const Icon = slide.icon;
+  const allVisible = visibleCount >= FEATURES.length;
 
   return (
-    <div className="flex items-center justify-center h-full bg-surface dark:bg-[#131420]">
-      {/* Phone-style container - centered on all screens */}
-      <div className="w-full max-w-[420px] flex flex-col items-center justify-center px-6 relative">
-        {/* Brand logo - top right corner (absolute to parent) */}
+    <div className="flex items-center justify-center h-full bg-surface dark:bg-[#131420] px-6">
+      <div className="w-full max-w-[440px] flex flex-col">
+        {/* Logo + Greeting */}
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="absolute top-0 right-6 flex items-center gap-2"
-          style={{ top: '-40px' }}
+          transition={{ duration: 0.5 }}
+          className="mb-8"
         >
-          <div className="w-7 h-7 bg-gradient-to-br from-primary to-primary-deep rounded-[8px] flex items-center justify-center shadow-sm">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 18V9.3a1 1 0 0 1 .2-.6L8 4m0 0h2l1 3M8 4V2m8 16V9.3a1 1 0 0 0-.2-.6L12 4m0 0h-2m2 0V2m4 16.5A2.5 2.5 0 0 1 11.5 21h-3A2.5 2.5 0 0 1 6 18.5" />
-            </svg>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary-deep rounded-[12px] flex items-center justify-center shadow-lg shadow-primary/20">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 18V9.3a1 1 0 0 1 .2-.6L8 4m0 0h2l1 3M8 4V2m8 16V9.3a1 1 0 0 0-.2-.6L12 4m0 0h-2m2 0V2m4 16.5A2.5 2.5 0 0 1 11.5 21h-3A2.5 2.5 0 0 1 6 18.5" />
+              </svg>
+            </div>
+            <span className="text-[15px] font-semibold text-text/70 dark:text-text-inv/70">Clawline</span>
           </div>
-          <span className="text-[13px] font-semibold text-text/60 dark:text-text-inv/60">Clawline</span>
+          <h1 className="text-3xl font-bold tracking-tight leading-tight">
+            Your agents,<br />
+            <span className="text-primary">one tap away.</span>
+          </h1>
         </motion.div>
 
-        {/* Feature Carousel */}
-        <motion.div
-          initial={{ y: 30, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="flex flex-col items-center"
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-        >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeSlide}
-              initial={{ opacity: 0, x: 60 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -60 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="flex flex-col items-center"
-            >
-              <div className={`w-20 h-20 rounded-[24px] bg-gradient-to-br ${slide.color} flex items-center justify-center shadow-lg ${slide.shadow} mb-6`}>
-                <Icon size={36} className="text-white" />
-              </div>
-              <h2 className="text-xl font-bold text-center mb-3">{slide.title}</h2>
-              <p className="text-center text-text/55 dark:text-text-inv/55 text-[15px] leading-relaxed max-w-[280px]">
-                {slide.desc}
-              </p>
-            </motion.div>
+        {/* Feature bubbles — chat-style */}
+        <div className="flex flex-col gap-3 mb-10">
+          <AnimatePresence>
+            {FEATURES.slice(0, visibleCount).map((feat, i) => {
+              const Icon = feat.icon;
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl rounded-tl-lg bg-white dark:bg-card-alt border border-border dark:border-border-dark shadow-sm"
+                >
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${feat.color}15`, color: feat.color }}
+                  >
+                    <Icon size={16} />
+                  </div>
+                  <span className="text-[14px] text-text/80 dark:text-text-inv/80 leading-snug">{feat.text}</span>
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
 
-          {/* Dots */}
-          <div className="flex items-center gap-2 mt-8">
-            {SLIDES.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => goTo(i)}
-                className={`rounded-full transition-all duration-300 ${
-                  i === activeSlide ? 'w-6 h-2 bg-primary' : 'w-2 h-2 bg-text/15 dark:bg-text-inv/15'
-                }`}
-              />
-            ))}
-          </div>
+          {/* Typing indicator while features are still appearing */}
+          {!allVisible && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center gap-1.5 px-4 py-3"
+            >
+              <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+              <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse [animation-delay:200ms]" />
+              <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse [animation-delay:400ms]" />
+            </motion.div>
+          )}
+        </div>
 
-          {/* Get Started button - part of the centered group */}
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="w-full mt-10"
-          >
-            <Button size="lg" className="w-full text-lg" onClick={handleGetStarted}>
-              Get Started
-              <ArrowRight size={20} />
-            </Button>
-          </motion.div>
+        {/* CTA */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={allVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+        >
+          <Button size="lg" className="w-full text-[16px]" onClick={handleGetStarted}>
+            Get Started
+            <ArrowRight size={20} />
+          </Button>
+          <p className="text-center text-text/40 dark:text-text-inv/40 text-[12px] mt-3">
+            Pair with your OpenClaw server to begin
+          </p>
         </motion.div>
       </div>
     </div>
