@@ -837,9 +837,9 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                     )}
                   </div>
                   
-                  {/* Reaction & Reply & Edit/Delete Buttons — show on hover (hide for streaming) */}
+                  {/* Reaction & Reply & Edit/Delete Buttons — mobile: always visible; desktop: hover only */}
                   {!isStreaming && (
-                  <div className={`flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                  <div className={`flex items-center gap-1 mt-1 md:hidden md:group-hover:flex transition-opacity duration-150 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                     {/* Quick-react bar */}
                     <div className="flex items-center gap-0.5 bg-white/80 dark:bg-card-alt/80 backdrop-blur-sm rounded-full px-1 py-0.5 border border-border dark:border-border-dark shadow-sm">
                       {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
