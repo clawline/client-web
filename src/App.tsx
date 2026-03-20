@@ -8,6 +8,11 @@ import ChatList from './screens/ChatList';
 import BottomNav from './components/BottomNav';
 import UpdateBanner from './components/UpdateBanner';
 import IOSInstallPrompt from './components/IOSInstallPrompt';
+
+const SIDEBAR_WIDTH_KEY = 'openclaw.sidebar.width';
+const MIN_SIDEBAR = 240;
+const MAX_SIDEBAR = 600;
+const DEFAULT_SIDEBAR = 288; // w-72
 import { getActiveConnectionId, getConnectionById, setActiveConnectionId } from './services/connectionStore';
 import { useSwipeBack } from './hooks/useSwipeBack';
 import { usePWAUpdate } from './hooks/usePWAUpdate';
@@ -140,6 +145,31 @@ function AppShell() {
 
   // iOS PWA optimizations
   const { showInstallPrompt } = useIOSPWA();
+
+  // Sidebar resize (desktop)
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try { const w = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) || ''); return w >= MIN_SIDEBAR && w <= MAX_SIDEBAR ? w : DEFAULT_SIDEBAR; } catch { return DEFAULT_SIDEBAR; }
+  });
+  const sidebarResizing = useRef(false);
+  const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    sidebarResizing.current = true;
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    const onMove = (ev: MouseEvent) => {
+      if (!sidebarResizing.current) return;
+      const newW = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, startW + ev.clientX - startX));
+      setSidebarWidth(newW);
+    };
+    const onUp = () => {
+      sidebarResizing.current = false;
+      try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth)); } catch { /* noop */ }
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [sidebarWidth]);
 
   // URL → Screen（浏览器前进/后退）
   useEffect(() => {
@@ -294,7 +324,7 @@ function AppShell() {
       <div className="flex flex-col w-full h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-surface dark:bg-surface-dark text-text dark:text-text-inv overflow-hidden font-sans">
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
-        <div className="w-72 xl:w-80 h-full flex flex-col border-r border-border/60 dark:border-border-dark/60 bg-surface dark:bg-surface-dark flex-shrink-0">
+        <div style={{ width: sidebarWidth }} className="h-full flex flex-col border-r border-border/60 dark:border-border-dark/60 bg-surface dark:bg-surface-dark flex-shrink-0 relative">
           {/* Sidebar nav */}
           <div className="flex items-center gap-0.5 px-2 py-2 border-b border-border/60 dark:border-border-dark/60 min-h-[48px]">
             {SIDEBAR_NAV_ITEMS.map((item) => {
@@ -328,6 +358,12 @@ function AppShell() {
               activeConnectionId={activeConnectionId}
             />
           </div>
+
+          {/* Resize handle */}
+          <div
+            onMouseDown={handleSidebarMouseDown}
+            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors z-20"
+          />
         </div>
 
         {/* Main content */}

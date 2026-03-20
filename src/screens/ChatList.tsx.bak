@@ -441,8 +441,8 @@ export default function ChatList({
     try { localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* noop */ }
   };
 
-  // Effective view: grid in both mobile and compact (sidebar) when user selects it
-  const effectiveView: ViewMode = viewMode;
+  // Effective view: grid only on mobile (non-compact) mode
+  const effectiveView: ViewMode = compact ? 'list' : viewMode;
 
   // Sort agents with custom order
   const sortAgents = useCallback((connectionId: string, agents: AgentInfo[]): AgentInfo[] => {
@@ -548,11 +548,7 @@ export default function ChatList({
               </span>
             )}
           </div>
-          {isTyping ? (
-            <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[11px]' : 'text-[13px]')}>
-              typing <TypingDots />
-            </p>
-          ) : preview ? (
+          {preview ? (
             <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/55 dark:text-text-inv/50' : 'text-[13px] text-text/50 dark:text-text-inv/45')}>
               {preview}
             </p>
@@ -574,8 +570,7 @@ export default function ChatList({
             {formatRelativeTime(lastMessage.timestamp)}
           </span>
         )}
-      </button>
-      </motion.div>
+      </motion.button>
     );
   };
 
@@ -697,14 +692,16 @@ export default function ChatList({
             {compact && <span className="font-semibold text-[15px] block truncate">Chats</span>}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={toggleViewMode}
-              className="p-1.5 text-text/35 dark:text-text-inv/30 hover:text-primary transition-colors"
-              title={viewMode === 'list' ? 'Grid view' : 'List view'}
-            >
-              {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
-            </motion.button>
+            {!compact && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={toggleViewMode}
+                className="p-1.5 text-text/35 dark:text-text-inv/30 hover:text-primary transition-colors"
+                title={viewMode === 'list' ? 'Grid view' : 'List view'}
+              >
+                {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
+              </motion.button>
+            )}
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleRefresh}
@@ -739,13 +736,13 @@ export default function ChatList({
 
       <div className={cn('flex-1 overflow-y-auto', compact ? 'px-1 pb-2' : 'px-2 pb-4')}>
         {searchQuery.trim() ? (
-          <div className={effectiveView === 'grid' ? 'grid gap-2 px-1' : 'space-y-0.5'} style={effectiveView === 'grid' ? { gridTemplateColumns: 'repeat(auto-fill, minmax(68px, 1fr))' } : undefined}>
+          <div className={effectiveView === 'grid' ? 'grid grid-cols-3 gap-2 px-1' : 'space-y-0.5'}>
             {filteredResults.length > 0 ? filteredResults.map(({ agent, connection }, index) => (
               effectiveView === 'grid'
                 ? renderAgentGridCard(connection, agent, index)
                 : renderAgentCard(connection, agent, index, true)
             )) : (
-              <div className={cn('text-center text-text/30 dark:text-text-inv/30 text-[13px]', effectiveView === 'grid' ? 'col-span-full mt-10' : 'mt-10')}>No agents found</div>
+              <div className={cn('text-center text-text/30 dark:text-text-inv/30 text-[13px]', effectiveView === 'grid' ? 'col-span-3 mt-10' : 'mt-10')}>No agents found</div>
             )}
           </div>
         ) : showGroupedView ? (
@@ -785,9 +782,9 @@ export default function ChatList({
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden"
                       >
-                        <div className={effectiveView === 'grid' ? 'grid gap-2 px-1 pb-1' : 'space-y-0.5 pb-1'} style={effectiveView === 'grid' ? { gridTemplateColumns: 'repeat(auto-fill, minmax(68px, 1fr))' } : undefined}>
+                        <div className={effectiveView === 'grid' ? 'grid grid-cols-3 gap-2 px-1 pb-1' : 'space-y-0.5 pb-1'}>
                           {isLoading ? (
-                            <div className={cn('flex items-center justify-center gap-2 py-6', effectiveView === 'grid' && 'col-span-full')}>
+                            <div className={cn('flex items-center justify-center gap-2 py-6', effectiveView === 'grid' && 'col-span-3')}>
                               <Loader2 size={16} className="text-text/30 animate-spin" />
                               <span className="text-text/30 dark:text-text-inv/25 text-[12px]">Loading…</span>
                             </div>
@@ -796,7 +793,7 @@ export default function ChatList({
                               ? renderAgentGridCard(connection, agent, index)
                               : renderAgentCard(connection, agent, index)
                           )) : (
-                            <div className={cn('text-center text-text/25 dark:text-text-inv/20 py-6 text-[12px]', effectiveView === 'grid' && 'col-span-full')}>No agents</div>
+                            <div className={cn('text-center text-text/25 dark:text-text-inv/20 py-6 text-[12px]', effectiveView === 'grid' && 'col-span-3')}>No agents</div>
                           )}
                         </div>
                       </motion.div>
@@ -807,9 +804,9 @@ export default function ChatList({
             })}
           </div>
         ) : (
-          <div className={effectiveView === 'grid' ? 'grid gap-2 px-1' : 'space-y-0.5'} style={effectiveView === 'grid' ? { gridTemplateColumns: 'repeat(auto-fill, minmax(68px, 1fr))' } : undefined}>
+          <div className={effectiveView === 'grid' ? 'grid grid-cols-3 gap-2 px-1' : 'space-y-0.5'}>
             {loadingMap[connections[0].id] && (agentMap[connections[0].id] || []).length === 0 ? (
-              <div className={cn('flex items-center justify-center gap-2 py-12', effectiveView === 'grid' && 'col-span-full')}>
+              <div className={cn('flex items-center justify-center gap-2 py-12', effectiveView === 'grid' && 'col-span-3')}>
                 <Loader2 size={18} className="text-text/30 animate-spin" />
                 <span className="text-text/30 dark:text-text-inv/25 text-[13px]">Loading agents…</span>
               </div>
@@ -820,7 +817,7 @@ export default function ChatList({
                   : renderAgentCard(connections[0], agent, index)
               )
             ) : (
-              <div className={cn('text-center text-text/25 dark:text-text-inv/20 mt-10 text-[13px]', effectiveView === 'grid' && 'col-span-full')}>No agents</div>
+              <div className={cn('text-center text-text/25 dark:text-text-inv/20 mt-10 text-[13px]', effectiveView === 'grid' && 'col-span-3')}>No agents</div>
             )}
           </div>
         )}
