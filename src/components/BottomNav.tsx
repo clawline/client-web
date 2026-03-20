@@ -31,15 +31,18 @@ export default function BottomNav({ currentScreen, onNavigate }: BottomNavProps)
               aria-label={item.label}
               aria-current={isActive ? 'page' : undefined}
               className={cn(
-                "p-3 rounded-2xl flex flex-col items-center justify-center transition-colors relative",
-                isActive ? 'text-primary' : 'text-text/40 dark:text-text-inv/40 hover:text-text/60 dark:hover:text-text-inv/60'
+                "p-2 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors relative min-w-[52px]",
+                isActive ? 'text-primary' : 'text-text/35 dark:text-text-inv/35 hover:text-text/55 dark:hover:text-text-inv/55'
               )}
             >
-              <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
+              <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
+              <span className={cn('text-[10px] leading-none', isActive ? 'font-semibold' : 'font-medium')}>
+                {item.label}
+              </span>
               {isActive && (
                 <motion.div
                   layoutId="nav-indicator"
-                  className="w-1.5 h-1.5 rounded-full bg-primary absolute -bottom-1"
+                  className="w-1 h-1 rounded-full bg-primary absolute -bottom-0.5"
                 />
               )}
             </motion.button>

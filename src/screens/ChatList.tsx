@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Search, Bot, Server, Loader2, RefreshCw, Plus, ChevronDown } from 'lucide-react';
+import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
 import { CONNECTIONS_UPDATED_EVENT, getConnections, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
@@ -406,67 +406,68 @@ export default function ChatList({
       ? (lastMessage.text.length > 50 ? `${lastMessage.text.slice(0, 50)}…` : lastMessage.text)
       : null;
     const palette = getAgentPalette(agent.id);
+    const initials = agent.name.slice(0, 2).toUpperCase();
 
     return (
       <motion.button
         key={`${connection.id}-${agent.id}`}
         type="button"
-        initial={{ opacity: 0, y: 8 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: Math.min(index * 0.02, 0.15), duration: 0.2 }}
+        transition={{ delay: Math.min(index * 0.02, 0.12), duration: 0.18 }}
         whileTap={isDisabled ? undefined : { scale: 0.985 }}
         onClick={() => handleAgentClick(connection, agent)}
         disabled={isDisabled}
         className={cn(
-          'relative w-full text-left flex items-center gap-3 transition-colors',
-          compact ? 'px-3 py-2.5' : 'px-4 py-3',
-          'rounded-xl',
+          'relative w-full text-left flex items-center gap-3 transition-all duration-150',
+          compact ? 'px-2.5 py-2' : 'px-4 py-2.5',
+          'rounded-lg',
           isDisabled && 'opacity-40 cursor-not-allowed',
           !isDisabled && 'cursor-pointer',
           isActive
-            ? 'bg-primary/8 dark:bg-primary/12'
-            : 'hover:bg-text/[0.03] dark:hover:bg-text-inv/[0.03]'
+            ? 'bg-primary/10 dark:bg-primary/15 border-l-2 border-l-primary'
+            : 'border-l-2 border-l-transparent hover:bg-text/[0.04] dark:hover:bg-text-inv/[0.04]'
         )}
       >
-        {/* Avatar with per-agent color */}
+        {/* Avatar with per-agent color + initials */}
         <div
           className={cn(
-            'rounded-2xl flex-shrink-0 flex items-center justify-center text-white',
-            compact ? 'w-9 h-9 text-base rounded-xl' : 'w-11 h-11 text-xl'
+            'flex-shrink-0 flex items-center justify-center text-white font-semibold',
+            compact ? 'w-8 h-8 text-[11px] rounded-lg' : 'w-10 h-10 text-[13px] rounded-xl'
           )}
           style={{ background: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
         >
-          {agent.identityEmoji || <Bot size={compact ? 16 : 20} />}
+          {agent.identityEmoji || initials}
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <h3 className={cn('font-semibold truncate', compact ? 'text-[13px]' : 'text-[15px]')}>
+          <div className="flex items-center gap-1.5">
+            <h3 className={cn('font-semibold truncate', compact ? 'text-[13px] text-text/90 dark:text-text-inv/90' : 'text-[15px]')}>
               {agent.name}
             </h3>
             {agent.isDefault && (
-              <span className="text-[9px] font-medium text-text/35 dark:text-text-inv/35 border border-text/15 dark:border-text-inv/15 rounded px-1 py-px leading-none">
+              <span className="text-[8px] font-medium text-text/40 dark:text-text-inv/35 bg-text/[0.05] dark:bg-text-inv/[0.05] rounded px-1 py-px leading-none shrink-0">
                 default
               </span>
             )}
             {agent.model && (
-              <span className="text-[9px] text-text/30 dark:text-text-inv/30 truncate ml-auto shrink-0">
+              <span className={cn('text-[9px] truncate ml-auto shrink-0', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/30 dark:text-text-inv/30')}>
                 {agent.model.split('/').pop()}
               </span>
             )}
           </div>
           {preview ? (
-            <p className={cn('text-text/45 dark:text-text-inv/40 truncate', compact ? 'text-[11px]' : 'text-[13px]')}>
+            <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/55 dark:text-text-inv/50' : 'text-[13px] text-text/50 dark:text-text-inv/45')}>
               {preview}
             </p>
           ) : (
-            <p className={cn('text-text/25 dark:text-text-inv/20 truncate italic', compact ? 'text-[11px]' : 'text-[13px]')}>
+            <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/30 dark:text-text-inv/25' : 'text-[13px] text-text/30 dark:text-text-inv/25')}>
               Start a conversation
             </p>
           )}
           {showSource && (
-            <p className="mt-0.5 text-[10px] text-text/30 dark:text-text-inv/25 truncate">
+            <p className="mt-0.5 text-[10px] text-text/35 dark:text-text-inv/30 truncate">
               {getConnectionLabel(connection)}
             </p>
           )}
@@ -474,7 +475,7 @@ export default function ChatList({
 
         {/* Timestamp */}
         {lastMessage?.timestamp && (
-          <span className="text-[10px] text-text/35 dark:text-text-inv/30 shrink-0 self-start mt-1">
+          <span className={cn('text-[10px] shrink-0 self-start mt-0.5', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/35 dark:text-text-inv/30')}>
             {formatRelativeTime(lastMessage.timestamp)}
           </span>
         )}
