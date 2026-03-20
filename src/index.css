@@ -83,18 +83,31 @@ body {
   
 }
 
+/* Overlay-style thin scrollbar on all screens */
 ::-webkit-scrollbar {
-  display: none;
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
-/* Show thin scrollbar on desktop */
+/* Wider scrollbar on desktop */
 @media (min-width: 768px) {
   ::-webkit-scrollbar {
-    display: block;
     width: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.1);
@@ -109,10 +122,14 @@ body {
   .dark ::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
   }
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
-  }
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.08) transparent;
+}
+.dark * {
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
 
 /* Prevent pull-to-refresh on mobile */
@@ -133,12 +150,7 @@ input, select, textarea {
   font-size: 16px !important;
 }
 
-/* Scrollbar hide for Firefox */
-* {
-  scrollbar-width: none;
-}
-
-/* Explicit scrollbar-hide utility */
+/* Scrollbar hide for Firefox — only on explicit elements */
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;

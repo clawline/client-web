@@ -195,9 +195,15 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  // Persist messages on change
+  // Persist messages on change (debounced to avoid thrashing localStorage)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (connId && messages.length > 0) saveMessages(agentId, connId, messages, chatId);
+    if (!connId || messages.length === 0) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveMessages(agentId, connId, messages, chatId);
+    }, 500);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [messages, agentId, connId, chatId]);
 
   useEffect(() => {

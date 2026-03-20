@@ -1,16 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useLogto } from '@logto/react';
 import Onboarding from './screens/Onboarding';
 import Callback from './screens/Callback';
 import ChatList from './screens/ChatList';
-import ChatRoom from './screens/ChatRoom';
-import Dashboard from './screens/Dashboard';
-import Profile from './screens/Profile';
-import Search from './screens/Search';
-import Preferences from './screens/Preferences';
-import Pairing from './screens/Pairing';
 import BottomNav from './components/BottomNav';
 import UpdateBanner from './components/UpdateBanner';
 import IOSInstallPrompt from './components/IOSInstallPrompt';
@@ -22,7 +16,23 @@ import { useIOSPWA } from './hooks/useIOSPWA';
 import { cn } from './lib/utils';
 import { MessageCircle, LayoutDashboard, Search as SearchIcon, User, Settings } from 'lucide-react';
 
+// Lazy-loaded heavy screens
+const ChatRoom = lazy(() => import('./screens/ChatRoom'));
+const Dashboard = lazy(() => import('./screens/Dashboard'));
+const Profile = lazy(() => import('./screens/Profile'));
+const Search = lazy(() => import('./screens/Search'));
+const Preferences = lazy(() => import('./screens/Preferences'));
+const Pairing = lazy(() => import('./screens/Pairing'));
+
 export type Screen = 'onboarding' | 'callback' | 'chats' | 'chat_room' | 'dashboard' | 'profile' | 'search' | 'preferences' | 'pairing';
+
+function ScreenLoading() {
+  return (
+    <div className="flex items-center justify-center h-full">
+      <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 const STORAGE_KEY_USER_ID = 'openclaw.userId';
 const STORAGE_KEY_USER_NAME = 'openclaw.userName';
@@ -195,59 +205,64 @@ function AppShell() {
     if (!effectivelyAuthenticated && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
       return <Onboarding onGetStarted={() => navigate('chats')} />;
     }
-    switch (currentScreen) {
-      case 'onboarding':
-        return <Onboarding onGetStarted={() => navigate('chats')} />;
-      case 'callback':
-        return <Callback />;
-      case 'chats':
-        return <ChatList onOpenChat={(agentId, chatId) => navigate('chat_room', agentId, chatId)} onAddServer={() => navigate('pairing')} />;
-      case 'chat_room':
-        return <ChatRoom agentId={activeAgentId} chatId={activeChatId} onBack={() => navigate('chats')} />;
-      case 'dashboard':
-        return <Dashboard />;
-      case 'profile':
-        return <Profile onNavigate={navigate} />;
-      case 'search':
-        return <Search />;
-      case 'preferences':
-        return <Preferences onBack={() => navigate('profile')} />;
-      case 'pairing':
-        return <Pairing onBack={() => navigate('profile')} onPaired={(connId) => { clawChannel.close(); localStorage.removeItem('openclaw.agentList'); localStorage.removeItem('openclaw.channelStatus'); setActiveConnectionId(connId); navigate('chats'); }} />;
-      default:
-        return <Onboarding onGetStarted={() => navigate('chats')} />;
-    }
+    const content = (() => {
+      switch (currentScreen) {
+        case 'onboarding':
+          return <Onboarding onGetStarted={() => navigate('chats')} />;
+        case 'callback':
+          return <Callback />;
+        case 'chats':
+          return <ChatList onOpenChat={(agentId, chatId) => navigate('chat_room', agentId, chatId)} onAddServer={() => navigate('pairing')} />;
+        case 'chat_room':
+          return <ChatRoom agentId={activeAgentId} chatId={activeChatId} onBack={() => navigate('chats')} />;
+        case 'dashboard':
+          return <Dashboard />;
+        case 'profile':
+          return <Profile onNavigate={navigate} />;
+        case 'search':
+          return <Search />;
+        case 'preferences':
+          return <Preferences onBack={() => navigate('profile')} />;
+        case 'pairing':
+          return <Pairing onBack={() => navigate('profile')} onPaired={(connId) => { clawChannel.close(); localStorage.removeItem('openclaw.agentList'); localStorage.removeItem('openclaw.channelStatus'); setActiveConnectionId(connId); navigate('chats'); }} />;
+        default:
+          return <Onboarding onGetStarted={() => navigate('chats')} />;
+      }
+    })();
+    return <Suspense fallback={<ScreenLoading />}>{content}</Suspense>;
   };
 
   // For desktop: which screen to show in the main panel (not chat list, since it's in sidebar)
   const renderDesktopMain = () => {
-    switch (currentScreen) {
-      case 'chat_room':
-        return <ChatRoom agentId={activeAgentId} chatId={activeChatId} onBack={() => navigate('chats')} isDesktop />;
-      case 'dashboard':
-        return <Dashboard />;
-      case 'profile':
-        return <Profile onNavigate={navigate} />;
-      case 'search':
-        return <Search />;
-      case 'preferences':
-        return <Preferences onBack={() => navigate('profile')} />;
-      case 'pairing':
-        return <Pairing onBack={() => navigate('profile')} onPaired={(connId) => { clawChannel.close(); localStorage.removeItem('openclaw.agentList'); localStorage.removeItem('openclaw.channelStatus'); setActiveConnectionId(connId); navigate('chats'); }} />;
-      case 'onboarding':
-        return <Onboarding onGetStarted={() => navigate('chats')} />;
-      default:
-        // Default: show a welcome/empty state
-        return (
-          <div className="flex flex-col items-center justify-center h-full text-center px-8">
-            <div className="w-20 h-20 bg-gradient-to-br from-primary to-primary-deep rounded-3xl flex items-center justify-center mb-6 shadow-lg shadow-primary/20">
-              <MessageCircle size={36} className="text-white" />
+    const content = (() => {
+      switch (currentScreen) {
+        case 'chat_room':
+          return <ChatRoom agentId={activeAgentId} chatId={activeChatId} onBack={() => navigate('chats')} isDesktop />;
+        case 'dashboard':
+          return <Dashboard />;
+        case 'profile':
+          return <Profile onNavigate={navigate} />;
+        case 'search':
+          return <Search />;
+        case 'preferences':
+          return <Preferences onBack={() => navigate('profile')} />;
+        case 'pairing':
+          return <Pairing onBack={() => navigate('profile')} onPaired={(connId) => { clawChannel.close(); localStorage.removeItem('openclaw.agentList'); localStorage.removeItem('openclaw.channelStatus'); setActiveConnectionId(connId); navigate('chats'); }} />;
+        case 'onboarding':
+          return <Onboarding onGetStarted={() => navigate('chats')} />;
+        default:
+          return (
+            <div className="flex flex-col items-center justify-center h-full text-center px-8">
+              <div className="w-20 h-20 bg-gradient-to-br from-primary to-primary-deep rounded-3xl flex items-center justify-center mb-6 shadow-lg shadow-primary/20">
+                <MessageCircle size={36} className="text-white" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Clawline</h2>
+              <p className="text-text/40 dark:text-text-inv/40 text-[15px]">Select a conversation from the sidebar to start chatting</p>
             </div>
-            <h2 className="text-2xl font-bold mb-2">Clawline</h2>
-            <p className="text-text/40 dark:text-text-inv/40 text-[15px]">Select a conversation from the sidebar to start chatting</p>
-          </div>
-        );
-    }
+          );
+      }
+    })();
+    return <Suspense fallback={<ScreenLoading />}>{content}</Suspense>;
   };
 
   const showBottomNav = ['chats', 'dashboard', 'profile', 'search'].includes(currentScreen);
