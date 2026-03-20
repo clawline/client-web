@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Search, Bot, Server, Loader2, RefreshCw, ChevronLeft, Plus } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
+import EmptyState from '../components/EmptyState';
 import { Badge } from '../components/ui/badge';
 import { cn } from '../lib/utils';
 import { getActiveConnection } from '../services/connectionStore';
@@ -227,15 +228,13 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
         <div className={cn('px-6 pb-4', compact ? 'pt-4' : 'pt-12')}>
           {!compact && <h1 className="text-3xl font-bold tracking-tight mb-6">Chats</h1>}
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-          <div className="w-16 h-16 bg-border dark:bg-border-dark rounded-full flex items-center justify-center mb-4">
-            <Server size={28} className="text-text/50 dark:text-text-inv/50" />
-          </div>
-          <p className="text-text/50 dark:text-text-inv/50 text-[15px] mb-1">No server connected</p>
-          <p className="text-text/50 dark:text-text-inv/50 text-[13px] mb-6">Pair with your OpenClaw gateway to start chatting</p>
-          <Button onClick={onAddServer}>
-            <Server size={16} /> Add Server
-          </Button>
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <EmptyState
+            icon={Server}
+            title="No server connected"
+            description="Pair with your OpenClaw gateway to start chatting"
+            action={<Button onClick={onAddServer}><Server size={16} /> Add Server</Button>}
+          />
         </div>
       </div>
     );

@@ -626,6 +626,17 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
   
   const [showMemory, setShowMemory] = useState(false);
 
+  // Long-press for mobile message actions
+  const [longPressedMsgId, setLongPressedMsgId] = useState<string | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleTouchStart = (msgId: string) => {
+    longPressTimer.current = setTimeout(() => setLongPressedMsgId(msgId), 400);
+  };
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  };
+  const closeLongPress = () => setLongPressedMsgId(null);
+
   return (
     <div className="flex flex-col h-full bg-surface dark:bg-surface-dark relative">
       {/* Header */}
@@ -746,7 +757,10 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                   ? { type: 'spring', stiffness: 500, damping: 25 }
                   : { delay: Math.min(i, 10) * 0.03 }
                 }
-                className={`flex ${isUser ? 'justify-end' : 'justify-start'} group`}
+                className={`flex ${isUser ? 'justify-end' : 'justify-start'} group relative`}
+                onTouchStart={() => handleTouchStart(msg.id)}
+                onTouchEnd={handleTouchEnd}
+                onTouchMove={handleTouchEnd}
               >
               {!isUser && (
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 mr-3 flex items-center justify-center text-white shadow-sm text-lg">
@@ -837,9 +851,9 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                     )}
                   </div>
                   
-                  {/* Reaction & Reply & Edit/Delete Buttons — mobile: always visible; desktop: hover only */}
+                  {/* Reaction & Reply & Edit/Delete — desktop: hover only; mobile: long-press popup */}
                   {!isStreaming && (
-                  <div className={`flex items-center gap-1 mt-1 md:hidden md:group-hover:flex transition-opacity duration-150 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                  <div className={`hidden md:group-hover:flex items-center gap-1 mt-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                     {/* Quick-react bar */}
                     <div className="flex items-center gap-0.5 bg-white/80 dark:bg-card-alt/80 backdrop-blur-sm rounded-full px-1 py-0.5 border border-border dark:border-border-dark shadow-sm">
                       {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
@@ -969,6 +983,89 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
           )}
         </AnimatePresence>
         <div ref={messagesEndRef} />
+
+        {/* Mobile long-press action sheet */}
+        <AnimatePresence>
+          {longPressedMsgId && (() => {
+            const lMsg = messages.find(m => m.id === longPressedMsgId);
+            if (!lMsg) return null;
+            const lIsUser = lMsg.sender === 'user';
+            return (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="fixed inset-0 bg-black/30 z-50 md:hidden"
+                  onClick={closeLongPress}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 30, scale: 0.95 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+                  className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white dark:bg-card-alt rounded-t-3xl shadow-2xl p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+                >
+                  {/* Quick reactions row */}
+                  <div className="flex items-center justify-center gap-2 mb-4">
+                    {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
+                      <motion.button
+                        key={e}
+                        whileTap={{ scale: 0.8 }}
+                        onClick={() => {
+                          const hasIt = lMsg.reactions?.includes(e);
+                          setMessages(prev => prev.map(m => {
+                            if (m.id !== longPressedMsgId) return m;
+                            const reactions = m.reactions ?? [];
+                            return { ...m, reactions: hasIt ? reactions.filter(r => r !== e) : [...reactions, e] };
+                          }));
+                          if (hasIt) { channel.removeReaction(longPressedMsgId, e); } else { channel.addReaction(longPressedMsgId, e); }
+                          closeLongPress();
+                        }}
+                        className={`w-11 h-11 text-[22px] flex items-center justify-center rounded-full transition-colors ${
+                          lMsg.reactions?.includes(e) ? 'bg-primary/20 ring-2 ring-primary/40' : 'bg-surface dark:bg-surface-dark'
+                        }`}
+                      >
+                        {e}
+                      </motion.button>
+                    ))}
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => { openReactionPicker(longPressedMsgId); closeLongPress(); }}
+                      className="w-11 h-11 flex items-center justify-center rounded-full bg-surface dark:bg-surface-dark text-text/55 dark:text-text-inv/55"
+                    >
+                      <SmilePlus size={18} />
+                    </motion.button>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => { startReply(lMsg); closeLongPress(); }}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                    >
+                      <CornerDownLeft size={18} className="text-info" /> Reply
+                    </button>
+                    {lIsUser && (
+                      <>
+                        <button
+                          onClick={() => { handleEditMessage(lMsg); closeLongPress(); }}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                        >
+                          <Pencil size={18} className="text-amber-500" /> Edit
+                        </button>
+                        <button
+                          onClick={() => { handleDeleteMessage(lMsg.id); closeLongPress(); }}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        >
+                          <Trash2 size={18} /> Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              </>
+            );
+          })()}
+        </AnimatePresence>
       </div>
 
       {/* Input Area */}

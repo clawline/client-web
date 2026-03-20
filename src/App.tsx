@@ -111,10 +111,10 @@ function useIsDesktop() {
 }
 
 const SIDEBAR_NAV_ITEMS = [
-  { id: 'chats', icon: MessageCircle, label: 'Chats', color: '#67B88B' },
-  { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', color: '#5B8DEF' },
-  { id: 'search', icon: SearchIcon, label: 'Search', color: '#F59E0B' },
-  { id: 'profile', icon: User, label: 'Profile', color: '#8B5CF6' },
+  { id: 'chats', icon: MessageCircle, label: 'Chats' },
+  { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { id: 'search', icon: SearchIcon, label: 'Search' },
+  { id: 'profile', icon: User, label: 'Profile' },
 ] as const;
 
 function AppShell() {
@@ -296,9 +296,8 @@ function AppShell() {
                   onClick={() => navigate(item.id as Screen)}
                   className={cn(
                     'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all',
-                    isActive ? 'text-white shadow-sm' : 'text-text/50 dark:text-text-inv/40 hover:bg-surface dark:hover:bg-surface-dark'
+                    isActive ? 'bg-primary text-white shadow-sm' : 'text-text/50 dark:text-text-inv/40 hover:bg-surface dark:hover:bg-surface-dark'
                   )}
-                  style={isActive ? { backgroundColor: item.color } : undefined}
                 >
                   <Icon size={16} />
                   <span className="hidden xl:inline">{item.label}</span>

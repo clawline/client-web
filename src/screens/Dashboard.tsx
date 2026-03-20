@@ -7,6 +7,7 @@ import * as channel from '../services/clawChannel';
 import type { AgentInfo } from '../services/clawChannel';
 import { getUserId } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
+import EmptyState from '../components/EmptyState';
 
 /* ── Types ────────────────────────────────────────────────── */
 
@@ -164,13 +165,11 @@ export default function Dashboard() {
   if (!activeConn) {
     return (
       <div className="flex flex-col items-center justify-center h-full px-6 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-[#5B8DEF]/20 flex items-center justify-center mb-4">
-          <Server size={28} className="text-primary" />
-        </div>
-        <h2 className="text-xl font-bold mb-2">No Server Connected</h2>
-        <p className="text-[14px] text-text/50 dark:text-text-inv/50 max-w-xs">
-          Connect to an OpenClaw server to view real-time status, agent fleet, and system health.
-        </p>
+        <EmptyState
+          icon={Server}
+          title="No Server Connected"
+          description="Connect to an OpenClaw server to view real-time status, agent fleet, and system health."
+        />
       </div>
     );
   }
