@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List } from 'lucide-react';
+import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List, ChevronUp, Pencil } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
 import { CONNECTIONS_UPDATED_EVENT, getConnections, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
@@ -180,6 +180,7 @@ export default function ChatList({
   const [attemptedMap, setAttemptedMap] = useState<Record<string, boolean>>({});
   const [typingAgents, setTypingAgents] = useState<Set<string>>(new Set());
   const [draggedAgent, setDraggedAgent] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
   const [customOrder, setCustomOrder] = useState<Record<string, string[]>>(() => {
     try { const raw = localStorage.getItem(AGENT_ORDER_KEY); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
   });
@@ -190,6 +191,20 @@ export default function ChatList({
     e.preventDefault();
     e.stopPropagation();
     setAvatarMenuAgent({ agentId, x: e.clientX, y: e.clientY });
+  };
+
+  // Touch long-press for mobile avatar customization
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleAvatarTouchStart = (e: React.TouchEvent, agentId: string) => {
+    const touch = e.touches[0];
+    const x = touch.clientX;
+    const y = touch.clientY;
+    longPressTimerRef.current = setTimeout(() => {
+      setAvatarMenuAgent({ agentId, x, y });
+    }, 500);
+  };
+  const handleAvatarTouchEnd = () => {
+    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
   };
 
   const handleSetCustomAvatar = (agentId: string) => {
@@ -535,6 +550,20 @@ export default function ChatList({
 
   const handleDragEnd = () => { setDraggedAgent(null); };
 
+  // Mobile: move agent up/down in edit mode
+  const handleMoveAgent = (connectionId: string, agentId: string, direction: 'up' | 'down', agents: AgentInfo[]) => {
+    const currentOrder = customOrder[connectionId] || agents.map((a) => a.id);
+    const idx = currentOrder.indexOf(agentId);
+    if (idx === -1) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= currentOrder.length) return;
+    const next = [...currentOrder];
+    [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+    const updated = { ...customOrder, [connectionId]: next };
+    setCustomOrder(updated);
+    try { localStorage.setItem(AGENT_ORDER_KEY, JSON.stringify(updated)); } catch { /* noop */ }
+  };
+
   const renderAgentCard = (connection: ServerConnection, agent: AgentInfo, index: number, showSource = false) => {
     const status = statusMap[connection.id] || 'disconnected';
     const isDisabled = attemptedMap[connection.id] && status === 'disconnected';
@@ -547,6 +576,11 @@ export default function ChatList({
     const initials = agent.name.slice(0, 2).toUpperCase();
     const isTyping = typingAgents.has(`${connection.id}:${agent.id}`);
     const isDragging = draggedAgent === agent.id;
+    const agents = agentMap[connection.id] || [];
+    const sortedOrder = customOrder[connection.id] || agents.map((a) => a.id);
+    const sortedIdx = sortedOrder.indexOf(agent.id);
+    const isFirst = sortedIdx === 0;
+    const isLast = sortedIdx === sortedOrder.length - 1;
 
     return (
       <motion.div
@@ -554,13 +588,36 @@ export default function ChatList({
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: isDragging ? 0.5 : 1, y: 0 }}
         transition={{ delay: Math.min(index * 0.02, 0.12), duration: 0.18 }}
-        draggable
-        onDragStart={() => handleDragStart(agent.id)}
-        onDragOver={handleDragOver}
-        onDrop={() => handleDrop(connection.id, agent.id, agentMap[connection.id] || [])}
-        onDragEnd={handleDragEnd}
+        layout={editMode}
+        draggable={compact && !editMode}
+        onDragStart={compact ? () => handleDragStart(agent.id) : undefined}
+        onDragOver={compact ? handleDragOver : undefined}
+        onDrop={compact ? () => handleDrop(connection.id, agent.id, agents) : undefined}
+        onDragEnd={compact ? handleDragEnd : undefined}
       >
-        <button
+        <div className="flex items-center">
+          {/* Edit mode: reorder buttons (mobile only) */}
+          {editMode && !compact && (
+            <div className="flex flex-col mr-1 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleMoveAgent(connection.id, agent.id, 'up', agents); }}
+                disabled={isFirst}
+                className={cn('p-0.5 rounded', isFirst ? 'text-text/15' : 'text-text/40 active:bg-text/10')}
+              >
+                <ChevronUp size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleMoveAgent(connection.id, agent.id, 'down', agents); }}
+                disabled={isLast}
+                className={cn('p-0.5 rounded', isLast ? 'text-text/15' : 'text-text/40 active:bg-text/10')}
+              >
+                <ChevronDown size={14} />
+              </button>
+            </div>
+          )}
+          <button
           type="button"
           onClick={() => handleAgentClick(connection, agent)}
           disabled={isDisabled}
@@ -576,7 +633,7 @@ export default function ChatList({
           )}
         >
           {/* Avatar with typing indicator */}
-          <div className="relative flex-shrink-0" onContextMenu={(e) => handleAvatarContextMenu(e, agent.id)}>
+          <div className="relative flex-shrink-0" onContextMenu={(e) => handleAvatarContextMenu(e, agent.id)} onTouchStart={(e) => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
             {customAvatars[agent.id] ? (
               <img
                 src={customAvatars[agent.id]}
@@ -652,6 +709,7 @@ export default function ChatList({
             </span>
           )}
         </button>
+        </div>
       </motion.div>
     );
   };
@@ -672,11 +730,12 @@ export default function ChatList({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: isDragging ? 0.5 : 1, scale: 1 }}
         transition={{ delay: Math.min(index * 0.03, 0.15), duration: 0.2 }}
-        draggable
-        onDragStart={() => handleDragStart(agent.id)}
-        onDragOver={handleDragOver}
-        onDrop={() => handleDrop(connection.id, agent.id, agentMap[connection.id] || [])}
-        onDragEnd={handleDragEnd}
+        layout={editMode}
+        draggable={compact && !editMode}
+        onDragStart={compact ? () => handleDragStart(agent.id) : undefined}
+        onDragOver={compact ? handleDragOver : undefined}
+        onDrop={compact ? () => handleDrop(connection.id, agent.id, agentMap[connection.id] || []) : undefined}
+        onDragEnd={compact ? handleDragEnd : undefined}
       >
         <button
           type="button"
@@ -693,7 +752,7 @@ export default function ChatList({
           )}
         >
           {/* Avatar */}
-          <div className="relative mb-2" onContextMenu={(e) => handleAvatarContextMenu(e, agent.id)}>
+          <div className="relative mb-2" onContextMenu={(e) => handleAvatarContextMenu(e, agent.id)} onTouchStart={(e) => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
             {customAvatars[agent.id] ? (
               <img
                 src={customAvatars[agent.id]}
@@ -783,6 +842,16 @@ export default function ChatList({
             {compact && <span className="font-semibold text-[15px] block truncate">Chats</span>}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
+            {!compact && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setEditMode(!editMode)}
+                className={cn('p-1.5 transition-colors', editMode ? 'text-primary' : 'text-text/35 dark:text-text-inv/30 hover:text-primary')}
+                title={editMode ? 'Done editing' : 'Reorder agents'}
+              >
+                <Pencil size={14} />
+              </motion.button>
+            )}
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={toggleViewMode}
