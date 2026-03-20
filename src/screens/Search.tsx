@@ -70,7 +70,7 @@ function formatSearchTime(ts?: number): string {
 }
 
 const filters: { id: FilterType; label: string; icon: typeof Filter; color: string }[] = [
-  { id: 'all', label: 'All', icon: Filter, color: 'text-gray-500' },
+  { id: 'all', label: 'All', icon: Filter, color: 'text-text/55 dark:text-text-inv/55' },
   { id: 'user', label: 'Sent', icon: MessageSquare, color: 'text-info' },
   { id: 'ai', label: 'Received', icon: MessageSquare, color: 'text-primary' },
   { id: 'image', label: 'Images', icon: Image, color: 'text-purple-500' },
@@ -100,7 +100,7 @@ export default function Search() {
         {query && (
           <button
             onClick={() => setQuery('')}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-text/40 dark:text-text-inv/40 hover:text-text/70 dark:hover:text-text-inv/70 transition-colors"
           >
             <X size={18} />
           </button>
@@ -120,7 +120,7 @@ export default function Search() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap border transition-colors ${
                 isActive
                   ? 'bg-primary/10 border-primary/30 text-primary'
-                  : 'bg-white dark:bg-card-alt border-gray-200 dark:border-gray-700 text-gray-500 hover:border-primary/30'
+                  : 'bg-white dark:bg-card-alt border-border dark:border-border-dark text-text/50 dark:text-text-inv/50 hover:border-primary/30'
               }`}
             >
               <Icon size={13} className={isActive ? 'text-primary' : f.color} />
@@ -148,7 +148,7 @@ export default function Search() {
                       {msg.sender === 'user' ? 'You' : 'AI'}
                     </span>
                     {msg.agentId && (
-                      <span className="text-[11px] text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{msg.agentId}</span>
+                      <span className="text-[11px] text-text/40 dark:text-text-inv/40 bg-surface dark:bg-surface-dark px-1.5 py-0.5 rounded">{msg.agentId}</span>
                     )}
                     {msg.mediaType && msg.mediaType !== 'text' && (
                       <span className="text-[11px] text-purple-400 bg-purple-50 dark:bg-purple-900/20 px-1.5 py-0.5 rounded">{msg.mediaType}</span>

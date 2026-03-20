@@ -4,8 +4,10 @@ import { ChevronLeft, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, 
 import Markdown from 'react-markdown';
 import hljs from 'highlight.js/lib/core';
 
+import type { LanguageFn } from 'highlight.js';
+
 // Lazy-load language grammars on first code block render
-const langLoaders: Record<string, () => Promise<{ default: any }>> = {
+const langLoaders: Record<string, () => Promise<{ default: LanguageFn }>> = {
   javascript: () => import('highlight.js/lib/languages/javascript'),
   js: () => import('highlight.js/lib/languages/javascript'),
   typescript: () => import('highlight.js/lib/languages/typescript'),
@@ -801,7 +803,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                     {/* Message content (Image, Voice, File, Text/Markdown) */}
                     {(msg.mediaType === 'image' && msg.mediaUrl) ? (
                       <div className="bg-transparent border-none p-0">
-                        <img src={msg.mediaUrl} alt="Message attachment" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover" />
+                        <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover" />
                         {msg.text && <p className="mt-2 text-[14px]">{msg.text}</p>}
                       </div>
                     ) : (msg.mediaType === 'voice' || msg.mediaType === 'audio') && msg.mediaUrl ? (

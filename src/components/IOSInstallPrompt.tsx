@@ -41,7 +41,7 @@ export default function IOSInstallPrompt({ show: showProp }: IOSInstallPromptPro
           className="fixed bottom-20 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none"
         >
           <div className="w-full max-w-md pointer-events-auto">
-            <div className="bg-white dark:bg-card-alt rounded-2xl shadow-2xl p-4 border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-card-alt rounded-2xl shadow-2xl p-4 border border-border dark:border-border-dark">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
@@ -59,7 +59,7 @@ export default function IOSInstallPrompt({ show: showProp }: IOSInstallPromptPro
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={handleDismiss}
-                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface dark:hover:bg-surface-dark transition-colors"
                   aria-label="Dismiss"
                 >
                   <X className="w-5 h-5 text-[#92A0A4]" />
