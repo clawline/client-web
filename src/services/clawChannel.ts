@@ -212,12 +212,24 @@ export function sendRaw(packet: { type: string; data: Record<string, unknown> })
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     throw new Error('Socket is not connected.');
   }
+  // For packets that include chatId, ensure it's not empty
+  if ('chatId' in packet.data && !packet.data.chatId) {
+    // Silently drop — chatId not yet assigned by server
+    return;
+  }
   ws.send(JSON.stringify(packet));
+}
+
+export function isReady() {
+  return !!ws && ws.readyState === WebSocket.OPEN && !!currentChatId;
 }
 
 export function sendText(content: string, agentId?: string): OutboundPayload {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     throw new Error('Socket is not connected.');
+  }
+  if (!currentChatId) {
+    throw new Error('Chat session not ready — still connecting. Please try again.');
   }
 
   const payload: OutboundPayload = {
@@ -249,6 +261,9 @@ export type MediaOptions = {
 export function sendMedia(opts: MediaOptions): OutboundPayload {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     throw new Error('Socket is not connected.');
+  }
+  if (!currentChatId) {
+    throw new Error('Chat session not ready — still connecting. Please try again.');
   }
 
   const payload: OutboundPayload = {
@@ -310,6 +325,7 @@ export function selectAgent(agentId: string | null) {
 }
 
 export function addReaction(messageId: string, emoji: string) {
+  if (!currentChatId) return;
   sendRaw({
     type: 'reaction.add',
     data: {
@@ -323,6 +339,7 @@ export function addReaction(messageId: string, emoji: string) {
 }
 
 export function removeReaction(messageId: string, emoji: string) {
+  if (!currentChatId) return;
   sendRaw({
     type: 'reaction.remove',
     data: {
@@ -338,6 +355,9 @@ export function removeReaction(messageId: string, emoji: string) {
 export function sendTextWithParent(content: string, parentId: string, agentId?: string): OutboundPayload {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     throw new Error('Socket is not connected.');
+  }
+  if (!currentChatId) {
+    throw new Error('Chat session not ready — still connecting. Please try again.');
   }
 
   const payload: OutboundPayload & { parentId?: string } = {
@@ -362,6 +382,7 @@ export function sendTextWithParent(content: string, parentId: string, agentId?: 
 // --- Message edit / delete ---
 
 export function editMessage(messageId: string, newContent: string) {
+  if (!currentChatId) return;
   sendRaw({
     type: 'message.edit',
     data: {
@@ -375,6 +396,7 @@ export function editMessage(messageId: string, newContent: string) {
 }
 
 export function deleteMessage(messageId: string) {
+  if (!currentChatId) return;
   sendRaw({
     type: 'message.delete',
     data: {
@@ -389,6 +411,8 @@ export function deleteMessage(messageId: string) {
 // --- Typing indicator ---
 
 export function sendTyping(isTyping = true) {
+  // Don't send typing if chatId is not yet assigned by server
+  if (!currentChatId) return;
   sendRaw({
     type: 'typing',
     data: {
@@ -405,6 +429,9 @@ export function sendTyping(isTyping = true) {
 export function sendFile(opts: { content: string; mediaUrl: string; mimeType: string; fileName?: string; agentId?: string }): OutboundPayload {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     throw new Error('Socket is not connected.');
+  }
+  if (!currentChatId) {
+    throw new Error('Chat session not ready — still connecting. Please try again.');
   }
 
   const payload: OutboundPayload = {
@@ -439,4 +466,8 @@ export function onStatus(fn: StatusListener) {
 
 export function getStatus() {
   return currentStatus;
+}
+
+export function getChatId() {
+  return currentChatId;
 }

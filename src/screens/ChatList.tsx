@@ -46,6 +46,12 @@ function connectActiveChannel() {
   const conn = getActiveConnection();
   if (!conn) return null;
 
+  // If already connected to this server, don't re-connect (avoid disrupting ChatRoom's connection)
+  const status = channel.getStatus();
+  if (status === 'connected' || status === 'connecting') {
+    return conn;
+  }
+
   channel.connect({
     chatId: conn.chatId,
     senderId: conn.senderId || getUserId(),

@@ -217,7 +217,9 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
   // WebSocket 连接 & 消息监听
   useEffect(() => {
     if (!activeConn) return;
-    const conversationId = chatId || activeConn.chatId || (agentId ? `openclaw-web-agent-${agentId}-${activeConn.id}` : `openclaw-web-default-${activeConn.id}`);
+    // For token-authenticated connections, let the server assign chatId via connection.open
+    // Only generate a local chatId when there's no token and no explicit chatId
+    const conversationId = chatId || activeConn.chatId || (activeConn.token ? undefined : (agentId ? `openclaw-web-agent-${agentId}-${activeConn.id}` : `openclaw-web-default-${activeConn.id}`));
     const requestSelectedHistory = () => {
       if (!chatId) return;
       try { channel.requestHistory(chatId); } catch { /* ignore */ }
