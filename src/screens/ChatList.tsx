@@ -2,9 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Search, Bot, Server, Loader2, RefreshCw, Plus, ChevronDown } from 'lucide-react';
 import { Input } from '../components/ui/input';
-import { Button } from '../components/ui/button';
-import EmptyState from '../components/EmptyState';
-import { Badge } from '../components/ui/badge';
 import { cn } from '../lib/utils';
 import { CONNECTIONS_UPDATED_EVENT, getConnections, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
 import * as channel from '../services/clawChannel';
@@ -12,6 +9,31 @@ import type { AgentInfo, ConversationSummary, ChannelStatus } from '../services/
 import { getUserId } from '../App';
 
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
+
+// Distinct avatar colors per agent — hash name to a palette position
+const AVATAR_PALETTES = [
+  { from: '#67B88B', to: '#4a9a70' }, // green (brand)
+  { from: '#5B8DEF', to: '#3b6fd0' }, // blue
+  { from: '#8B5CF6', to: '#6D28D9' }, // purple
+  { from: '#F59E0B', to: '#D97706' }, // amber
+  { from: '#EC4899', to: '#BE185D' }, // pink
+  { from: '#14B8A6', to: '#0D9488' }, // teal
+  { from: '#F97316', to: '#EA580C' }, // orange
+  { from: '#6366F1', to: '#4F46E5' }, // indigo
+] as const;
+
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function getAgentPalette(agentId: string) {
+  return AVATAR_PALETTES[hashString(agentId) % AVATAR_PALETTES.length];
+}
 
 type PendingOpen = {
   agentId: string;
@@ -382,131 +404,162 @@ export default function ChatList({
     const lastMessage = getLastMessagePreview(agent.id, connection.id);
     const preview = lastMessage?.text
       ? (lastMessage.text.length > 50 ? `${lastMessage.text.slice(0, 50)}…` : lastMessage.text)
-      : 'No messages yet';
+      : null;
+    const palette = getAgentPalette(agent.id);
 
     return (
       <motion.button
         key={`${connection.id}-${agent.id}`}
         type="button"
-        initial={{ opacity: 0, y: 16 }}
+        initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: Math.min(index * 0.03, 0.2) }}
-        whileTap={isDisabled ? undefined : { scale: 0.98 }}
+        transition={{ delay: Math.min(index * 0.02, 0.15), duration: 0.2 }}
+        whileTap={isDisabled ? undefined : { scale: 0.985 }}
         onClick={() => handleAgentClick(connection, agent)}
         disabled={isDisabled}
         className={cn(
-          'relative w-full text-left bg-white dark:bg-card-alt rounded-[24px] flex items-center gap-4 shadow-sm border transition-colors',
-          compact ? 'p-3 rounded-[16px] gap-3' : 'p-4',
-          isDisabled && 'opacity-45 cursor-not-allowed',
+          'relative w-full text-left flex items-center gap-3 transition-colors',
+          compact ? 'px-3 py-2.5' : 'px-4 py-3',
+          'rounded-xl',
+          isDisabled && 'opacity-40 cursor-not-allowed',
           !isDisabled && 'cursor-pointer',
           isActive
-            ? 'border-primary bg-primary/5 dark:bg-primary/10'
-            : 'border-border/50 dark:border-border-dark/50 hover:border-primary/30'
+            ? 'bg-primary/8 dark:bg-primary/12'
+            : 'hover:bg-text/[0.03] dark:hover:bg-text-inv/[0.03]'
         )}
       >
-        {agent.model && (
-          <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-info/10 text-info text-[9px] font-medium rounded">
-            {agent.model.split('/').pop()}
-          </span>
-        )}
-        <div className={cn(
-          'rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 flex items-center justify-center text-white shadow-sm',
-          compact ? 'w-10 h-10 text-lg' : 'w-14 h-14 text-2xl'
-        )}>
-          {agent.identityEmoji || <Bot size={compact ? 18 : 24} />}
+        {/* Avatar with per-agent color */}
+        <div
+          className={cn(
+            'rounded-2xl flex-shrink-0 flex items-center justify-center text-white',
+            compact ? 'w-9 h-9 text-base rounded-xl' : 'w-11 h-11 text-xl'
+          )}
+          style={{ background: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
+        >
+          {agent.identityEmoji || <Bot size={compact ? 16 : 20} />}
         </div>
+
+        {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2 mb-0.5">
-            <div className="flex items-center gap-2 min-w-0">
-              <h3 className={cn('font-semibold truncate', compact ? 'text-[14px]' : 'text-[16px]')}>{agent.name}</h3>
-              {agent.isDefault && (
-                <Badge className="text-[10px] shrink-0">default</Badge>
-              )}
-            </div>
-            {lastMessage?.timestamp && (
-              <span className="text-[11px] text-text/50 dark:text-text-inv/50 shrink-0">
-                {formatRelativeTime(lastMessage.timestamp)}
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <h3 className={cn('font-semibold truncate', compact ? 'text-[13px]' : 'text-[15px]')}>
+              {agent.name}
+            </h3>
+            {agent.isDefault && (
+              <span className="text-[9px] font-medium text-text/35 dark:text-text-inv/35 border border-text/15 dark:border-text-inv/15 rounded px-1 py-px leading-none">
+                default
+              </span>
+            )}
+            {agent.model && (
+              <span className="text-[9px] text-text/30 dark:text-text-inv/30 truncate ml-auto shrink-0">
+                {agent.model.split('/').pop()}
               </span>
             )}
           </div>
-          <p className={cn('text-text/40 dark:text-text-inv/40 truncate', compact ? 'text-[12px]' : 'text-[13px]')}>
-            {preview}
-          </p>
+          {preview ? (
+            <p className={cn('text-text/45 dark:text-text-inv/40 truncate', compact ? 'text-[11px]' : 'text-[13px]')}>
+              {preview}
+            </p>
+          ) : (
+            <p className={cn('text-text/25 dark:text-text-inv/20 truncate italic', compact ? 'text-[11px]' : 'text-[13px]')}>
+              Start a conversation
+            </p>
+          )}
           {showSource && (
-            <p className="mt-1 text-[11px] text-text/35 dark:text-text-inv/35 truncate">
+            <p className="mt-0.5 text-[10px] text-text/30 dark:text-text-inv/25 truncate">
               {getConnectionLabel(connection)}
             </p>
           )}
         </div>
+
+        {/* Timestamp */}
+        {lastMessage?.timestamp && (
+          <span className="text-[10px] text-text/35 dark:text-text-inv/30 shrink-0 self-start mt-1">
+            {formatRelativeTime(lastMessage.timestamp)}
+          </span>
+        )}
       </motion.button>
     );
   };
 
   if (connections.length === 0) {
     return (
-      <div className={cn('flex flex-col h-full', !compact && 'pb-32')}>
-        <div className={cn('px-6 pb-4', compact ? 'pt-4' : 'pt-12')}>
-          {!compact && <h1 className="text-3xl font-bold tracking-tight mb-6">Chats</h1>}
+      <div className={cn('flex flex-col h-full', !compact && 'pb-24')}>
+        <div className={cn('px-5 pb-3', compact ? 'pt-3' : 'pt-10')}>
+          {!compact && <h1 className="text-2xl font-bold tracking-tight mb-4">Chats</h1>}
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <EmptyState
-            icon={Server}
-            title="No server connected"
-            description="Pair with your OpenClaw gateway to start chatting"
-            action={<Button onClick={onAddServer}><Server size={16} /> Add Server</Button>}
-          />
+        <div className="flex-1 flex flex-col items-center justify-center px-8">
+          <div className="w-12 h-12 rounded-2xl bg-text/[0.04] dark:bg-text-inv/[0.04] flex items-center justify-center mb-4">
+            <Server size={20} className="text-text/25 dark:text-text-inv/20" />
+          </div>
+          <p className="text-[15px] font-medium text-text/60 dark:text-text-inv/50 mb-1">No servers connected</p>
+          <p className="text-[13px] text-text/30 dark:text-text-inv/25 mb-5 text-center">Add a server to start chatting with agents</p>
+          <button
+            onClick={onAddServer}
+            className="px-5 py-2 rounded-lg bg-primary text-white text-[13px] font-medium hover:bg-primary-deep transition-colors"
+          >
+            Add Server
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={cn('flex flex-col h-full min-h-0', !compact && 'pb-32')}>
+    <div className={cn('flex flex-col h-full min-h-0', !compact && 'pb-24')}>
       <div className={cn(
-        'sticky top-0 bg-surface/80 dark:bg-surface-dark/80 backdrop-blur-xl z-10',
-        compact ? 'px-4 pt-3 pb-3' : 'px-6 pt-12 pb-4'
+        'sticky top-0 bg-surface/90 dark:bg-surface-dark/90 backdrop-blur-lg z-10',
+        compact ? 'px-3 pt-3 pb-2' : 'px-5 pt-10 pb-3'
       )}>
-        <div className="flex justify-between items-center mb-4 gap-3">
+        <div className="flex justify-between items-center mb-3 gap-3">
           <div className="min-w-0 flex-1">
-            {!compact && <h1 className="text-3xl font-bold tracking-tight">Chats</h1>}
+            {!compact && <h1 className="text-2xl font-bold tracking-tight">Chats</h1>}
             {compact && <span className="font-semibold text-[15px] block truncate">Chats</span>}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleRefresh}
-              className="p-2 text-text/50 dark:text-text-inv/50 hover:text-primary transition-colors"
+              className="p-1.5 text-text/40 dark:text-text-inv/40 hover:text-primary transition-colors"
             >
-              <RefreshCw size={16} className={Object.values(refreshingMap).some(Boolean) ? 'animate-spin' : ''} />
+              <RefreshCw size={14} className={Object.values(refreshingMap).some(Boolean) ? 'animate-spin' : ''} />
             </motion.button>
-            <Badge variant={connectedCount > 0 ? 'success' : 'warning'} className="text-[11px]">
-              {connectedCount}/{connections.length} online
-            </Badge>
+            <span className={cn(
+              'text-[10px] font-medium px-1.5 py-0.5 rounded-full',
+              connectedCount > 0
+                ? 'text-primary/70 bg-primary/8'
+                : 'text-text/30 dark:text-text-inv/25 bg-text/5 dark:bg-text-inv/5'
+            )}>
+              {connectedCount}/{connections.length}
+            </span>
           </div>
         </div>
 
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text/40 dark:text-text-inv/40" size={compact ? 16 : 20} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text/30 dark:text-text-inv/30" size={compact ? 14 : 16} />
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search agents across servers..."
-            className={cn('pl-12 rounded-full bg-white dark:bg-card-alt', compact && 'pl-10 py-1.5 text-[13px]')}
+            placeholder="Search agents…"
+            className={cn(
+              'pl-9 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] border-0 placeholder:text-text/30 dark:placeholder:text-text-inv/25',
+              compact ? 'py-1.5 text-[12px] pl-8' : 'py-2 text-[13px]'
+            )}
           />
         </div>
       </div>
 
-      <div className={cn('flex-1 overflow-y-auto', compact ? 'px-2 pb-3' : 'px-4 pb-4')}>
+      <div className={cn('flex-1 overflow-y-auto', compact ? 'px-1 pb-2' : 'px-2 pb-4')}>
         {searchQuery.trim() ? (
-          <div className="space-y-2">
+          <div className="space-y-0.5">
             {filteredResults.length > 0 ? filteredResults.map(({ agent, connection }, index) => (
               renderAgentCard(connection, agent, index, true)
             )) : (
-              <div className="text-center text-text/40 dark:text-text-inv/40 mt-10">No agents found</div>
+              <div className="text-center text-text/30 dark:text-text-inv/30 mt-10 text-[13px]">No agents found</div>
             )}
           </div>
         ) : showGroupedView ? (
-          <div className="space-y-2">
+          <div className="space-y-1">
             {connections.map((connection) => {
               const isExpanded = expandedIds.includes(connection.id);
               const agents = agentMap[connection.id] || [];
@@ -514,27 +567,22 @@ export default function ChatList({
               const isLoading = loadingMap[connection.id] && agents.length === 0;
 
               return (
-                <div
-                  key={connection.id}
-                  className="rounded-[24px] border border-border/60 dark:border-border-dark/60 bg-white/70 dark:bg-card-alt/70 overflow-hidden"
-                >
+                <div key={connection.id}>
                   <button
                     type="button"
                     onClick={() => {
                       handleToggleGroup(connection.id);
                       if (!isExpanded) ensureAgentsLoaded(connection);
                     }}
-                    className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left group"
                   >
-                    <div className="min-w-0 flex items-center gap-2">
-                      <span className={cn('inline-flex h-2.5 w-2.5 rounded-full', getStatusClasses(status))} />
-                      <span className="text-xs uppercase tracking-wider text-muted-foreground/60 truncate">
-                        {getConnectionTitle(connection)}
-                      </span>
-                    </div>
+                    <span className={cn('inline-flex h-2 w-2 rounded-full shrink-0', getStatusClasses(status))} />
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-text/40 dark:text-text-inv/35 truncate flex-1">
+                      {getConnectionLabel(connection)}
+                    </span>
                     <ChevronDown
-                      size={16}
-                      className={cn('shrink-0 text-text/35 dark:text-text-inv/35 transition-transform', isExpanded && 'rotate-180')}
+                      size={12}
+                      className={cn('shrink-0 text-text/25 dark:text-text-inv/20 transition-transform duration-200', isExpanded && 'rotate-180')}
                     />
                   </button>
 
@@ -544,18 +592,19 @@ export default function ChatList({
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
                         className="overflow-hidden"
                       >
-                        <div className="px-3 pb-3 pt-1 space-y-2">
+                        <div className="space-y-0.5 pb-1">
                           {isLoading ? (
-                            <div className="flex flex-col items-center justify-center py-10">
-                              <Loader2 size={24} className="text-primary animate-spin mb-3" />
-                              <p className="text-text/40 dark:text-text-inv/40 text-[13px]">Loading agents…</p>
+                            <div className="flex items-center justify-center gap-2 py-6">
+                              <Loader2 size={16} className="text-text/30 animate-spin" />
+                              <span className="text-text/30 dark:text-text-inv/25 text-[12px]">Loading…</span>
                             </div>
                           ) : agents.length > 0 ? agents.map((agent, index) => (
                             renderAgentCard(connection, agent, index)
                           )) : (
-                            <div className="text-center text-text/40 dark:text-text-inv/40 py-8">No agents found</div>
+                            <div className="text-center text-text/25 dark:text-text-inv/20 py-6 text-[12px]">No agents</div>
                           )}
                         </div>
                       </motion.div>
@@ -566,28 +615,33 @@ export default function ChatList({
             })}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-0.5">
             {loadingMap[connections[0].id] && (agentMap[connections[0].id] || []).length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <Loader2 size={28} className="text-primary animate-spin mb-3" />
-                <p className="text-text/40 dark:text-text-inv/40 text-[14px]">Loading agents…</p>
+              <div className="flex items-center justify-center gap-2 py-12">
+                <Loader2 size={18} className="text-text/30 animate-spin" />
+                <span className="text-text/30 dark:text-text-inv/25 text-[13px]">Loading agents…</span>
               </div>
             ) : (agentMap[connections[0].id] || []).length > 0 ? (
               (agentMap[connections[0].id] || []).map((agent, index) => renderAgentCard(connections[0], agent, index))
             ) : (
-              <div className="text-center text-text/40 dark:text-text-inv/40 mt-10">No agents found</div>
+              <div className="text-center text-text/25 dark:text-text-inv/20 mt-10 text-[13px]">No agents</div>
             )}
           </div>
         )}
 
-        <Button
-          variant="outline"
+        <button
           onClick={onAddServer}
-          className="w-full mt-4 rounded-[20px] border-dashed border-border/80 dark:border-border-dark/80 bg-transparent"
+          className={cn(
+            'w-full mt-3 py-2.5 flex items-center justify-center gap-1.5',
+            'text-[12px] font-medium text-text/30 dark:text-text-inv/25',
+            'rounded-lg border border-dashed border-text/10 dark:border-text-inv/10',
+            'hover:border-text/20 dark:hover:border-text-inv/15 hover:text-text/45 dark:hover:text-text-inv/35',
+            'transition-colors'
+          )}
         >
-          <Plus size={16} />
+          <Plus size={13} />
           Add Server
-        </Button>
+        </button>
       </div>
     </div>
   );

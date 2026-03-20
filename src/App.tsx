@@ -266,11 +266,10 @@ function AppShell() {
         default:
           return (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <div className="w-20 h-20 bg-gradient-to-br from-primary to-primary-deep rounded-3xl flex items-center justify-center mb-6 shadow-lg shadow-primary/20">
-                <MessageCircle size={36} className="text-white" />
+              <div className="w-14 h-14 rounded-2xl bg-primary/8 flex items-center justify-center mb-4">
+                <MessageCircle size={24} className="text-primary/60" />
               </div>
-              <h2 className="text-2xl font-bold mb-2">Clawline</h2>
-              <p className="text-text/40 dark:text-text-inv/40 text-[15px]">Select a conversation from the sidebar to start chatting</p>
+              <p className="text-[14px] text-text/35 dark:text-text-inv/30">Select an agent to start chatting</p>
             </div>
           );
       }
@@ -295,9 +294,9 @@ function AppShell() {
       <div className="flex flex-col w-full h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-surface dark:bg-surface-dark text-text dark:text-text-inv overflow-hidden font-sans">
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
-        <div className="w-80 xl:w-96 h-full flex flex-col border-r border-border dark:border-border-dark bg-white/50 dark:bg-card-alt/50 flex-shrink-0">
+        <div className="w-72 xl:w-80 h-full flex flex-col border-r border-border/60 dark:border-border-dark/60 bg-surface dark:bg-surface-dark flex-shrink-0">
           {/* Sidebar nav */}
-          <div className="flex items-center gap-1 px-3 py-2.5 border-b border-border dark:border-border-dark min-h-[57px]">
+          <div className="flex items-center gap-0.5 px-2 py-2 border-b border-border/60 dark:border-border-dark/60 min-h-[48px]">
             {SIDEBAR_NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive = item.id === 'chats'
@@ -308,11 +307,11 @@ function AppShell() {
                   key={item.id}
                   onClick={() => navigate(item.id as Screen)}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all',
-                    isActive ? 'bg-primary text-white shadow-sm' : 'text-text/50 dark:text-text-inv/40 hover:bg-surface dark:hover:bg-surface-dark'
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-medium transition-all',
+                    isActive ? 'bg-primary text-white' : 'text-text/40 dark:text-text-inv/30 hover:text-text/60 dark:hover:text-text-inv/50 hover:bg-text/[0.03] dark:hover:bg-text-inv/[0.03]'
                   )}
                 >
-                  <Icon size={16} />
+                  <Icon size={15} />
                   <span className="hidden xl:inline">{item.label}</span>
                 </button>
               );
