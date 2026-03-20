@@ -738,6 +738,8 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
         {messages.map((msg, i) => {
           const isUser = msg.sender === 'user';
           const isStreaming = msg.isStreaming;
+          const hasCodeBlock = !isUser && msg.text?.includes('```');
+          const isErrorMsg = !isUser && msg.text?.startsWith('⚠️');
           const prevMsg = i > 0 ? messages[i - 1] : null;
           const showDateSep = isDifferentDay(prevMsg?.timestamp, msg.timestamp);
           return (
@@ -773,7 +775,9 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                     className={`px-5 py-3.5 rounded-[24px] text-[15px] leading-relaxed relative ${
                       isUser
                         ? 'bg-primary text-white rounded-tr-[8px] shadow-md shadow-primary/20'
-                        : 'bg-white dark:bg-card-alt text-text dark:text-text-inv border border-border dark:border-border-dark rounded-tl-[8px] shadow-sm'
+                        : isErrorMsg
+                          ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/40 rounded-tl-[8px]'
+                          : `bg-white dark:bg-card-alt text-text dark:text-text-inv border border-border dark:border-border-dark rounded-tl-[8px] shadow-sm${hasCodeBlock ? ' border-l-[3px] border-l-primary/60' : ''}`
                     }`}
                   >
                     {/* Model badge - small top-right indicator for AI messages */}
