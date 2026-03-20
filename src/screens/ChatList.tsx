@@ -232,7 +232,7 @@ export default function ChatList({ onOpenChat, onAddServer, compact, activeAgent
             <Server size={28} className="text-text/50 dark:text-text-inv/50" />
           </div>
           <p className="text-text/50 dark:text-text-inv/50 text-[15px] mb-1">No server connected</p>
-          <p className="text-text/50 dark:text-text-inv/50 text-[13px] mb-6">Add a server in Profile to get started</p>
+          <p className="text-text/50 dark:text-text-inv/50 text-[13px] mb-6">Pair with your OpenClaw gateway to start chatting</p>
           <Button onClick={onAddServer}>
             <Server size={16} /> Add Server
           </Button>

@@ -182,6 +182,8 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactingToMsgId, setReactingToMsgId] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<string>(channel.getStatus());
+  const prevWsStatusRef = useRef<string>(channel.getStatus());
+  const [showReconnected, setShowReconnected] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -338,6 +340,12 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
     });
 
     const unsubStatus = channel.onStatus((status) => {
+      // Detect reconnect: was disconnected/reconnecting → now connected
+      if (status === 'connected' && prevWsStatusRef.current !== 'connected' && prevWsStatusRef.current !== 'connecting') {
+        setShowReconnected(true);
+        setTimeout(() => setShowReconnected(false), 2500);
+      }
+      prevWsStatusRef.current = status;
       setWsStatus(status);
     });
 
@@ -677,8 +685,45 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
         )}
       </AnimatePresence>
 
+      {/* Reconnect celebration toast */}
+      <AnimatePresence>
+        {showReconnected && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-primary text-white text-[13px] font-medium px-4 py-2 rounded-full shadow-lg shadow-primary/25 flex items-center gap-2"
+          >
+            <Wifi size={14} /> Back online!
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 pb-4 flex flex-col gap-4">
+        {/* Empty chat welcome */}
+        {messages.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, type: 'spring', stiffness: 300, damping: 25 }}
+            className="flex-1 flex flex-col items-center justify-center text-center px-6"
+          >
+            <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary-deep rounded-[20px] flex items-center justify-center mb-5 shadow-lg shadow-primary/20">
+              <span className="text-2xl">{agentInfo?.identityEmoji || '🤖'}</span>
+            </div>
+            <h3 className="text-lg font-semibold mb-1">{agentInfo?.name || 'Agent'}</h3>
+            <p className="text-text/45 dark:text-text-inv/45 text-[14px] leading-relaxed max-w-[260px]">
+              {(() => {
+                const h = new Date().getHours();
+                if (h < 6) return 'Burning the midnight oil? Type away.';
+                if (h < 12) return 'Good morning! What are we building today?';
+                if (h < 18) return 'Ready when you are. Send a message or try a /slash command.';
+                return 'Evening session? Let\'s get things done.';
+              })()}
+            </p>
+          </motion.div>
+        )}
         {messages.map((msg, i) => {
           const isUser = msg.sender === 'user';
           const isStreaming = msg.isStreaming;
@@ -695,9 +740,12 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                 </div>
               )}
               <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(i, 10) * 0.03 }}
+                initial={isUser ? { opacity: 0, scale: 0.9, y: 10 } : { opacity: 0, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={isUser
+                  ? { type: 'spring', stiffness: 500, damping: 25 }
+                  : { delay: Math.min(i, 10) * 0.03 }
+                }
                 className={`flex ${isUser ? 'justify-end' : 'justify-start'} group`}
               >
               {!isUser && (
@@ -859,8 +907,9 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
                     {msg.reactions.map((emoji, idx) => (
                       <motion.button
                         key={idx}
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
+                        initial={{ scale: 0, rotate: -15 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        transition={{ type: 'spring', stiffness: 600, damping: 15 }}
                         whileTap={{ scale: 0.8 }}
                         onClick={() => {
                           setMessages((prev) => prev.map((m) => {
@@ -1143,6 +1192,7 @@ export default function ChatRoom({ agentId, chatId, onBack, isDesktop }: { agent
             <motion.button
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
+              whileHover={{ scale: 1.08, y: -2 }}
               whileTap={{ scale: 0.9 }}
               onClick={handleSend}
               aria-label="Send message"
