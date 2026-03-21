@@ -404,9 +404,23 @@ export default function ChatRoom({
     const unsubMsg = channel.onMessage((packet) => {
       if (packet.type === 'connection.open') {
         requestSelectedHistory();
-      } else if (packet.type === 'message.send' && packet.data?.content) {
+      } else if (packet.type === 'message.send' && (packet.data?.content || packet.data?.mediaUrl)) {
         setIsThinking(false);
-        const content = packet.data.content as string;
+        const content = (packet.data.content as string) || '';
+        const mediaUrl = packet.data.mediaUrl as string | undefined;
+        const contentType = packet.data.contentType as string | undefined;
+        const mimeType = packet.data.mimeType as string | undefined;
+
+        // Determine media type from contentType or mimeType
+        let mediaType: string | undefined;
+        if (contentType === 'image' || mimeType?.startsWith('image/')) {
+          mediaType = 'image';
+        } else if (contentType === 'voice' || contentType === 'audio' || mimeType?.startsWith('audio/')) {
+          mediaType = contentType === 'voice' ? 'voice' : 'audio';
+        } else if (mediaUrl) {
+          mediaType = 'file';
+        }
+
         // Remove any streaming placeholder before adding the final message
         setMessages((prev) => {
           const withoutStreaming = prev.filter((m) => !m.isStreaming);
@@ -415,9 +429,11 @@ export default function ChatRoom({
             {
               id: packet.data.messageId || Date.now().toString(),
               sender: 'ai',
-              text: content,
+              text: content || (mediaType === 'image' ? '[Image]' : mediaType === 'file' ? `📎 File` : ''),
               replyTo: (packet.data.replyTo as string) || undefined,
               timestamp: (packet.data.timestamp as number) || Date.now(),
+              mediaUrl,
+              mediaType,
             },
           ];
         });
@@ -452,12 +468,24 @@ export default function ChatRoom({
         const d = packet.data as { messageId: string };
         setMessages((prev) => prev.filter((m) => m.id !== d.messageId));
       } else if (packet.type === 'history.sync' && Array.isArray(packet.data?.messages)) {
-        const history = (packet.data.messages as Array<{messageId?: string; content?: string; direction?: string; senderId?: string; timestamp?: number}>).map((m) => ({
-          id: m.messageId || Date.now().toString(),
-          sender: (m.direction === 'sent' ? 'user' : 'ai') as 'user' | 'ai',
-          text: m.content || '',
-          timestamp: m.timestamp || Date.now(),
-        }));
+        const history = (packet.data.messages as Array<{messageId?: string; content?: string; direction?: string; senderId?: string; timestamp?: number; mediaUrl?: string; contentType?: string; mimeType?: string}>).map((m) => {
+          let mediaType: string | undefined;
+          if (m.contentType === 'image' || m.mimeType?.startsWith('image/')) {
+            mediaType = 'image';
+          } else if (m.contentType === 'voice' || m.contentType === 'audio' || m.mimeType?.startsWith('audio/')) {
+            mediaType = m.contentType === 'voice' ? 'voice' : 'audio';
+          } else if (m.mediaUrl) {
+            mediaType = 'file';
+          }
+          return {
+            id: m.messageId || Date.now().toString(),
+            sender: (m.direction === 'sent' ? 'user' : 'ai') as 'user' | 'ai',
+            text: m.content || (mediaType === 'image' ? '[Image]' : mediaType === 'file' ? '📎 File' : ''),
+            timestamp: m.timestamp || Date.now(),
+            mediaUrl: m.mediaUrl,
+            mediaType,
+          };
+        });
         setMessages(history);
       } else if (packet.type === 'conversation.list') {
         const nextConversations = Array.isArray((packet.data as { conversations?: ConversationSummary[] }).conversations)
