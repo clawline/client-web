@@ -287,17 +287,21 @@ export default function ChatRoom({
     setWsStatus(channel.getStatus(connId));
     prevWsStatusRef.current = channel.getStatus(connId);
 
-    channel.connect({
-      connectionId: connId,
-      chatId: conversationId,
-      senderId: activeConn.senderId || getUserId(),
-      senderName: activeConn.displayName,
-      serverUrl: activeConn.serverUrl,
-      agentId: agentId || undefined,
-      token: activeConn.token,
-    });
+    const currentStatus = channel.getStatus(connId);
 
-    if (channel.getStatus(connId) === 'connected') {
+    if (currentStatus !== 'connected' && currentStatus !== 'connecting') {
+      channel.connect({
+        connectionId: connId,
+        chatId: conversationId,
+        senderId: activeConn.senderId || getUserId(),
+        senderName: activeConn.displayName,
+        serverUrl: activeConn.serverUrl,
+        agentId: agentId || undefined,
+        token: activeConn.token,
+      });
+    }
+
+    if (currentStatus === 'connected') {
       requestSelectedHistory();
     }
 
@@ -442,17 +446,20 @@ export default function ChatRoom({
   useEffect(() => {
     if (!showHistoryDrawer || !activeConn || !connId || !agentId) return;
 
-    channel.connect({
-      connectionId: connId,
-      chatId: chatId || activeConn.chatId || undefined,
-      senderId: activeConn.senderId || getUserId(),
-      senderName: activeConn.displayName,
-      serverUrl: activeConn.serverUrl,
-      agentId: agentId || undefined,
-      token: activeConn.token,
-    });
+    const drawerStatus = channel.getStatus(connId);
+    if (drawerStatus !== 'connected' && drawerStatus !== 'connecting') {
+      channel.connect({
+        connectionId: connId,
+        chatId: chatId || activeConn.chatId || undefined,
+        senderId: activeConn.senderId || getUserId(),
+        senderName: activeConn.displayName,
+        serverUrl: activeConn.serverUrl,
+        agentId: agentId || undefined,
+        token: activeConn.token,
+      });
+    }
 
-    if (channel.getStatus(connId) === 'connected') {
+    if (drawerStatus === 'connected') {
       requestConversationList();
     } else {
       setLoadingConversations(true);
