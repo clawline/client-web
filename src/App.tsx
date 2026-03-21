@@ -19,6 +19,7 @@ import { usePWAUpdate } from './hooks/usePWAUpdate';
 import { useIOSPWA } from './hooks/useIOSPWA';
 import { cn } from './lib/utils';
 import { MessageCircle, LayoutDashboard, Search as SearchIcon, User, Settings } from 'lucide-react';
+import { migrateFromLocalStorage } from './services/messageDB';
 
 // Lazy-loaded heavy screens
 const ChatRoom = lazy(() => import('./screens/ChatRoom'));
@@ -40,6 +41,7 @@ function ScreenLoading() {
 
 const STORAGE_KEY_USER_ID = 'openclaw.userId';
 const STORAGE_KEY_USER_NAME = 'openclaw.userName';
+const INDEXED_DB_MIGRATED_KEY = 'openclaw.indexeddb.migrated';
 
 
 function createUserId() {
@@ -433,6 +435,25 @@ function AppShell() {
 }
 
 export default function App() {
+  useEffect(() => {
+    if (localStorage.getItem(INDEXED_DB_MIGRATED_KEY) === '1') {
+      return;
+    }
+
+    let cancelled = false;
+
+    void migrateFromLocalStorage().then(() => {
+      if (cancelled) return;
+      localStorage.setItem(INDEXED_DB_MIGRATED_KEY, '1');
+    }).catch(() => {
+      // Retry on next app launch if migration fails.
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <BrowserRouter>
       <AppShell />

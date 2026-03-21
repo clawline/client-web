@@ -56,6 +56,7 @@ export type ChannelStatus = ConnectionStatus;
 
 type StatusListener = (status: ConnectionStatus) => void;
 type MessageListener = (packet: InboundPacket) => void;
+type TypingListener = (connectionId: string, agentIds: string[]) => void;
 
 export type ConnectOptions = {
   connectionId?: string;
@@ -128,6 +129,9 @@ function createInstance(connectionId: string): ChannelInstance {
 
 class ChannelManager {
   private instances = new Map<string, ChannelInstance>();
+  private typingAgents = new Map<string, Set<string>>();
+  private typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private typingListeners = new Set<TypingListener>();
 
   get(connectionId?: string) {
     const resolved = getResolvedConnectionId(connectionId);
@@ -145,6 +149,77 @@ class ChannelManager {
       clearTimeout(instance.reconnectTimer);
       instance.reconnectTimer = null;
     }
+  }
+
+  private getTypingTimerKey(connectionId: string, agentId: string) {
+    return `${connectionId}::${agentId}`;
+  }
+
+  private emitTypingChange(connectionId: string) {
+    const agentIds = [...(this.typingAgents.get(connectionId) ?? new Set<string>())];
+    this.typingListeners.forEach((listener) => listener(connectionId, agentIds));
+  }
+
+  private clearTypingTimer(connectionId: string, agentId: string) {
+    const timerKey = this.getTypingTimerKey(connectionId, agentId);
+    const timer = this.typingTimers.get(timerKey);
+    if (timer) {
+      clearTimeout(timer);
+      this.typingTimers.delete(timerKey);
+    }
+  }
+
+  private clearConnectionTyping(connectionId: string) {
+    const typingAgents = this.typingAgents.get(connectionId);
+    if (!typingAgents || typingAgents.size === 0) {
+      return;
+    }
+
+    typingAgents.forEach((agentId) => this.clearTypingTimer(connectionId, agentId));
+    this.typingAgents.delete(connectionId);
+    this.emitTypingChange(connectionId);
+  }
+
+  private setTypingState(connectionId: string, agentId: string, isTyping: boolean) {
+    if (!connectionId || !agentId) {
+      return;
+    }
+
+    const nextTypingAgents = new Set(this.typingAgents.get(connectionId) ?? []);
+
+    if (isTyping) {
+      nextTypingAgents.add(agentId);
+      this.typingAgents.set(connectionId, nextTypingAgents);
+      this.clearTypingTimer(connectionId, agentId);
+      const timerKey = this.getTypingTimerKey(connectionId, agentId);
+      this.typingTimers.set(timerKey, setTimeout(() => {
+        this.setTypingState(connectionId, agentId, false);
+      }, 5000));
+    } else {
+      nextTypingAgents.delete(agentId);
+      this.clearTypingTimer(connectionId, agentId);
+      if (nextTypingAgents.size === 0) {
+        this.typingAgents.delete(connectionId);
+      } else {
+        this.typingAgents.set(connectionId, nextTypingAgents);
+      }
+    }
+
+    this.emitTypingChange(connectionId);
+  }
+
+  private resolveTypingAgentId(instance: ChannelInstance, packet: InboundPacket) {
+    const packetAgentId = typeof packet.data.agentId === 'string' ? packet.data.agentId : '';
+    if (packetAgentId) {
+      return packetAgentId;
+    }
+
+    const senderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
+    if (senderId && senderId !== instance.currentSenderId) {
+      return senderId;
+    }
+
+    return instance.currentAgentId;
   }
 
   private clearIdleTimer(instance: ChannelInstance) {
@@ -293,6 +368,11 @@ class ChannelManager {
         if (packet.type === 'connection.open' && packet.data?.chatId) {
           instance.currentChatId = packet.data.chatId as string;
         }
+        if (packet.type === 'typing') {
+          const agentId = this.resolveTypingAgentId(instance, packet);
+          const isTyping = packet.data.isTyping === true;
+          this.setTypingState(instance.connectionId, agentId, isTyping);
+        }
         instance.messageListeners.forEach((fn) => fn(packet));
       } catch {
         // ignore malformed packets
@@ -331,6 +411,7 @@ class ChannelManager {
     instance.manualClose = manual;
     this.clearReconnectTimer(instance);
     this.clearIdleTimer(instance);
+    this.clearConnectionTyping(instance.connectionId);
     instance.connectionToken += 1;
 
     const socket = instance.ws;
@@ -614,6 +695,19 @@ class ChannelManager {
   getChatId(connectionId?: string) {
     return this.get(connectionId)?.currentChatId || '';
   }
+
+  getTypingAgents(connectionId?: string) {
+    const resolved = getResolvedConnectionId(connectionId);
+    if (!resolved) return [];
+    return [...(this.typingAgents.get(resolved) ?? new Set<string>())];
+  }
+
+  onTypingChange(fn: TypingListener) {
+    this.typingListeners.add(fn);
+    return () => {
+      this.typingListeners.delete(fn);
+    };
+  }
 }
 
 const manager = new ChannelManager();
@@ -786,4 +880,12 @@ export function getStatus(connectionId?: string) {
 
 export function getChatId(connectionId?: string) {
   return manager.getChatId(connectionId);
+}
+
+export function getTypingAgents(connectionId?: string) {
+  return manager.getTypingAgents(connectionId);
+}
+
+export function onTypingChange(fn: TypingListener) {
+  return manager.onTypingChange(fn);
 }

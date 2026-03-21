@@ -7,6 +7,7 @@ import { CONNECTIONS_UPDATED_EVENT, getConnections, setActiveConnectionId, type 
 import * as channel from '../services/clawChannel';
 import type { AgentInfo, ConversationSummary, ChannelStatus } from '../services/clawChannel';
 import { getUserId } from '../App';
+import { getLatestMessagePreview } from '../services/messageDB';
 
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
 const EXPANDED_KEY = 'openclaw.chatlist.expandedIds';
@@ -14,6 +15,7 @@ const VIEW_MODE_KEY = 'openclaw.chatlist.viewMode';
 const AGENT_ORDER_KEY = 'openclaw.chatlist.agentOrder';
 const SIDEBAR_WIDTH_KEY = 'openclaw.sidebar.width';
 const AGENT_AVATAR_KEY = 'openclaw.agentAvatars';
+const MESSAGE_PREVIEW_UPDATED_EVENT = 'openclaw:message-preview-updated';
 
 type ViewMode = 'list' | 'grid';
 
@@ -99,22 +101,20 @@ function getPreviewKey(connectionId: string, agentId: string) {
   return `${PREVIEW_KEY_PREFIX}${connectionId}.${agentId}`;
 }
 
-function getLastMessagePreview(agentId: string, connectionId: string): { text: string; timestamp?: number } | null {
+function getPreviewStateKey(connectionId: string, agentId: string) {
+  return `${connectionId}:${agentId}`;
+}
+
+function getStoredPreview(agentId: string, connectionId: string): { text: string; timestamp?: number } | null {
   try {
     const cachedPreview = localStorage.getItem(getPreviewKey(connectionId, agentId));
     if (cachedPreview) {
       return JSON.parse(cachedPreview) as { text: string; timestamp?: number };
     }
-
-    const raw = localStorage.getItem(`openclaw.messages.${connectionId}.${agentId}`);
-    if (!raw) return null;
-    const msgs = JSON.parse(raw) as Array<{ text?: string; timestamp?: number }>;
-    if (msgs.length === 0) return null;
-    const last = msgs[msgs.length - 1];
-    return { text: last?.text ?? '', timestamp: last?.timestamp };
   } catch {
-    return null;
+    // ignore parse failures and fall back to empty preview state
   }
+  return null;
 }
 
 function getConnectionLabel(connection: ServerConnection) {
@@ -189,6 +189,7 @@ export default function ChatList({
   const [refreshingMap, setRefreshingMap] = useState<Record<string, boolean>>({});
   const [attemptedMap, setAttemptedMap] = useState<Record<string, boolean>>({});
   const [typingAgents, setTypingAgents] = useState<Set<string>>(new Set());
+  const [previewMap, setPreviewMap] = useState<Record<string, { text: string; timestamp?: number } | null>>({});
   const [customOrder, setCustomOrder] = useState<Record<string, string[]>>(() => {
     try { const raw = localStorage.getItem(AGENT_ORDER_KEY); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
   });
@@ -315,6 +316,32 @@ export default function ChatList({
     };
   }, [syncConnections]);
 
+  useEffect(() => {
+    const syncTypingAgents = () => {
+      const next = new Set<string>();
+      connections.forEach((connection) => {
+        channel.getTypingAgents(connection.id).forEach((agentId) => {
+          next.add(getPreviewStateKey(connection.id, agentId));
+        });
+      });
+      setTypingAgents(next);
+    };
+
+    syncTypingAgents();
+    return channel.onTypingChange((connectionId, agentIds) => {
+      setTypingAgents((prev) => {
+        const next = new Set(prev);
+        [...next].forEach((key) => {
+          if (key.startsWith(`${connectionId}:`)) {
+            next.delete(key);
+          }
+        });
+        agentIds.forEach((agentId) => next.add(getPreviewStateKey(connectionId, agentId)));
+        return next;
+      });
+    });
+  }, [connections]);
+
   const ensureAgentsLoaded = useCallback((connection: ServerConnection, force = false) => {
     // Skip if already have agents and not forcing refresh
     if (!force && (agentMapRef.current[connection.id]?.length ?? 0) > 0) {
@@ -415,16 +442,6 @@ export default function ChatList({
           setRefreshingMap((prev) => ({ ...prev, [connection.id]: false }));
           setActiveConnectionId(connection.id);
           onOpenChat(connection.id, pendingOpen.agentId, conversations[0]?.chatId);
-        } else if (packet.type === 'typing') {
-          const data = packet.data as { agentId?: string; isTyping?: boolean };
-          if (data.agentId) {
-            const key = `${connection.id}:${data.agentId}`;
-            setTypingAgents((prev) => {
-              const next = new Set(prev);
-              if (data.isTyping) next.add(key); else next.delete(key);
-              return next;
-            });
-          }
         }
       }, connection.id);
 
@@ -453,6 +470,71 @@ export default function ChatList({
       cleanups.forEach((cleanup) => cleanup());
     };
   }, [connections, expandedIds, onOpenChat, searchQuery]);
+
+  useEffect(() => {
+    const previewTargets = connections.flatMap((connection) =>
+      (agentMap[connection.id] || []).map((agent) => ({
+        connectionId: connection.id,
+        agentId: agent.id,
+      }))
+    );
+
+    if (previewTargets.length === 0) {
+      setPreviewMap({});
+      return;
+    }
+
+    let cancelled = false;
+
+    void Promise.all(previewTargets.map(async ({ connectionId, agentId }) => {
+      const preview = await getLatestMessagePreview(connectionId, agentId);
+      return [getPreviewStateKey(connectionId, agentId), preview ?? getStoredPreview(agentId, connectionId)] as const;
+    })).then((entries) => {
+      if (cancelled) return;
+      setPreviewMap(Object.fromEntries(entries));
+    }).catch(() => {
+      if (cancelled) return;
+      setPreviewMap(Object.fromEntries(
+        previewTargets.map(({ connectionId, agentId }) => [
+          getPreviewStateKey(connectionId, agentId),
+          getStoredPreview(agentId, connectionId),
+        ])
+      ));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agentMap, connections]);
+
+  useEffect(() => {
+    const handlePreviewUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ connectionId?: string; agentId?: string }>).detail;
+      const connectionId = detail?.connectionId;
+      const agentId = detail?.agentId;
+
+      if (!connectionId || !agentId) {
+        return;
+      }
+
+      void getLatestMessagePreview(connectionId, agentId).then((preview) => {
+        setPreviewMap((prev) => ({
+          ...prev,
+          [getPreviewStateKey(connectionId, agentId)]: preview ?? getStoredPreview(agentId, connectionId),
+        }));
+      }).catch(() => {
+        setPreviewMap((prev) => ({
+          ...prev,
+          [getPreviewStateKey(connectionId, agentId)]: getStoredPreview(agentId, connectionId),
+        }));
+      });
+    };
+
+    window.addEventListener(MESSAGE_PREVIEW_UPDATED_EVENT, handlePreviewUpdated);
+    return () => {
+      window.removeEventListener(MESSAGE_PREVIEW_UPDATED_EVENT, handlePreviewUpdated);
+    };
+  }, []);
 
   const filteredResults = useMemo<AgentResult[]>(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -567,13 +649,16 @@ export default function ChatList({
     const status = statusMap[connection.id] || 'disconnected';
     const isDisabled = attemptedMap[connection.id] && status === 'disconnected';
     const isActive = activeConnectionId === connection.id && activeAgentId === agent.id;
-    const lastMessage = getLastMessagePreview(agent.id, connection.id);
+    const previewKey = getPreviewStateKey(connection.id, agent.id);
+    const lastMessage = Object.prototype.hasOwnProperty.call(previewMap, previewKey)
+      ? previewMap[previewKey]
+      : getStoredPreview(agent.id, connection.id);
     const preview = lastMessage?.text
       ? (lastMessage.text.length > 50 ? `${lastMessage.text.slice(0, 50)}…` : lastMessage.text)
       : null;
     const palette = getAgentPalette(agent.id);
     const initials = agent.name.slice(0, 2).toUpperCase();
-    const isTyping = typingAgents.has(`${connection.id}:${agent.id}`);
+    const isTyping = typingAgents.has(previewKey);
 
     return (
       <Reorder.Item
@@ -653,7 +738,7 @@ export default function ChatList({
             </div>
             {isTyping ? (
               <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[11px]' : 'text-[13px]')}>
-                typing <TypingDots />
+                正在输入... <TypingDots />
               </p>
             ) : preview ? (
               <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/55 dark:text-text-inv/50' : 'text-[13px] text-text/50 dark:text-text-inv/45')}>
@@ -688,8 +773,11 @@ export default function ChatList({
     const isActive = activeConnectionId === connection.id && activeAgentId === agent.id;
     const palette = getAgentPalette(agent.id);
     const initials = agent.name.slice(0, 2).toUpperCase();
-    const lastMessage = getLastMessagePreview(agent.id, connection.id);
-    const isTyping = typingAgents.has(`${connection.id}:${agent.id}`);
+    const previewKey = getPreviewStateKey(connection.id, agent.id);
+    const lastMessage = Object.prototype.hasOwnProperty.call(previewMap, previewKey)
+      ? previewMap[previewKey]
+      : getStoredPreview(agent.id, connection.id);
+    const isTyping = typingAgents.has(previewKey);
 
     return (
       <Reorder.Item
@@ -735,9 +823,7 @@ export default function ChatList({
             )}
             {/* Typing indicator dot */}
             {isTyping && (
-              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-primary rounded-full border-2 border-white dark:border-card-alt flex items-center justify-center">
-                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-              </span>
+              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />
             )}
           </div>
 
@@ -749,7 +835,7 @@ export default function ChatList({
           {/* Message bubble or typing or model */}
           {isTyping ? (
             <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">
-              <TypingDots />
+              正在输入... <TypingDots />
             </div>
           ) : lastMessage?.text ? (
             <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-text/50 dark:text-text-inv/40 truncate w-full max-w-full">

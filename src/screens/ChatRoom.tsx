@@ -41,6 +41,7 @@ import { getUserId } from '../App';
 import { getActiveConnection, getConnectionById } from '../services/connectionStore';
 import ActionCard from '../components/ActionCard';
 import MemorySheet from '../components/MemorySheet';
+import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
 
 type Message = {
   id: string;
@@ -55,6 +56,7 @@ type Message = {
 };
 
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
+const MESSAGE_PREVIEW_UPDATED_EVENT = 'openclaw:message-preview-updated';
 
 const slashCommands = [
   { id: 'help', icon: HelpCircle, label: '/help', desc: 'Show built-in help and command usage' },
@@ -126,27 +128,6 @@ function isDifferentDay(ts1?: number, ts2?: number) {
   return new Date(ts1).toDateString() !== new Date(ts2).toDateString();
 }
 
-// --- Message persistence ---
-function getStorageKey(agentId: string | null | undefined, connId: string, chatId?: string | null) {
-  return `openclaw.messages.${connId}.${chatId || agentId || 'default'}`;
-}
-function loadMessages(agentId: string | null | undefined, connId: string, chatId?: string | null): Message[] {
-  try {
-    const raw = localStorage.getItem(getStorageKey(agentId, connId, chatId));
-    if (raw) return JSON.parse(raw);
-    if (!chatId) return [];
-
-    const fallback = localStorage.getItem(getStorageKey(agentId, connId));
-    return fallback ? JSON.parse(fallback) : [];
-  } catch { return []; }
-}
-function saveMessages(agentId: string | null | undefined, connId: string, msgs: Message[], chatId?: string | null) {
-  try {
-    // Keep last 200 messages to avoid localStorage quota
-    localStorage.setItem(getStorageKey(agentId, connId, chatId), JSON.stringify(msgs.slice(-200)));
-  } catch { /* ignore */ }
-}
-
 // --- File to data URL ---
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -167,6 +148,12 @@ function getPreviewKey(connectionId: string, agentId: string) {
   return `${PREVIEW_KEY_PREFIX}${connectionId}.${agentId}`;
 }
 
+function emitPreviewUpdated(connectionId: string, agentId: string) {
+  window.dispatchEvent(new CustomEvent(MESSAGE_PREVIEW_UPDATED_EVENT, {
+    detail: { connectionId, agentId },
+  }));
+}
+
 function saveAgentPreview(agentId: string | null | undefined, connectionId: string, messages: Message[]) {
   if (!agentId || !connectionId || messages.length === 0) return;
   const lastMeaningfulMessage = [...messages].reverse().find((message) => !message.isStreaming);
@@ -177,9 +164,24 @@ function saveAgentPreview(agentId: string | null | undefined, connectionId: stri
       text: lastMeaningfulMessage.text || lastMeaningfulMessage.mediaType || 'Attachment',
       timestamp: lastMeaningfulMessage.timestamp,
     }));
+    emitPreviewUpdated(connectionId, agentId);
   } catch {
     // ignore storage failures
   }
+}
+
+function mergeMessages(cachedMessages: Message[], liveMessages: Message[]) {
+  const merged = new Map<string, Message>();
+
+  cachedMessages.forEach((message) => {
+    merged.set(message.id, message);
+  });
+
+  liveMessages.forEach((message) => {
+    merged.set(message.id, message);
+  });
+
+  return [...merged.values()].sort((left, right) => (left.timestamp ?? 0) - (right.timestamp ?? 0));
 }
 
 function getConnectionDisplayName(name?: string, fallbackName?: string) {
@@ -228,7 +230,8 @@ export default function ChatRoom({
   const activeConn = connectionId ? getConnectionById(connectionId) : getActiveConnection();
   const connId = activeConn?.id || '';
   const agentInfo = getAgentInfo(agentId, connId);
-  const [messages, setMessages] = useState<Message[]>(() => loadMessages(agentId, connId, chatId));
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [hasLoadedMessages, setHasLoadedMessages] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -252,17 +255,68 @@ export default function ChatRoom({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  // Persist messages on change (debounced to avoid thrashing localStorage)
+  useEffect(() => {
+    setMessages([]);
+    setHasLoadedMessages(false);
+
+    if (!connId || !agentId) {
+      setHasLoadedMessages(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    void loadConversationMessages(connId, agentId, {
+      chatId,
+      limit: DEFAULT_LOAD_LIMIT,
+    }).then((cachedMessages) => {
+      if (cancelled) return;
+      setMessages((currentMessages) => mergeMessages(cachedMessages, currentMessages));
+      setHasLoadedMessages(true);
+    }).catch(() => {
+      if (!cancelled) {
+        setHasLoadedMessages(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, chatId, connId]);
+
+  // Persist messages on change (debounced to avoid thrashing IndexedDB)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!connId || messages.length === 0) return;
+    if (!connId || !agentId || !hasLoadedMessages) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveMessages(agentId, connId, messages, chatId);
+      if (messages.length === 0) {
+        void clearConversationMessages(connId, agentId, { chatId });
+        return;
+      }
+      void saveConversationMessages(connId, agentId, messages, { chatId });
       saveAgentPreview(agentId, connId, messages);
     }, 500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [messages, agentId, connId, chatId]);
+  }, [hasLoadedMessages, messages, agentId, connId, chatId]);
+
+  useEffect(() => {
+    if (!connId || !agentId) {
+      setPeerTyping(false);
+      return;
+    }
+
+    const syncPeerTyping = (typingAgentIds?: string[]) => {
+      const agentIds = typingAgentIds ?? channel.getTypingAgents(connId);
+      setPeerTyping(agentIds.includes(agentId));
+    };
+
+    syncPeerTyping();
+    return channel.onTypingChange((typingConnectionId, typingAgentIds) => {
+      if (typingConnectionId !== connId) return;
+      syncPeerTyping(typingAgentIds);
+    });
+  }, [agentId, connId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -278,8 +332,6 @@ export default function ChatRoom({
       try { channel.requestHistory(chatId, connId); } catch { /* ignore */ }
     };
 
-    // Clear messages from previous agent before connecting to new one
-    setMessages(loadMessages(agentId, connId, chatId));
     setIsThinking(false);
     setShowHeaderMenu(false);
     setShowHistoryDrawer(false);
@@ -349,12 +401,6 @@ export default function ChatRoom({
         setIsThinking(true);
       } else if (packet.type === 'thinking.end') {
         // keep thinking visible until message.send arrives
-      } else if (packet.type === 'typing') {
-        const d = packet.data as { senderId?: string; isTyping?: boolean };
-        if (d.senderId !== getUserId()) {
-          setPeerTyping(!!d.isTyping);
-          if (d.isTyping) setTimeout(() => setPeerTyping(false), 5000);
-        }
       } else if (packet.type === 'message.edit') {
         const d = packet.data as { messageId: string; content: string };
         setMessages((prev) => prev.map((m) => m.id === d.messageId ? { ...m, text: d.content } : m));
@@ -826,11 +872,11 @@ export default function ChatRoom({
               <button
                 onClick={() => {
                   setMessages([]);
-                  if (connId) {
-                    saveMessages(agentId, connId, [], chatId);
-                    if (agentId) {
-                      localStorage.removeItem(getPreviewKey(connId, agentId));
-                    }
+                  setHasLoadedMessages(true);
+                  if (connId && agentId) {
+                    void clearConversationMessages(connId, agentId, { chatId });
+                    localStorage.removeItem(getPreviewKey(connId, agentId));
+                    emitPreviewUpdated(connId, agentId);
                   }
                   setShowHeaderMenu(false);
                 }}
@@ -940,7 +986,19 @@ export default function ChatRoom({
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 pb-4 flex flex-col gap-4">
         {/* Empty chat welcome */}
-        {messages.length === 0 && (
+        {!hasLoadedMessages && (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+            <div className="flex items-center gap-1.5 text-primary">
+              <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+              <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:200ms]" />
+              <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:400ms]" />
+            </div>
+            <p className="mt-3 text-[13px] text-text/40 dark:text-text-inv/40">
+              Loading cached messages…
+            </p>
+          </div>
+        )}
+        {hasLoadedMessages && messages.length === 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

@@ -1,49 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { Search as SearchIcon, Command, FileText, MessageSquare, Clock, Image, Mic, Filter, X } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { motion, AnimatePresence } from 'motion/react';
+import { searchMessages, type MessageRecord } from '../services/messageDB';
 
-type CachedMessage = {
-  id: string;
-  sender: string;
-  text: string;
-  timestamp?: number;
-  agentId?: string;
-  connId?: string;
-  mediaType?: string;
-};
+type SearchResult = MessageRecord;
 
 type FilterType = 'all' | 'user' | 'ai' | 'image' | 'voice' | 'command';
-
-function searchLocalMessages(query: string, filter: FilterType): CachedMessage[] {
-  const results: CachedMessage[] = [];
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key?.startsWith('openclaw.messages.')) continue;
-      const raw = localStorage.getItem(key);
-      if (!raw) continue;
-      const parts = key.replace('openclaw.messages.', '').split('.');
-      const agentId = parts[0] ?? '';
-      const connId = parts.slice(1).join('.') ?? '';
-      const msgs = JSON.parse(raw) as CachedMessage[];
-      for (const m of msgs) {
-        const msg = { ...m, agentId: agentId || m.agentId, connId: connId || m.connId };
-        // Apply filter
-        if (filter === 'user' && msg.sender !== 'user') continue;
-        if (filter === 'ai' && msg.sender !== 'ai') continue;
-        if (filter === 'image' && msg.mediaType !== 'image') continue;
-        if (filter === 'voice' && msg.mediaType !== 'voice') continue;
-        if (filter === 'command' && !msg.text?.startsWith('/')) continue;
-        // Apply query
-        if (query.trim() && !msg.text?.toLowerCase().includes(query.toLowerCase())) continue;
-        results.push(msg);
-      }
-    }
-  } catch { /* ignore */ }
-  return results.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)).slice(0, 100);
-}
 
 function highlightMatch(text: string, query: string): React.ReactNode {
   if (!query.trim()) return text;
@@ -81,8 +45,43 @@ const filters: { id: FilterType; label: string; icon: typeof Filter; color: stri
 export default function Search() {
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const results = useMemo(() => searchLocalMessages(query, activeFilter), [query, activeFilter]);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const hasInput = query.trim() || activeFilter !== 'all';
+
+  useEffect(() => {
+    if (!hasInput) {
+      setResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const searchOptions = (() => {
+      if (activeFilter === 'user') return { sender: 'user' as const, limit: 100 };
+      if (activeFilter === 'ai') return { sender: 'ai' as const, limit: 100 };
+      if (activeFilter === 'image') return { mediaType: 'image', limit: 100 };
+      if (activeFilter === 'voice') return { mediaType: 'voice', limit: 100 };
+      if (activeFilter === 'command') return { commandOnly: true, limit: 100 };
+      return { limit: 100 };
+    })();
+
+    setIsSearching(true);
+    void searchMessages(query, searchOptions).then((nextResults) => {
+      if (cancelled) return;
+      setResults(nextResults);
+      setIsSearching(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setResults([]);
+      setIsSearching(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFilter, hasInput, query]);
 
   return (
     <div className="flex flex-col h-full pb-32 px-6 pt-12 max-w-2xl mx-auto w-full">
@@ -133,7 +132,12 @@ export default function Search() {
       {hasInput ? (
         <div className="space-y-2 overflow-y-auto flex-1">
           <AnimatePresence mode="popLayout">
-            {results.length > 0 ? results.map((msg, i) => (
+            {isSearching ? (
+              <div className="text-center text-text/30 dark:text-text-inv/30 py-12">
+                <SearchIcon size={32} className="mx-auto mb-3 opacity-30 animate-pulse" />
+                Searching messages…
+              </div>
+            ) : results.length > 0 ? results.map((msg, i) => (
               <motion.div
                 key={`${msg.id}-${i}`}
                 initial={{ opacity: 0, y: 10 }}
