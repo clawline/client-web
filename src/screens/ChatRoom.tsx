@@ -1547,6 +1547,22 @@ export default function ChatRoom({
               exit={{ opacity: 0, y: 10 }}
               className="flex gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
             >
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowSkills((c) => !c)}
+                className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
+              >
+                <Puzzle size={12} />
+                技能{skillCount > 0 ? `(${skillCount})` : ''}
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowContextViewer(true)}
+                className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
+              >
+                <FileText size={12} />
+                上下文
+              </motion.button>
               {CONTEXT_SUGGESTIONS.map((sug) => (
                 <motion.button
                   key={sug.label}
@@ -1569,6 +1585,22 @@ export default function ChatRoom({
               exit={{ opacity: 0 }}
               className="flex gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
             >
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowSkills((c) => !c)}
+                className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
+              >
+                <Puzzle size={12} />
+                技能{skillCount > 0 ? `(${skillCount})` : ''}
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowContextViewer(true)}
+                className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
+              >
+                <FileText size={12} />
+                上下文
+              </motion.button>
               {QUICK_COMMANDS.map((cmd) => (
                 <motion.button
                   key={cmd.label}
