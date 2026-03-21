@@ -37,10 +37,24 @@ export type InboundPacket = {
 export type AgentInfo = {
   id: string;
   name: string;
-  isDefault?: boolean;
+  isDefault: boolean;
   identityName?: string;
   identityEmoji?: string;
   model?: string;
+  description?: string;
+  skills?: string[];
+  status?: 'online' | 'idle' | 'busy';
+};
+
+export type ContextFile = {
+  name: string;
+  content: string;
+  updatedAt?: number;
+};
+
+export type AgentContext = {
+  files: ContextFile[];
+  timestamp: number;
 };
 
 export type ConversationSummary = {
@@ -57,6 +71,7 @@ export type ChannelStatus = ConnectionStatus;
 type StatusListener = (status: ConnectionStatus) => void;
 type MessageListener = (packet: InboundPacket) => void;
 type TypingListener = (connectionId: string, agentIds: string[]) => void;
+type AgentContextListener = (connectionId: string, agentId: string, context: AgentContext) => void;
 
 export type ConnectOptions = {
   connectionId?: string;
@@ -132,6 +147,8 @@ class ChannelManager {
   private typingAgents = new Map<string, Set<string>>();
   private typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private typingListeners = new Set<TypingListener>();
+  private agentContexts = new Map<string, Map<string, AgentContext>>();
+  private agentContextListeners = new Set<AgentContextListener>();
 
   get(connectionId?: string) {
     const resolved = getResolvedConnectionId(connectionId);
@@ -178,6 +195,17 @@ class ChannelManager {
     typingAgents.forEach((agentId) => this.clearTypingTimer(connectionId, agentId));
     this.typingAgents.delete(connectionId);
     this.emitTypingChange(connectionId);
+  }
+
+  private setAgentContext(connectionId: string, agentId: string, context: AgentContext) {
+    if (!connectionId || !agentId) {
+      return;
+    }
+
+    const connectionContexts = this.agentContexts.get(connectionId) ?? new Map<string, AgentContext>();
+    connectionContexts.set(agentId, context);
+    this.agentContexts.set(connectionId, connectionContexts);
+    this.agentContextListeners.forEach((listener) => listener(connectionId, agentId, context));
   }
 
   private setTypingState(connectionId: string, agentId: string, isTyping: boolean) {
@@ -368,6 +396,29 @@ class ChannelManager {
         if (packet.type === 'connection.open' && packet.data?.chatId) {
           instance.currentChatId = packet.data.chatId as string;
         }
+        if (packet.type === 'agent.list') {
+          const agents = Array.isArray((packet.data as { agents?: AgentInfo[] }).agents)
+            ? (packet.data as { agents?: AgentInfo[] }).agents as AgentInfo[]
+            : [];
+          saveCachedAgents(instance.connectionId, agents);
+        }
+        if (packet.type === 'agent.context') {
+          const agentId = typeof packet.data.agentId === 'string' ? packet.data.agentId : '';
+          const files = Array.isArray((packet.data as { files?: ContextFile[] }).files)
+            ? ((packet.data as { files?: ContextFile[] }).files ?? [])
+              .filter((file): file is ContextFile => (
+                !!file &&
+                typeof file.name === 'string' &&
+                typeof file.content === 'string' &&
+                (file.updatedAt === undefined || typeof file.updatedAt === 'number')
+              ))
+            : [];
+          const timestamp = typeof packet.data.timestamp === 'number'
+            ? packet.data.timestamp
+            : Date.now();
+
+          this.setAgentContext(instance.connectionId, agentId, { files, timestamp });
+        }
         if (packet.type === 'typing') {
           const agentId = this.resolveTypingAgentId(instance, packet);
           const isTyping = packet.data.isTyping === true;
@@ -505,6 +556,16 @@ class ChannelManager {
     this.sendRaw({
       type: 'agent.list.get',
       data: { requestId: createStableId('agent-list') },
+    }, connectionId);
+  }
+
+  requestAgentContext(agentId: string, connectionId?: string) {
+    this.sendRaw({
+      type: 'agent.context.get',
+      data: {
+        requestId: createStableId('agent-context'),
+        agentId,
+      },
     }, connectionId);
   }
 
@@ -708,6 +769,22 @@ class ChannelManager {
       this.typingListeners.delete(fn);
     };
   }
+
+  getAgentContext(connectionId?: string, agentId?: string) {
+    const resolved = getResolvedConnectionId(connectionId);
+    if (!resolved || !agentId) {
+      return null;
+    }
+
+    return this.agentContexts.get(resolved)?.get(agentId) ?? null;
+  }
+
+  onAgentContextChange(fn: AgentContextListener) {
+    this.agentContextListeners.add(fn);
+    return () => {
+      this.agentContextListeners.delete(fn);
+    };
+  }
 }
 
 const manager = new ChannelManager();
@@ -826,6 +903,10 @@ export function requestAgentList(connectionId?: string) {
   manager.requestAgentList(connectionId);
 }
 
+export function requestAgentContext(agentId: string, connectionId?: string) {
+  manager.requestAgentContext(agentId, connectionId);
+}
+
 export function requestConversationList(agentId?: string, connectionId?: string) {
   manager.requestConversationList(agentId, connectionId);
 }
@@ -888,4 +969,12 @@ export function getTypingAgents(connectionId?: string) {
 
 export function onTypingChange(fn: TypingListener) {
   return manager.onTypingChange(fn);
+}
+
+export function getAgentContext(connectionId?: string, agentId?: string) {
+  return manager.getAgentContext(connectionId, agentId);
+}
+
+export function onAgentContextChange(fn: AgentContextListener) {
+  return manager.onAgentContextChange(fn);
 }

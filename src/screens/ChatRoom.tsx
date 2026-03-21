@@ -1,45 +1,14 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Brain } from 'lucide-react';
-import Markdown from 'react-markdown';
-import hljs from 'highlight.js/lib/core';
-
-import type { LanguageFn } from 'highlight.js';
+import { ChevronLeft, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Brain, Puzzle, RefreshCw } from 'lucide-react';
 import { cn } from '../lib/utils';
-
-// Lazy-load language grammars on first code block render
-const langLoaders: Record<string, () => Promise<{ default: LanguageFn }>> = {
-  javascript: () => import('highlight.js/lib/languages/javascript'),
-  js: () => import('highlight.js/lib/languages/javascript'),
-  typescript: () => import('highlight.js/lib/languages/typescript'),
-  ts: () => import('highlight.js/lib/languages/typescript'),
-  python: () => import('highlight.js/lib/languages/python'),
-  bash: () => import('highlight.js/lib/languages/bash'),
-  sh: () => import('highlight.js/lib/languages/bash'),
-  json: () => import('highlight.js/lib/languages/json'),
-  css: () => import('highlight.js/lib/languages/css'),
-  html: () => import('highlight.js/lib/languages/xml'),
-  xml: () => import('highlight.js/lib/languages/xml'),
-  yaml: () => import('highlight.js/lib/languages/yaml'),
-  yml: () => import('highlight.js/lib/languages/yaml'),
-  sql: () => import('highlight.js/lib/languages/sql'),
-  markdown: () => import('highlight.js/lib/languages/markdown'),
-  md: () => import('highlight.js/lib/languages/markdown'),
-};
-const loadedLangs = new Set<string>();
-async function ensureLang(lang: string): Promise<void> {
-  if (loadedLangs.has(lang) || hljs.getLanguage(lang)) { loadedLangs.add(lang); return; }
-  const loader = langLoaders[lang];
-  if (!loader) return;
-  const mod = await loader();
-  hljs.registerLanguage(lang, mod.default);
-  loadedLangs.add(lang);
-}
 import * as channel from '../services/clawChannel';
-import type { ConversationSummary } from '../services/clawChannel';
+import type { AgentContext, AgentInfo, ConversationSummary } from '../services/clawChannel';
 import { getUserId } from '../App';
 import { getActiveConnection, getConnectionById } from '../services/connectionStore';
 import ActionCard from '../components/ActionCard';
+import AgentContextViewer from '../components/AgentContextViewer';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 import MemorySheet from '../components/MemorySheet';
 import FileGallery from '../components/FileGallery';
 import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
@@ -189,28 +158,8 @@ function getConnectionDisplayName(name?: string, fallbackName?: string) {
   return name || fallbackName || 'Server';
 }
 
-function LazyCodeBlock({ lang, children }: { lang: string; children: string }) {
-  const [html, setHtml] = useState<string>(children);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (lang) await ensureLang(lang);
-      if (cancelled) return;
-      try {
-        const result = lang && hljs.getLanguage(lang)
-          ? hljs.highlight(children, { language: lang }).value
-          : children; // skip highlightAuto to avoid loading all grammars
-        if (!cancelled) setHtml(result);
-      } catch { /* fallback to plain */ }
-    })();
-    return () => { cancelled = true; };
-  }, [lang, children]);
-  return (
-    <pre className="bg-[#1e1e2e] border border-[#313244] rounded-lg p-3 my-2 overflow-x-auto text-[13px]">
-      {lang && <span className="text-[10px] text-[#6c7086] float-right uppercase">{lang}</span>}
-      <code className="text-[#cdd6f4]" dangerouslySetInnerHTML={{ __html: html }} />
-    </pre>
-  );
+function getSkillDescription(skillName: string) {
+  return `${skillName} is available in this agent.`;
 }
 
 export default function ChatRoom({
@@ -230,8 +179,10 @@ export default function ChatRoom({
 }) {
   const activeConn = connectionId ? getConnectionById(connectionId) : getActiveConnection();
   const connId = activeConn?.id || '';
-  const agentInfo = getAgentInfo(agentId, connId);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(() => getAgentInfo(agentId, connId));
+  const [agentContext, setAgentContext] = useState<AgentContext | null>(() => channel.getAgentContext(connId, agentId ?? undefined));
+  const [isContextLoading, setIsContextLoading] = useState(false);
   const [hasLoadedMessages, setHasLoadedMessages] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -248,6 +199,8 @@ export default function ChatRoom({
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showFileGallery, setShowFileGallery] = useState(false);
+  const [showSkills, setShowSkills] = useState(false);
+  const [showContextViewer, setShowContextViewer] = useState(false);
   const [showMoreIcons, setShowMoreIcons] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
@@ -256,6 +209,75 @@ export default function ChatRoom({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const skills = agentInfo?.skills ?? [];
+  const skillCount = skills.length;
+
+  useEffect(() => {
+    setAgentInfo(getAgentInfo(agentId, connId));
+    setAgentContext(channel.getAgentContext(connId, agentId ?? undefined));
+    setIsContextLoading(false);
+    setShowSkills(false);
+  }, [agentId, connId]);
+
+  useEffect(() => {
+    if (skillCount > 0) return;
+    setShowSkills(false);
+  }, [skillCount]);
+
+  useEffect(() => {
+    return channel.onAgentContextChange((contextConnectionId, contextAgentId, nextContext) => {
+      if (contextConnectionId !== connId || contextAgentId !== agentId) {
+        return;
+      }
+
+      setAgentContext(nextContext);
+      setIsContextLoading(false);
+    });
+  }, [agentId, connId]);
+
+  const requestAgentContext = useCallback(() => {
+    if (!agentId || !connId) return;
+    setIsContextLoading(true);
+    try {
+      channel.requestAgentContext(agentId, connId);
+    } catch {
+      setIsContextLoading(false);
+    }
+  }, [agentId, connId]);
+
+  const refreshAgentMeta = useCallback(() => {
+    if (!connId) return;
+
+    if (agentId) {
+      requestAgentContext();
+    }
+
+    try {
+      channel.requestAgentList(connId);
+    } catch {
+      // ignore disconnected refresh attempts
+    }
+  }, [agentId, connId, requestAgentContext]);
+
+  useEffect(() => {
+    if (!showContextViewer || !agentId || !connId) {
+      return;
+    }
+
+    const cachedContext = channel.getAgentContext(connId, agentId);
+    if (cachedContext) {
+      setAgentContext(cachedContext);
+      setIsContextLoading(false);
+      return;
+    }
+
+    if (wsStatus !== 'connected') {
+      setIsContextLoading(wsStatus === 'connecting' || wsStatus === 'reconnecting');
+      return;
+    }
+
+    requestAgentContext();
+  }, [agentId, connId, requestAgentContext, showContextViewer, wsStatus]);
 
   useEffect(() => {
     setMessages([]);
@@ -423,6 +445,12 @@ export default function ChatRoom({
           : [];
         setConversations(nextConversations);
         setLoadingConversations(false);
+      } else if (packet.type === 'agent.list') {
+        const nextAgents = Array.isArray((packet.data as { agents?: AgentInfo[] }).agents)
+          ? ((packet.data as { agents?: AgentInfo[] }).agents ?? [])
+          : [];
+        channel.saveCachedAgents(connId, nextAgents);
+        setAgentInfo(nextAgents.find((agent) => agent.id === agentId) ?? null);
       } else if (packet.type === 'text.delta') {
         if (localStorage.getItem('openclaw.streaming.enabled') === 'false') return;
 
@@ -1132,28 +1160,7 @@ export default function ChatRoom({
                       <p className="whitespace-pre-wrap break-words">{msg.text}</p>
                     ) : (
                       <div className="relative">
-                        <Markdown
-                          components={{
-                            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                            code: ({ children, className }) => {
-                              const lang = className?.replace('language-', '') || '';
-                              const isBlock = !!className?.includes('language-');
-                              if (isBlock) {
-                                return <LazyCodeBlock lang={lang}>{String(children).replace(/\n$/, '')}</LazyCodeBlock>;
-                              }
-                              return <code className="bg-border dark:bg-border-dark text-text dark:text-text-inv px-1.5 py-0.5 rounded text-[13px]">{children}</code>;
-                            },
-                            pre: ({ children }) => <>{children}</>,
-                            ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                            ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-                            h1: ({ children }) => <h1 className="text-lg font-bold mb-2">{children}</h1>,
-                            h2: ({ children }) => <h2 className="text-base font-bold mb-1.5">{children}</h2>,
-                            h3: ({ children }) => <h3 className="text-sm font-bold mb-1">{children}</h3>,
-                            a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-info underline">{children}</a>,
-                            blockquote: ({ children }) => <blockquote className="border-l-2 border-primary pl-3 my-2 text-text/70 dark:text-text-inv/70">{children}</blockquote>,
-                            strong: ({ children }) => <strong className="font-bold">{children}</strong>,
-                          }}
-                        >{msg.text}</Markdown>
+                        <MarkdownRenderer content={msg.text} />
                         {/* Streaming cursor indicator */}
                         {isStreaming && (
                           <span className="inline-block w-2 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
@@ -1551,6 +1558,89 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
+        <div className="mb-2 rounded-[20px] border border-border/80 bg-white/70 backdrop-blur-[18px] dark:border-border-dark/80 dark:bg-card-alt/70">
+          <div className="flex min-h-9 items-center justify-between gap-1 px-2 py-1">
+            <button
+              type="button"
+              disabled={skillCount === 0}
+              onClick={() => {
+                if (skillCount === 0) return;
+                setShowSkills((current) => !current);
+              }}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors',
+                skillCount === 0
+                  ? 'cursor-not-allowed text-text/35 dark:text-text-inv/35'
+                  : showSkills
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-text/60 hover:bg-surface hover:text-text dark:text-text-inv/60 dark:hover:bg-surface-dark dark:hover:text-text-inv'
+              )}
+            >
+              <Puzzle size={14} />
+              <span>技能({skillCount})</span>
+            </button>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setShowContextViewer(true)}
+                disabled={!agentId || !connId}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors',
+                  !agentId || !connId
+                    ? 'cursor-not-allowed text-text/35 dark:text-text-inv/35'
+                    : 'text-text/60 hover:bg-surface hover:text-text dark:text-text-inv/60 dark:hover:bg-surface-dark dark:hover:text-text-inv'
+                )}
+              >
+                <FileText size={14} />
+                <span>上下文</span>
+              </button>
+              <button
+                type="button"
+                onClick={refreshAgentMeta}
+                disabled={!connId}
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-full transition-colors',
+                  !connId
+                    ? 'cursor-not-allowed text-text/35 dark:text-text-inv/35'
+                    : 'text-text/55 hover:bg-surface hover:text-text dark:text-text-inv/55 dark:hover:bg-surface-dark dark:hover:text-text-inv'
+                )}
+                aria-label="Refresh agent metadata"
+              >
+                <RefreshCw size={14} className={cn(isContextLoading && 'animate-spin')} />
+              </button>
+            </div>
+          </div>
+
+          <AnimatePresence initial={false}>
+            {showSkills && skillCount > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 6 }}
+                className="border-t border-border/80 px-2 pb-2 pt-1 dark:border-border-dark/80"
+              >
+                <div className="grid max-h-[200px] gap-2 overflow-y-auto py-1 sm:grid-cols-2">
+                  {skills.map((skillName) => (
+                    <div
+                      key={skillName}
+                      className="rounded-[18px] border border-primary/10 bg-primary/5 px-3 py-2.5 dark:border-primary/15 dark:bg-primary/10"
+                    >
+                      <div className="flex items-center gap-2 text-[13px] font-semibold text-text dark:text-text-inv">
+                        <Puzzle size={14} className="text-primary" />
+                        <span className="truncate">{skillName}</span>
+                      </div>
+                      <p className="mt-1 text-[12px] leading-relaxed text-text/50 dark:text-text-inv/50">
+                        {getSkillDescription(skillName)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full p-2 flex items-center gap-1 shadow-lg shadow-black/5 relative">
           {/* Action menu toggle (+ button) */}
           <motion.button
@@ -1660,6 +1750,19 @@ export default function ChatRoom({
           <MemorySheet 
             onClose={() => setShowMemory(false)} 
             agentName={agentInfo ? agentInfo.name : agentId || 'Bot'} 
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showContextViewer && (
+          <AgentContextViewer
+            agentName={agentInfo?.name || agentId || 'Agent'}
+            context={agentContext}
+            isLoading={isContextLoading}
+            isOpen={showContextViewer}
+            onClose={() => setShowContextViewer(false)}
+            onRefresh={requestAgentContext}
           />
         )}
       </AnimatePresence>
