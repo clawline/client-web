@@ -743,7 +743,6 @@ export default function ChatRoom({
 
   // Long-press for mobile message actions
   const [longPressedMsgId, setLongPressedMsgId] = useState<string | null>(null);
-  const [activeToolbarMsgId, setActiveToolbarMsgId] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleTouchStart = (msgId: string) => {
     longPressTimer.current = setTimeout(() => setLongPressedMsgId(msgId), 400);
@@ -988,11 +987,6 @@ export default function ChatRoom({
                   : { delay: Math.min(i, 10) * 0.03 }
                 }
                 className={`flex ${isUser ? 'justify-end' : 'justify-start'} relative`}
-                onClick={(e) => {
-                  // Toggle toolbar on click (desktop); skip if clicking inside toolbar or a link/button
-                  if ((e.target as HTMLElement).closest('[data-toolbar]') || (e.target as HTMLElement).closest('a')) return;
-                  setActiveToolbarMsgId(prev => prev === msg.id ? null : msg.id);
-                }}
                 onTouchStart={() => handleTouchStart(msg.id)}
                 onTouchEnd={handleTouchEnd}
                 onTouchMove={handleTouchEnd}
@@ -1088,76 +1082,85 @@ export default function ChatRoom({
                     )}
                   </div>
                   
-                  {/* Reaction & Reply & Edit/Delete — click to toggle on both desktop & mobile */}
+                  {/* Inline message actions — always visible next to timestamp on desktop */}
                   {!isStreaming && (
-                  <AnimatePresence>
-                  {activeToolbarMsgId === msg.id && (
-                  <motion.div
-                    data-toolbar
-                    initial={{ opacity: 0, y: 4, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                    transition={{ duration: 0.15 }}
-                    className={`hidden md:flex items-center gap-1 mt-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
-                  >
-                    {/* Quick-react bar */}
-                    <div className="flex items-center gap-0.5 bg-white/80 dark:bg-card-alt/80 backdrop-blur-sm rounded-full px-1 py-0.5 border border-border dark:border-border-dark shadow-sm">
-                      {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
-                        <motion.button
-                          key={e}
-                          whileTap={{ scale: 0.7 }}
-                          onClick={() => {
-                            const hasIt = msg.reactions?.includes(e);
-                            setMessages((prev) => prev.map((m) => {
-                              if (m.id !== msg.id) return m;
-                              const reactions = m.reactions ?? [];
-                              return { ...m, reactions: hasIt ? reactions.filter(r => r !== e) : [...reactions, e] };
-                            }));
-                            if (hasIt) { channel.removeReaction(msg.id, e, connId); } else { channel.addReaction(msg.id, e, connId); }
-                          }}
-                          className={`w-7 h-7 text-[15px] flex items-center justify-center rounded-full transition-colors ${
-                            msg.reactions?.includes(e) ? 'bg-primary/20 scale-110' : 'hover:bg-border dark:hover:bg-border-dark'
-                          }`}
-                        >
-                          {e}
-                        </motion.button>
-                      ))}
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => openReactionPicker(msg.id)}
-                        className="w-7 h-7 flex items-center justify-center text-text/55 dark:text-text-inv/55 hover:text-primary rounded-full hover:bg-border dark:hover:bg-border-dark transition-colors"
+                  <div className={`hidden md:flex items-center gap-0.5 mt-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                    {/* Timestamp */}
+                    {msg.timestamp && (
+                      <span className="text-[10px] text-text/40 dark:text-text-inv/35 mr-1.5 tabular-nums">
+                        {formatTime(msg.timestamp)}
+                      </span>
+                    )}
+
+                    {/* Emoji trigger — hover to expand picker row */}
+                    <div className="relative group/emoji">
+                      <button
+                        type="button"
+                        className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-text/50 dark:hover:text-text-inv/45 rounded transition-colors"
                       >
-                        <SmilePlus size={13} />
-                      </motion.button>
+                        <SmilePlus size={12} />
+                      </button>
+                      {/* Hover flyout: quick emoji row */}
+                      <div className={`absolute bottom-full ${isUser ? 'right-0' : 'left-0'} mb-1 hidden group-hover/emoji:flex items-center gap-0.5 bg-white dark:bg-card-alt rounded-full px-1.5 py-1 border border-border dark:border-border-dark shadow-lg z-20`}>
+                        {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
+                          <button
+                            key={e}
+                            type="button"
+                            onClick={() => {
+                              const hasIt = msg.reactions?.includes(e);
+                              setMessages((prev) => prev.map((m) => {
+                                if (m.id !== msg.id) return m;
+                                const reactions = m.reactions ?? [];
+                                return { ...m, reactions: hasIt ? reactions.filter(r => r !== e) : [...reactions, e] };
+                              }));
+                              if (hasIt) { channel.removeReaction(msg.id, e, connId); } else { channel.addReaction(msg.id, e, connId); }
+                            }}
+                            className={`w-7 h-7 text-[15px] flex items-center justify-center rounded-full transition-all ${
+                              msg.reactions?.includes(e) ? 'bg-primary/20 scale-110' : 'hover:bg-border dark:hover:bg-border-dark hover:scale-110'
+                            }`}
+                          >
+                            {e}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => openReactionPicker(msg.id)}
+                          className="w-7 h-7 flex items-center justify-center text-text/40 dark:text-text-inv/35 hover:text-primary rounded-full hover:bg-border dark:hover:bg-border-dark transition-colors"
+                        >
+                          <SmilePlus size={13} />
+                        </button>
+                      </div>
                     </div>
-                    <motion.button
-                      whileTap={{ scale: 0.9 }}
-                      onClick={() => { startReply(msg); setActiveToolbarMsgId(null); }}
-                      className="p-1 text-text/55 dark:text-text-inv/55 hover:text-info transition-colors"
+
+                    {/* Reply */}
+                    <button
+                      type="button"
+                      onClick={() => startReply(msg)}
+                      className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-info rounded transition-colors"
                     >
-                      <CornerDownLeft size={14} />
-                    </motion.button>
+                      <CornerDownLeft size={12} />
+                    </button>
+
+                    {/* Edit & Delete (user messages only) */}
                     {isUser && (
                       <>
-                        <motion.button
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => { handleEditMessage(msg); setActiveToolbarMsgId(null); }}
-                          className="p-1 text-text/55 dark:text-text-inv/55 hover:text-amber-500 transition-colors"
+                        <button
+                          type="button"
+                          onClick={() => handleEditMessage(msg)}
+                          className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-amber-500 rounded transition-colors"
                         >
-                          <Pencil size={14} />
-                        </motion.button>
-                        <motion.button
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => { handleDeleteMessage(msg.id); setActiveToolbarMsgId(null); }}
-                          className="p-1 text-text/55 dark:text-text-inv/55 hover:text-red-500 transition-colors"
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-red-500 rounded transition-colors"
                         >
-                          <Trash2 size={14} />
-                        </motion.button>
+                          <Trash2 size={12} />
+                        </button>
                       </>
                     )}
-                  </motion.div>
-                  )}
-                  </AnimatePresence>
+                  </div>
                   )}
 
                 {/* Action Card for AI messages (hide for streaming) */}
@@ -1189,9 +1192,9 @@ export default function ChatRoom({
                   </div>
                 )}
 
-                {/* Message time */}
+                {/* Message time — mobile only (desktop shows inline with actions) */}
                 {msg.timestamp && (
-                  <span className={`text-[10px] text-text/55 dark:text-text-inv/55 mt-1 ${isUser ? 'text-right' : 'text-left'}`}>
+                  <span className={`md:hidden text-[10px] text-text/55 dark:text-text-inv/55 mt-1 ${isUser ? 'text-right' : 'text-left'}`}>
                     {formatTime(msg.timestamp)}
                   </span>
                 )}
