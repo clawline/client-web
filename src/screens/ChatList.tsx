@@ -316,6 +316,11 @@ export default function ChatList({
   }, [syncConnections]);
 
   const ensureAgentsLoaded = useCallback((connection: ServerConnection, force = false) => {
+    // Skip if already have agents and not forcing refresh
+    if (!force && (agentMapRef.current[connection.id]?.length ?? 0) > 0) {
+      return;
+    }
+
     setAttemptedMap((prev) => ({ ...prev, [connection.id]: true }));
     setLoadingMap((prev) => ({
       ...prev,
@@ -323,16 +328,22 @@ export default function ChatList({
     }));
     setRefreshingMap((prev) => ({ ...prev, [connection.id]: true }));
 
-    channel.connect({
-      connectionId: connection.id,
-      chatId: connection.chatId,
-      senderId: connection.senderId || getUserId(),
-      senderName: connection.displayName,
-      serverUrl: connection.serverUrl,
-      token: connection.token,
-    });
+    const status = channel.getStatus(connection.id);
 
-    if (channel.getStatus(connection.id) === 'connected') {
+    if (status !== 'connected' && status !== 'connecting') {
+      channel.connect({
+        connectionId: connection.id,
+        chatId: connection.chatId,
+        senderId: connection.senderId || getUserId(),
+        senderName: connection.displayName,
+        serverUrl: connection.serverUrl,
+        token: connection.token,
+      });
+      // agent.list will be requested on connection.open event
+      return;
+    }
+
+    if (status === 'connected') {
       try {
         channel.requestAgentList(connection.id);
       } catch {
@@ -340,7 +351,12 @@ export default function ChatList({
         setLoadingMap((prev) => ({ ...prev, [connection.id]: false }));
       }
     }
+    // If connecting, wait for connection.open to trigger requestAgentList
   }, []);
+
+  // Load agents on mount and when connections change — NOT on expandedIds change
+  const expandedIdsRef = useRef(expandedIds);
+  expandedIdsRef.current = expandedIds;
 
   useEffect(() => {
     if (connections.length === 1 && connections[0]) {
@@ -353,11 +369,12 @@ export default function ChatList({
       return;
     }
 
-    expandedIds.forEach((connectionId) => {
+    expandedIdsRef.current.forEach((connectionId) => {
       const connection = connections.find((item) => item.id === connectionId);
       if (connection) ensureAgentsLoaded(connection);
     });
-  }, [connections, ensureAgentsLoaded, expandedIds, searchQuery]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connections, ensureAgentsLoaded]);
 
   useEffect(() => {
     const cleanups = connections.map((connection) => {
@@ -471,10 +488,18 @@ export default function ChatList({
 
   const handleToggleGroup = (connectionId: string) => {
     setExpandedIds((prev) => {
-      const next = prev.includes(connectionId)
-        ? prev.filter((id) => id !== connectionId)
-        : [...prev, connectionId];
+      const isExpanding = !prev.includes(connectionId);
+      const next = isExpanding
+        ? [...prev, connectionId]
+        : prev.filter((id) => id !== connectionId);
       try { localStorage.setItem(EXPANDED_KEY, JSON.stringify(next)); } catch { /* noop */ }
+
+      // Load agents when expanding a group
+      if (isExpanding) {
+        const connection = connections.find((c) => c.id === connectionId);
+        if (connection) ensureAgentsLoaded(connection);
+      }
+
       return next;
     });
   };
@@ -867,7 +892,6 @@ export default function ChatList({
                     type="button"
                     onClick={() => {
                       handleToggleGroup(connection.id);
-                      if (!isExpanded) ensureAgentsLoaded(connection);
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left group"
                   >
