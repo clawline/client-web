@@ -1318,9 +1318,9 @@ export default function ChatRoom({
                 {/* Action Card for AI messages (hide for streaming) */}
                 {!isUser && !isStreaming && <ActionCard text={msg.text} onSend={quickSend} />}
 
-                {/* Reactions Display */}
+                {/* Reactions Display — pinned to bubble bottom-right */}
                 {msg.reactions && msg.reactions.length > 0 && (
-                  <div className={`flex flex-wrap gap-1.5 mt-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`flex flex-wrap gap-1 -mb-3 mt-1 ${isUser ? 'justify-end -mr-1' : 'justify-start -ml-1'}`}>
                     {msg.reactions.map((emoji, idx) => (
                       <motion.button
                         key={idx}
@@ -1336,7 +1336,7 @@ export default function ChatRoom({
                           }));
                           channel.removeReaction(msg.id, emoji, runtimeConnId);
                         }}
-                        className="bg-primary/10 dark:bg-primary/15 border border-primary/30 rounded-full px-2.5 py-1 text-[14px] shadow-sm flex items-center gap-1 hover:bg-primary/20 transition-colors"
+                        className="bg-white dark:bg-card-alt border border-border/50 dark:border-border-dark/50 rounded-full px-2 py-0.5 text-[13px] shadow-sm flex items-center gap-0.5 hover:bg-primary/10 transition-colors"
                       >
                         <span>{emoji}</span>
                       </motion.button>
@@ -1472,20 +1472,20 @@ export default function ChatRoom({
       </div>
 
       {/* Input Area */}
-      <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-surface via-surface dark:from-surface-dark dark:via-surface-dark to-transparent z-30 flex-shrink-0">
+      <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-surface via-surface dark:from-surface-dark dark:via-surface-dark to-transparent z-30 flex-shrink-0 relative">
         <AnimatePresence>
           {showSlashMenu && (
             <>
               <motion.div
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-surface/40 dark:bg-surface-dark/40 backdrop-blur-md -z-10"
+                className="fixed inset-0 bg-surface/40 dark:bg-surface-dark/40 backdrop-blur-md z-40"
                 onClick={() => setShowSlashMenu(false)}
               />
               <motion.div
                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute bottom-full left-4 right-4 mb-2 bg-white/95 dark:bg-card-alt/95 backdrop-blur-[20px] border border-border/50 dark:border-border-dark/50 shadow-2xl rounded-[24px] p-2 overflow-hidden"
+                className="absolute bottom-full left-0 right-0 mb-2 bg-white/95 dark:bg-card-alt/95 backdrop-blur-[20px] border border-border/50 dark:border-border-dark/50 shadow-2xl rounded-[24px] p-2 overflow-hidden z-50 max-h-[60vh] overflow-y-auto"
               >
                 {slashCommands
                   .filter((cmd) => cmd.label.startsWith(inputValue) || inputValue === '/')
@@ -1513,14 +1513,14 @@ export default function ChatRoom({
             <>
               <motion.div
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-surface/40 dark:bg-surface-dark/40 backdrop-blur-md -z-10"
+                className="fixed inset-0 bg-surface/40 dark:bg-surface-dark/40 backdrop-blur-md z-40"
                 onClick={() => { setShowEmojiPicker(false); setReactingToMsgId(null); }}
               />
               <motion.div
                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute bottom-full left-4 right-4 mb-2 bg-white/95 dark:bg-card-alt/95 backdrop-blur-[20px] border border-border/50 dark:border-border-dark/50 shadow-2xl rounded-[24px] p-4 flex flex-wrap gap-2 justify-center"
+                className="absolute bottom-full left-0 right-0 mb-2 bg-white/95 dark:bg-card-alt/95 backdrop-blur-[20px] border border-border/50 dark:border-border-dark/50 shadow-2xl rounded-[24px] p-4 flex flex-wrap gap-2 justify-center z-50"
               >
                 {EMOJI_LIST.map((emoji) => (
                   <motion.button
@@ -1623,90 +1623,6 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
-        <div className="mb-2 rounded-[20px] border border-border/80 bg-white/70 backdrop-blur-[18px] dark:border-border-dark/80 dark:bg-card-alt/70">
-          <div className="flex min-h-9 items-center justify-between gap-1 px-2 py-1">
-            <button
-              type="button"
-              onClick={() => setShowSkills((current) => !current)}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors',
-                showSkills
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-text/60 hover:bg-surface hover:text-text dark:text-text-inv/60 dark:hover:bg-surface-dark dark:hover:text-text-inv'
-              )}
-            >
-              <Puzzle size={14} />
-              <span>技能{skillCount > 0 ? `(${skillCount})` : ''}</span>
-            </button>
-
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setShowContextViewer(true)}
-                disabled={!agentId || !runtimeConnId}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors',
-                  !agentId || !runtimeConnId
-                    ? 'cursor-not-allowed text-text/35 dark:text-text-inv/35'
-                    : 'text-text/60 hover:bg-surface hover:text-text dark:text-text-inv/60 dark:hover:bg-surface-dark dark:hover:text-text-inv'
-                )}
-              >
-                <FileText size={14} />
-                <span>上下文</span>
-              </button>
-              <button
-                type="button"
-                onClick={refreshAgentMeta}
-                disabled={!runtimeConnId}
-                className={cn(
-                  'flex h-7 w-7 items-center justify-center rounded-full transition-colors',
-                  !runtimeConnId
-                    ? 'cursor-not-allowed text-text/35 dark:text-text-inv/35'
-                    : 'text-text/55 hover:bg-surface hover:text-text dark:text-text-inv/55 dark:hover:bg-surface-dark dark:hover:text-text-inv'
-                )}
-                aria-label="Refresh agent metadata"
-              >
-                <RefreshCw size={14} className={cn(isContextLoading && 'animate-spin')} />
-              </button>
-            </div>
-          </div>
-
-          <AnimatePresence initial={false}>
-            {showSkills && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 6 }}
-                className="border-t border-border/80 px-2 pb-2 pt-1 dark:border-border-dark/80"
-              >
-                {skillCount > 0 ? (
-                <div className="grid max-h-[200px] gap-2 overflow-y-auto py-1 sm:grid-cols-2">
-                  {skills.map((skillName) => (
-                    <div
-                      key={skillName}
-                      className="rounded-[18px] border border-primary/10 bg-primary/5 px-3 py-2.5 dark:border-primary/15 dark:bg-primary/10"
-                    >
-                      <div className="flex items-center gap-2 text-[13px] font-semibold text-text dark:text-text-inv">
-                        <Puzzle size={14} className="text-primary" />
-                        <span className="truncate">{skillName}</span>
-                      </div>
-                      <p className="mt-1 text-[12px] leading-relaxed text-text/50 dark:text-text-inv/50">
-                        {getSkillDescription(skillName)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                ) : (
-                <div className="py-3 text-center text-[12px] text-text/40 dark:text-text-inv/40">
-                  <Puzzle size={16} className="mx-auto mb-1 opacity-40" />
-                  暂无技能
-                </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
         <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full p-2 flex items-center gap-1 shadow-lg shadow-black/5 relative">
           {/* Action menu toggle (+ button) */}
           <motion.button
@@ -1753,6 +1669,22 @@ export default function ChatRoom({
                   >
                     <Smile size={18} />
                     Emoji
+                  </button>
+                  <div className="h-px bg-border dark:bg-border-dark my-0.5" />
+                  <button
+                    onClick={() => { setShowSkills((c) => !c); setShowMoreIcons(false); }}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                  >
+                    <Puzzle size={18} />
+                    技能{skillCount > 0 ? ` (${skillCount})` : ''}
+                  </button>
+                  <button
+                    onClick={() => { setShowContextViewer(true); setShowMoreIcons(false); }}
+                    disabled={!agentId || !runtimeConnId}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors disabled:opacity-40"
+                  >
+                    <FileText size={18} />
+                    上下文
                   </button>
                 </motion.div>
               </>
@@ -1803,6 +1735,51 @@ export default function ChatRoom({
                     <Send size={14} />
                   </button>
                 </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Skills panel popup */}
+          <AnimatePresence>
+            {showSkills && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="absolute bottom-full left-0 right-0 mb-3 mx-1 rounded-[16px] bg-white/95 dark:bg-card-alt/95 p-3 border border-border/50 dark:border-border-dark/50 shadow-xl z-20 max-h-[50vh] overflow-y-auto"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[13px] font-semibold text-text dark:text-text-inv flex items-center gap-1.5">
+                    <Puzzle size={14} className="text-primary" />
+                    技能{skillCount > 0 ? ` (${skillCount})` : ''}
+                  </span>
+                  <button onClick={() => setShowSkills(false)} className="p-1 rounded-full hover:bg-surface dark:hover:bg-surface-dark text-text/50 dark:text-text-inv/50">
+                    <X size={14} />
+                  </button>
+                </div>
+                {skillCount > 0 ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {skills.map((skillName) => (
+                      <div
+                        key={skillName}
+                        className="rounded-[12px] border border-primary/10 bg-primary/5 px-3 py-2 dark:border-primary/15 dark:bg-primary/10"
+                      >
+                        <div className="flex items-center gap-1.5 text-[13px] font-medium text-text dark:text-text-inv">
+                          <Puzzle size={12} className="text-primary" />
+                          <span className="truncate">{skillName}</span>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-text/50 dark:text-text-inv/50">
+                          {getSkillDescription(skillName)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-4 text-center text-[12px] text-text/40 dark:text-text-inv/40">
+                    <Puzzle size={16} className="mx-auto mb-1 opacity-40" />
+                    暂无技能
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
