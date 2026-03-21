@@ -608,7 +608,10 @@ export default function ChatRoom({
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
   };
 
-  // File picker
+  // File picker — now stages file for preview before sending
+  const [pendingFile, setPendingFile] = useState<{ file: File; dataUrl: string; isImage: boolean } | null>(null);
+  const [fileCaption, setFileCaption] = useState('');
+
   const handleFilePick = () => fileInputRef2.current?.click();
   const handleFileSelected2 = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -616,18 +619,33 @@ export default function ChatRoom({
     e.target.value = '';
     const dataUrl = await fileToDataUrl(file);
     const isImage = file.type.startsWith('image/');
+    setPendingFile({ file, dataUrl, isImage });
+    setFileCaption('');
+  };
+
+  const handleSendPendingFile = () => {
+    if (!pendingFile) return;
+    const { file, dataUrl, isImage } = pendingFile;
+    const caption = fileCaption.trim();
     const userMsg: Message = {
       id: Date.now().toString(),
       sender: 'user',
-      text: isImage ? '' : `📎 ${file.name}`,
+      text: caption || (isImage ? '' : `📎 ${file.name}`),
       mediaType: isImage ? 'image' : 'file',
       mediaUrl: dataUrl,
       timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
     try {
-      channel.sendFile({ content: file.name, mediaUrl: dataUrl, mimeType: file.type, fileName: file.name, agentId: agentId || undefined }, runtimeConnId);
+      channel.sendFile({ content: caption || file.name, mediaUrl: dataUrl, mimeType: file.type, fileName: file.name, agentId: agentId || undefined }, runtimeConnId);
     } catch { /* ignore */ }
+    setPendingFile(null);
+    setFileCaption('');
+  };
+
+  const handleCancelPendingFile = () => {
+    setPendingFile(null);
+    setFileCaption('');
   };
 
   const handleSend = () => {
@@ -685,38 +703,16 @@ export default function ChatRoom({
     }
   };
 
-  // --- Image sending ---
+  // --- Image sending — now stages for preview ---
   const handleImagePick = () => fileInputRef.current?.click();
 
   const handleFileSelected = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
-    e.target.value = ''; // reset
-
+    e.target.value = '';
     const dataUrl = await fileToDataUrl(file);
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      sender: 'user',
-      text: '[Image]',
-      mediaType: 'image',
-      mediaUrl: dataUrl,
-    };
-    setMessages((prev) => [...prev, userMsg]);
-
-    try {
-      channel.sendMedia({
-        messageType: 'image',
-        content: '',
-        mediaUrl: dataUrl,
-        mimeType: file.type,
-        agentId: agentId || undefined,
-      }, runtimeConnId);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { id: `err-${Date.now()}`, sender: 'ai', text: '⚠️ Failed to send image.' },
-      ]);
-    }
+    setPendingFile({ file, dataUrl, isImage: true });
+    setFileCaption('');
   };
 
   // --- Voice recording ---
@@ -1737,6 +1733,52 @@ export default function ChatRoom({
 
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelected} />
           <input ref={fileInputRef2} type="file" className="hidden" onChange={handleFileSelected2} />
+
+          {/* Pending file/image preview */}
+          <AnimatePresence>
+            {pendingFile && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="absolute bottom-full left-0 right-0 mb-3 mx-1 rounded-[16px] bg-white/95 dark:bg-card-alt/95 p-3 border border-border/50 dark:border-border-dark/50 shadow-xl z-20"
+              >
+                <div className="flex items-start gap-3">
+                  {pendingFile.isImage ? (
+                    <img src={pendingFile.dataUrl} alt="Preview" className="w-12 h-12 object-cover rounded-lg bg-surface dark:bg-surface-dark border border-border dark:border-border-dark" />
+                  ) : (
+                    <div className="w-12 h-12 flex items-center justify-center bg-surface dark:bg-surface-dark rounded-lg text-primary border border-border dark:border-border-dark">
+                      <FileText size={20} />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0 flex flex-col justify-center h-12">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] font-medium truncate text-text dark:text-text-inv pr-2">{pendingFile.file.name}</span>
+                      <button onClick={handleCancelPendingFile} className="p-1 hover:bg-surface dark:hover:bg-surface-dark rounded-full text-text/50 dark:text-text-inv/50 transition-colors">
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={fileCaption}
+                      onChange={(e) => setFileCaption(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSendPendingFile()}
+                      placeholder="Add a caption..."
+                      className="w-full bg-transparent text-[12px] outline-none text-text/70 dark:text-text-inv/70 placeholder:text-text/30 dark:placeholder:text-text-inv/30"
+                      autoFocus
+                    />
+                  </div>
+                  <button
+                    onClick={handleSendPendingFile}
+                    className="self-center p-2 bg-primary text-white rounded-full shadow-md hover:shadow-lg hover:scale-105 transition-all"
+                  >
+                    <Send size={14} />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <input
             type="text"
             value={inputValue}

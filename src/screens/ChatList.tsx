@@ -8,6 +8,7 @@ import * as channel from '../services/clawChannel';
 import type { AgentInfo, ConversationSummary, ChannelStatus } from '../services/clawChannel';
 import { getUserId } from '../App';
 import { getLatestMessagePreview } from '../services/messageDB';
+import AvatarUploader from '../components/AvatarUploader';
 
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
 const EXPANDED_KEY = 'openclaw.chatlist.expandedIds';
@@ -204,6 +205,7 @@ export default function ChatList({
   });
   const [customAvatars, setCustomAvatarsState] = useState<Record<string, string>>(() => getCustomAvatars());
   const [avatarMenuAgent, setAvatarMenuAgent] = useState<{ agentId: string; x: number; y: number } | null>(null);
+  const [avatarUploadAgent, setAvatarUploadAgent] = useState<string | null>(null);
 
   const handleAvatarContextMenu = (e: React.MouseEvent, agentId: string) => {
     e.preventDefault();
@@ -226,12 +228,14 @@ export default function ChatList({
   };
 
   const handleSetCustomAvatar = (agentId: string) => {
-    const url = prompt('Enter avatar image URL:');
-    if (url && url.trim()) {
-      setCustomAvatar(agentId, url.trim());
-      setCustomAvatarsState(getCustomAvatars());
-    }
     setAvatarMenuAgent(null);
+    setAvatarUploadAgent(agentId);
+  };
+
+  const handleAvatarSave = (dataUrl: string) => {
+    if (!avatarUploadAgent) return;
+    setCustomAvatar(avatarUploadAgent, dataUrl);
+    setCustomAvatarsState(getCustomAvatars());
   };
 
   const handleRemoveCustomAvatar = (agentId: string) => {
@@ -1133,6 +1137,14 @@ export default function ChatList({
           )}
         </div>
       )}
+
+      {/* Avatar upload + crop dialog */}
+      <AvatarUploader
+        open={!!avatarUploadAgent}
+        onClose={() => setAvatarUploadAgent(null)}
+        onSave={handleAvatarSave}
+        currentAvatar={avatarUploadAgent ? customAvatars[avatarUploadAgent] : undefined}
+      />
     </div>
   );
 }
