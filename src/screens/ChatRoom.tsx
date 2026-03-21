@@ -1505,6 +1505,31 @@ export default function ChatRoom({
                     </div>
                   </motion.button>
                 ))}
+
+                {/* Skills in slash menu */}
+                {skills.length > 0 && (inputValue === '/' || '/use'.startsWith(inputValue)) && (
+                  <>
+                    <div className="px-3 pt-2 pb-1 text-[11px] font-semibold text-text/40 dark:text-text-inv/40 uppercase tracking-wider">技能</div>
+                    {skills
+                      .filter((s) => inputValue === '/' || inputValue === '/use' || `/use ${s}`.startsWith(inputValue))
+                      .map((skillName) => (
+                      <motion.button
+                        key={`skill-${skillName}`}
+                        whileTap={{ scale: 0.98, backgroundColor: 'rgba(0,0,0,0.03)' }}
+                        onClick={() => handleCommandSelect(`/use ${skillName}`)}
+                        className="w-full flex items-center gap-3 p-3 rounded-[16px] text-left transition-colors"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                          <Puzzle size={18} />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-[15px] text-text dark:text-text-inv">/use {skillName}</div>
+                          <div className="text-[13px] text-text/55 dark:text-text-inv/55">{getSkillDescription(skillName)}</div>
+                        </div>
+                      </motion.button>
+                    ))}
+                  </>
+                )}
               </motion.div>
             </>
           )}
