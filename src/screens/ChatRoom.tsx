@@ -1100,8 +1100,8 @@ export default function ChatRoom({
                       >
                         <SmilePlus size={12} />
                       </button>
-                      {/* Hover flyout: quick emoji row */}
-                      <div className={`absolute bottom-full ${isUser ? 'right-0' : 'left-0'} mb-1 hidden group-hover/emoji:flex items-center gap-0.5 bg-white dark:bg-card-alt rounded-full px-1.5 py-1 border border-border dark:border-border-dark shadow-lg z-20`}>
+                      {/* Hover flyout: quick emoji row — after:pseudo bridges the gap so hover stays active */}
+                      <div className={`absolute bottom-full ${isUser ? 'right-0' : 'left-0'} mb-1.5 hidden group-hover/emoji:flex items-center gap-0.5 bg-white dark:bg-card-alt rounded-full px-1.5 py-1 border border-border dark:border-border-dark shadow-lg z-20 after:content-[''] after:absolute after:inset-x-0 after:-bottom-3 after:h-3`}>
                         {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
                           <button
                             key={e}
