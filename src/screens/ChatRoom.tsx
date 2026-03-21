@@ -41,6 +41,7 @@ import { getUserId } from '../App';
 import { getActiveConnection, getConnectionById } from '../services/connectionStore';
 import ActionCard from '../components/ActionCard';
 import MemorySheet from '../components/MemorySheet';
+import FileGallery from '../components/FileGallery';
 import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
 
 type Message = {
@@ -246,6 +247,7 @@ export default function ChatRoom({
   const [editingMsg, setEditingMsg] = useState<Message | null>(null);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [showFileGallery, setShowFileGallery] = useState(false);
   const [showMoreIcons, setShowMoreIcons] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
@@ -801,6 +803,10 @@ export default function ChatRoom({
     setShowHeaderMenu(false);
     setShowHistoryDrawer(true);
   };
+  const openFileGallery = () => {
+    setShowHeaderMenu(false);
+    setShowFileGallery(true);
+  };
   const handleConversationSwitch = (nextChatId: string) => {
     setShowHistoryDrawer(false);
     setShowHeaderMenu(false);
@@ -861,6 +867,13 @@ export default function ChatRoom({
               >
                 <MessageSquare size={16} />
                 Conversation History
+              </button>
+              <button
+                onClick={openFileGallery}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+              >
+                <Paperclip size={16} />
+                Files &amp; Media
               </button>
               <button
                 onClick={() => { setShowHeaderMenu(false); setShowMemory(true); }}
@@ -968,6 +981,15 @@ export default function ChatRoom({
           </>
         )}
       </AnimatePresence>
+
+      <FileGallery
+        agentId={agentId}
+        connectionId={connId}
+        agentName={agentInfo?.name}
+        isOpen={showFileGallery}
+        isDesktop={isDesktop}
+        onClose={() => setShowFileGallery(false)}
+      />
 
       {/* Reconnect celebration toast */}
       <AnimatePresence>
