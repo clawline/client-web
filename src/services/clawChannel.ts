@@ -150,6 +150,43 @@ class ChannelManager {
   private agentContexts = new Map<string, Map<string, AgentContext>>();
   private agentContextListeners = new Set<AgentContextListener>();
 
+  // ── File upload ──
+  async uploadFile(file: File, connectionId?: string): Promise<string> {
+    const connId = connectionId || getActiveConnectionId();
+    const instance = this.instances.get(connId || "");
+    if (!instance) throw new Error("No active connection");
+    
+    // Derive HTTP upload URL from WSS URL
+    const wsUrl = instance.currentServerUrl || DEFAULT_WS_URL;
+    const httpBase = wsUrl
+      .replace(/^wss:/, "https:")
+      .replace(/^ws:/, "http:")
+      .replace(/\/client\/?$/, "")
+      .replace(/\/backend\/?$/, "");
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const headers: Record<string, string> = {};
+    if (instance.currentAuthToken) {
+      if (instance.currentAuthToken.length > 32) {
+         headers["Authorization"] = `Bearer ${instance.currentAuthToken}`;
+      } else {
+         headers["x-relay-admin-token"] = instance.currentAuthToken;
+      }
+    }
+
+    const res = await fetch(`${httpBase}/api/media/upload`, {
+      method: "POST",
+      body: formData,
+      headers,
+    });
+    
+    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    const data = await res.json();
+    return data.url;
+  }
+
   get(connectionId?: string) {
     const resolved = getResolvedConnectionId(connectionId);
     if (!resolved) return null;
@@ -894,6 +931,11 @@ export function sendRaw(packet: { type: string; data: Record<string, unknown> },
 
 export function isReady(connectionId?: string) {
   return manager.isReady(connectionId);
+}
+
+// ── File upload ──
+export async function uploadFile(file: File, connectionId?: string): Promise<string> {
+  return manager.uploadFile(file, connectionId);
 }
 
 export function sendText(content: string, agentId?: string, connectionId?: string) {

@@ -651,10 +651,12 @@ export default function ChatRoom({
     setFileCaption('');
   };
 
-  const handleSendPendingFile = () => {
+  const handleSendPendingFile = async () => {
     if (!pendingFile) return;
     const { file, dataUrl, isImage } = pendingFile;
     const caption = fileCaption.trim();
+    
+    // Optimistic UI update using dataUrl immediately
     const userMsg: Message = {
       id: Date.now().toString(),
       sender: 'user',
@@ -664,11 +666,37 @@ export default function ChatRoom({
       timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
-    try {
-      channel.sendFile({ content: caption || file.name, mediaUrl: dataUrl, mimeType: file.type, fileName: file.name, agentId: agentId || undefined }, runtimeConnId);
-    } catch { /* ignore */ }
     setPendingFile(null);
     setFileCaption('');
+
+    try {
+      let finalUrl = dataUrl;
+      // Try to upload to relay if file > 100KB to save bandwidth/WS overhead
+      // (Small files can stay inline base64 for speed)
+      if (file.size > 100 * 1024) {
+        try {
+          // @ts-ignore - uploadFile added recently
+          if (channel.uploadFile) {
+            // @ts-ignore
+            finalUrl = await channel.uploadFile(file, runtimeConnId);
+            console.log('[ChatRoom] Uploaded file:', finalUrl);
+          }
+        } catch (err) {
+          console.warn('[ChatRoom] Upload failed, falling back to base64:', err);
+        }
+      }
+
+      channel.sendFile({ 
+        content: caption || file.name, 
+        mediaUrl: finalUrl, 
+        mimeType: file.type, 
+        fileName: file.name, 
+        agentId: agentId || undefined 
+      }, runtimeConnId);
+    } catch (err) {
+      console.error('[ChatRoom] Failed to send file message:', err);
+      // Ideally show error toast
+    }
   };
 
   const handleCancelPendingFile = () => {
