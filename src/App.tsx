@@ -18,7 +18,7 @@ import { useSwipeBack } from './hooks/useSwipeBack';
 import { usePWAUpdate } from './hooks/usePWAUpdate';
 import { useIOSPWA } from './hooks/useIOSPWA';
 import { cn } from './lib/utils';
-import { MessageCircle, LayoutDashboard, Search as SearchIcon, User, Settings } from 'lucide-react';
+import { MessageCircle, LayoutDashboard, Search as SearchIcon, User } from 'lucide-react';
 import { migrateFromLocalStorage } from './services/messageDB';
 
 // Lazy-loaded heavy screens
@@ -117,6 +117,29 @@ function useIsDesktop() {
   return isDesktop;
 }
 
+function useIsSplitViewport() {
+  const forcedMobile = typeof window !== 'undefined' && (
+    new URLSearchParams(window.location.search).get('mobile') === 'true' ||
+    new URLSearchParams(window.location.search).get('layout') === 'mobile'
+  );
+
+  const [isSplitViewport, setIsSplitViewport] = useState(() => {
+    if (forcedMobile) return false;
+    return typeof window !== 'undefined' && window.innerWidth >= 1440;
+  });
+
+  useEffect(() => {
+    if (forcedMobile) return;
+    const mql = window.matchMedia('(min-width: 1440px)');
+    const handler = (event: MediaQueryListEvent) => setIsSplitViewport(event.matches);
+    setIsSplitViewport(mql.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, [forcedMobile]);
+
+  return isSplitViewport;
+}
+
 const SIDEBAR_NAV_ITEMS = [
   { id: 'chats', icon: MessageCircle, label: 'Chats' },
   { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -141,6 +164,9 @@ function AppShell() {
   const [activeAgentId, setActiveAgentId] = useState<string | null>(initialFromUrl.agentId ?? null);
   const [activeChatId, setActiveChatId] = useState<string | null>(initialFromUrl.chatId ?? null);
   const [activeConnectionId, setActiveConnectionState] = useState<string | null>(initialFromUrl.connectionId ?? getActiveConnectionId());
+  const [splitAgentId, setSplitAgentId] = useState<string | null>(null);
+  const [splitChatId, setSplitChatId] = useState<string | null>(null);
+  const [splitConnectionId, setSplitConnectionId] = useState<string | null>(null);
 
   // PWA update detection
   const { updateAvailable, applyUpdate, dismissUpdate } = usePWAUpdate();
@@ -228,6 +254,45 @@ function AppShell() {
   });
 
   const isDesktop = useIsDesktop();
+  const isSplitViewport = useIsSplitViewport();
+  const splitActive = currentScreen === 'chat_room' && isSplitViewport && !!splitAgentId && !!splitConnectionId;
+  const splitRuntimeConnectionId = splitActive && splitConnectionId && splitAgentId
+    ? `${splitConnectionId}::split::${splitAgentId}`
+    : null;
+
+  const closeSplitView = useCallback(() => {
+    setSplitAgentId(null);
+    setSplitChatId(null);
+    setSplitConnectionId(null);
+  }, []);
+
+  const openSplitChat = useCallback((connectionId: string, agentId: string, chatId?: string) => {
+    if (!isSplitViewport) return;
+    setSplitConnectionId(connectionId);
+    setSplitAgentId(agentId);
+    setSplitChatId(chatId ?? null);
+  }, [isSplitViewport]);
+
+  const toggleSplitView = useCallback(() => {
+    if (!isSplitViewport || !activeConnectionId || !activeAgentId) {
+      return;
+    }
+
+    if (splitActive) {
+      closeSplitView();
+      return;
+    }
+
+    setSplitConnectionId(activeConnectionId);
+    setSplitAgentId(activeAgentId);
+    setSplitChatId(activeChatId);
+  }, [activeAgentId, activeChatId, activeConnectionId, closeSplitView, isSplitViewport, splitActive]);
+
+  useEffect(() => {
+    if (!isSplitViewport || currentScreen !== 'chat_room') {
+      closeSplitView();
+    }
+  }, [closeSplitView, currentScreen, isSplitViewport]);
 
   // ── Conditional returns AFTER all hooks ──
 
@@ -282,7 +347,52 @@ function AppShell() {
     const content = (() => {
       switch (currentScreen) {
         case 'chat_room':
-          return <ChatRoom agentId={activeAgentId} chatId={activeChatId} connectionId={activeConnectionId} onBack={() => navigate('chats')} onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)} isDesktop />;
+          if (splitActive && splitConnectionId && splitAgentId && splitRuntimeConnectionId) {
+            return (
+              <div className="flex h-full min-w-0 bg-surface dark:bg-surface-dark">
+                <div className="min-w-[400px] flex-1 overflow-hidden border-r border-border/60 dark:border-border-dark/60">
+                  <ChatRoom
+                    agentId={activeAgentId}
+                    chatId={activeChatId}
+                    connectionId={activeConnectionId}
+                    onBack={() => navigate('chats')}
+                    onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)}
+                    isDesktop
+                    showSplitButton={isSplitViewport}
+                    splitActive={splitActive}
+                    onToggleSplit={toggleSplitView}
+                  />
+                </div>
+                <div className="min-w-[400px] flex-1 overflow-hidden">
+                  <ChatRoom
+                    agentId={splitAgentId}
+                    chatId={splitChatId}
+                    connectionId={splitConnectionId}
+                    channelConnectionId={splitRuntimeConnectionId}
+                    onBack={() => {}}
+                    onOpenConversation={(nextChatId) => setSplitChatId(nextChatId)}
+                    isDesktop
+                    isSplitPane
+                    onCloseSplit={closeSplitView}
+                  />
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <ChatRoom
+              agentId={activeAgentId}
+              chatId={activeChatId}
+              connectionId={activeConnectionId}
+              onBack={() => navigate('chats')}
+              onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)}
+              isDesktop
+              showSplitButton={isSplitViewport}
+              splitActive={splitActive}
+              onToggleSplit={toggleSplitView}
+            />
+          );
         case 'dashboard':
           return <Dashboard />;
         case 'profile':
@@ -327,8 +437,23 @@ function AppShell() {
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
         <div style={{ width: sidebarWidth }} className="h-full flex flex-col border-r border-border/60 dark:border-border-dark/60 bg-surface dark:bg-surface-dark flex-shrink-0 relative">
-          {/* Sidebar nav */}
-          <div className="flex items-center gap-0.5 px-2 py-2 border-b border-border/60 dark:border-border-dark/60 min-h-[48px]">
+          {/* Sidebar content: ChatList */}
+          <div className="flex-1 overflow-y-auto">
+            <ChatList
+              onOpenChat={(connectionId, agentId, chatId) => navigate('chat_room', agentId, chatId, connectionId)}
+              onOpenSplitChat={openSplitChat}
+              onAddServer={() => navigate('pairing')}
+              compact
+              activeAgentId={activeAgentId}
+              activeConnectionId={activeConnectionId}
+              splitEnabled={isSplitViewport && currentScreen === 'chat_room'}
+              splitActiveAgentId={splitAgentId}
+              splitActiveConnectionId={splitConnectionId}
+            />
+          </div>
+
+          {/* Sidebar nav — bottom */}
+          <div className="flex items-center gap-0.5 px-2 py-2 border-t border-border/60 dark:border-border-dark/60 min-h-[48px]">
             {SIDEBAR_NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive = item.id === 'chats'
@@ -350,17 +475,6 @@ function AppShell() {
             })}
           </div>
 
-          {/* Sidebar content: ChatList */}
-          <div className="flex-1 overflow-y-auto">
-            <ChatList
-              onOpenChat={(connectionId, agentId, chatId) => navigate('chat_room', agentId, chatId, connectionId)}
-              onAddServer={() => navigate('pairing')}
-              compact
-              activeAgentId={activeAgentId}
-              activeConnectionId={activeConnectionId}
-            />
-          </div>
-
           {/* Resize handle */}
           <div
             onMouseDown={handleSidebarMouseDown}
@@ -373,7 +487,7 @@ function AppShell() {
           <UpdateBanner isVisible={updateAvailable} onUpdate={applyUpdate} onDismiss={dismissUpdate} />
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.div
-              key={currentScreen + (activeConnectionId || '') + (activeAgentId || '') + (activeChatId || '')}
+              key={`${currentScreen}:${activeConnectionId || ''}:${activeAgentId || ''}:${activeChatId || ''}:${splitConnectionId || ''}:${splitAgentId || ''}:${splitChatId || ''}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}

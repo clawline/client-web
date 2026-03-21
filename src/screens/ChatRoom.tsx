@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Brain, Puzzle, RefreshCw } from 'lucide-react';
+import { ChevronLeft, Columns2, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Brain, Puzzle, RefreshCw } from 'lucide-react';
 import { cn } from '../lib/utils';
 import * as channel from '../services/clawChannel';
 import type { AgentContext, AgentInfo, ConversationSummary } from '../services/clawChannel';
@@ -166,30 +166,46 @@ export default function ChatRoom({
   agentId,
   chatId,
   connectionId,
+  channelConnectionId,
   onBack,
   onOpenConversation,
   isDesktop,
+  showSplitButton,
+  splitActive,
+  isSplitPane,
+  onToggleSplit,
+  onCloseSplit,
 }: {
   agentId?: string | null;
   chatId?: string | null;
   connectionId?: string | null;
+  channelConnectionId?: string | null;
   onBack: () => void;
   onOpenConversation: (chatId: string) => void;
   isDesktop?: boolean;
+  showSplitButton?: boolean;
+  splitActive?: boolean;
+  isSplitPane?: boolean;
+  onToggleSplit?: () => void;
+  onCloseSplit?: () => void;
 }) {
   const activeConn = connectionId ? getConnectionById(connectionId) : getActiveConnection();
   const connId = activeConn?.id || '';
+  const runtimeConnId = channelConnectionId || connId;
   const [messages, setMessages] = useState<Message[]>([]);
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(() => getAgentInfo(agentId, connId));
-  const [agentContext, setAgentContext] = useState<AgentContext | null>(() => channel.getAgentContext(connId, agentId ?? undefined));
+  const [agentContext, setAgentContext] = useState<AgentContext | null>(() => (
+    channel.getAgentContext(runtimeConnId, agentId ?? undefined) ??
+    channel.getAgentContext(connId, agentId ?? undefined)
+  ));
   const [isContextLoading, setIsContextLoading] = useState(false);
   const [hasLoadedMessages, setHasLoadedMessages] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactingToMsgId, setReactingToMsgId] = useState<string | null>(null);
-  const [wsStatus, setWsStatus] = useState<string>(channel.getStatus(connId));
-  const prevWsStatusRef = useRef<string>(channel.getStatus(connId));
+  const [wsStatus, setWsStatus] = useState<string>(channel.getStatus(runtimeConnId));
+  const prevWsStatusRef = useRef<string>(channel.getStatus(runtimeConnId));
   const [showReconnected, setShowReconnected] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -214,10 +230,13 @@ export default function ChatRoom({
 
   useEffect(() => {
     setAgentInfo(getAgentInfo(agentId, connId));
-    setAgentContext(channel.getAgentContext(connId, agentId ?? undefined));
+    setAgentContext(
+      channel.getAgentContext(runtimeConnId, agentId ?? undefined) ??
+      channel.getAgentContext(connId, agentId ?? undefined),
+    );
     setIsContextLoading(false);
     setShowSkills(false);
-  }, [agentId, connId]);
+  }, [agentId, connId, runtimeConnId]);
 
   useEffect(() => {
     if (skillCount > 0) return;
@@ -226,45 +245,45 @@ export default function ChatRoom({
 
   useEffect(() => {
     return channel.onAgentContextChange((contextConnectionId, contextAgentId, nextContext) => {
-      if (contextConnectionId !== connId || contextAgentId !== agentId) {
+      if (contextConnectionId !== runtimeConnId || contextAgentId !== agentId) {
         return;
       }
 
       setAgentContext(nextContext);
       setIsContextLoading(false);
     });
-  }, [agentId, connId]);
+  }, [agentId, runtimeConnId]);
 
   const requestAgentContext = useCallback(() => {
-    if (!agentId || !connId) return;
+    if (!agentId || !runtimeConnId) return;
     setIsContextLoading(true);
     try {
-      channel.requestAgentContext(agentId, connId);
+      channel.requestAgentContext(agentId, runtimeConnId);
     } catch {
       setIsContextLoading(false);
     }
-  }, [agentId, connId]);
+  }, [agentId, runtimeConnId]);
 
   const refreshAgentMeta = useCallback(() => {
-    if (!connId) return;
+    if (!runtimeConnId) return;
 
     if (agentId) {
       requestAgentContext();
     }
 
     try {
-      channel.requestAgentList(connId);
+      channel.requestAgentList(runtimeConnId);
     } catch {
       // ignore disconnected refresh attempts
     }
-  }, [agentId, connId, requestAgentContext]);
+  }, [agentId, requestAgentContext, runtimeConnId]);
 
   useEffect(() => {
-    if (!showContextViewer || !agentId || !connId) {
+    if (!showContextViewer || !agentId || !runtimeConnId) {
       return;
     }
 
-    const cachedContext = channel.getAgentContext(connId, agentId);
+    const cachedContext = channel.getAgentContext(runtimeConnId, agentId) ?? channel.getAgentContext(connId, agentId);
     if (cachedContext) {
       setAgentContext(cachedContext);
       setIsContextLoading(false);
@@ -277,7 +296,7 @@ export default function ChatRoom({
     }
 
     requestAgentContext();
-  }, [agentId, connId, requestAgentContext, showContextViewer, wsStatus]);
+  }, [agentId, connId, requestAgentContext, runtimeConnId, showContextViewer, wsStatus]);
 
   useEffect(() => {
     setMessages([]);
@@ -331,16 +350,16 @@ export default function ChatRoom({
     }
 
     const syncPeerTyping = (typingAgentIds?: string[]) => {
-      const agentIds = typingAgentIds ?? channel.getTypingAgents(connId);
+      const agentIds = typingAgentIds ?? channel.getTypingAgents(runtimeConnId);
       setPeerTyping(agentIds.includes(agentId));
     };
 
     syncPeerTyping();
     return channel.onTypingChange((typingConnectionId, typingAgentIds) => {
-      if (typingConnectionId !== connId) return;
+      if (typingConnectionId !== runtimeConnId) return;
       syncPeerTyping(typingAgentIds);
     });
-  }, [agentId, connId]);
+  }, [agentId, connId, runtimeConnId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -348,26 +367,27 @@ export default function ChatRoom({
 
   // WebSocket 连接 & 消息监听
   useEffect(() => {
-    if (!activeConn || !connId) return;
+    if (!activeConn || !runtimeConnId) return;
     // Use explicit chatId if provided; otherwise let server assign via connection.open
     const conversationId = chatId || activeConn.chatId || undefined;
     const requestSelectedHistory = () => {
       if (!chatId) return;
-      try { channel.requestHistory(chatId, connId); } catch { /* ignore */ }
+      try { channel.requestHistory(chatId, runtimeConnId); } catch { /* ignore */ }
     };
 
     setIsThinking(false);
     setShowHeaderMenu(false);
     setShowHistoryDrawer(false);
     setConversations([]);
-    setWsStatus(channel.getStatus(connId));
-    prevWsStatusRef.current = channel.getStatus(connId);
+    setWsStatus(channel.getStatus(runtimeConnId));
+    prevWsStatusRef.current = channel.getStatus(runtimeConnId);
 
-    const currentStatus = channel.getStatus(connId);
+    const currentStatus = channel.getStatus(runtimeConnId);
+    const currentChatId = channel.getChatId(runtimeConnId);
 
-    if (currentStatus !== 'connected' && currentStatus !== 'connecting') {
+    if (currentStatus !== 'connecting') {
       channel.connect({
-        connectionId: connId,
+        connectionId: runtimeConnId,
         chatId: conversationId,
         senderId: activeConn.senderId || getUserId(),
         senderName: activeConn.displayName,
@@ -377,7 +397,7 @@ export default function ChatRoom({
       });
     }
 
-    if (currentStatus === 'connected') {
+    if (currentStatus === 'connected' && (!chatId || currentChatId === chatId)) {
       requestSelectedHistory();
     }
 
@@ -486,7 +506,7 @@ export default function ChatRoom({
           });
         }
       }
-    }, connId);
+    }, runtimeConnId);
 
     const unsubStatus = channel.onStatus((status) => {
       // Detect reconnect: was disconnected/reconnecting → now connected
@@ -499,7 +519,7 @@ export default function ChatRoom({
       if (status === 'disconnected') {
         setLoadingConversations(false);
       }
-    }, connId);
+    }, runtimeConnId);
 
     return () => {
       unsubMsg();
@@ -507,25 +527,25 @@ export default function ChatRoom({
       // Don't close channel here — next connect() will replace it,
       // and StrictMode double-invoke would kill the connection prematurely
     };
-  }, [agentId, chatId, activeConn?.id, connId]);
+  }, [agentId, chatId, activeConn?.id, connId, runtimeConnId]);
 
   const requestConversationList = useCallback(() => {
-    if (!agentId || !connId) return;
+    if (!agentId || !runtimeConnId) return;
     setLoadingConversations(true);
     try {
-      channel.requestConversationList(agentId, connId);
+      channel.requestConversationList(agentId, runtimeConnId);
     } catch {
       setLoadingConversations(false);
     }
-  }, [agentId, connId]);
+  }, [agentId, runtimeConnId]);
 
   useEffect(() => {
-    if (!showHistoryDrawer || !activeConn || !connId || !agentId) return;
+    if (!showHistoryDrawer || !activeConn || !runtimeConnId || !agentId) return;
 
-    const drawerStatus = channel.getStatus(connId);
+    const drawerStatus = channel.getStatus(runtimeConnId);
     if (drawerStatus !== 'connected' && drawerStatus !== 'connecting') {
       channel.connect({
-        connectionId: connId,
+        connectionId: runtimeConnId,
         chatId: chatId || activeConn.chatId || undefined,
         senderId: activeConn.senderId || getUserId(),
         senderName: activeConn.displayName,
@@ -540,7 +560,7 @@ export default function ChatRoom({
     } else {
       setLoadingConversations(true);
     }
-  }, [activeConn, agentId, chatId, connId, requestConversationList, showHistoryDrawer]);
+  }, [activeConn, agentId, chatId, requestConversationList, runtimeConnId, showHistoryDrawer]);
 
   useEffect(() => {
     if (showHistoryDrawer && wsStatus === 'connected') {
@@ -557,9 +577,9 @@ export default function ChatRoom({
 
     // Send typing indicator (debounced)
     if (val.trim()) {
-      try { channel.sendTyping(true, connId); } catch {}
+      try { channel.sendTyping(true, runtimeConnId); } catch {}
       if (typingTimer.current) clearTimeout(typingTimer.current);
-      typingTimer.current = setTimeout(() => { try { channel.sendTyping(false, connId); } catch {} }, 3000);
+      typingTimer.current = setTimeout(() => { try { channel.sendTyping(false, runtimeConnId); } catch {} }, 3000);
     }
   };
 
@@ -571,7 +591,7 @@ export default function ChatRoom({
 
   const handleSaveEdit = () => {
     if (!editingMsg || !inputValue.trim()) return;
-    channel.editMessage(editingMsg.id, inputValue.trim(), connId);
+    channel.editMessage(editingMsg.id, inputValue.trim(), runtimeConnId);
     setMessages((prev) => prev.map((m) => m.id === editingMsg.id ? { ...m, text: inputValue.trim() } : m));
     setEditingMsg(null);
     setInputValue('');
@@ -584,7 +604,7 @@ export default function ChatRoom({
 
   // Delete message
   const handleDeleteMessage = (msgId: string) => {
-    channel.deleteMessage(msgId, connId);
+    channel.deleteMessage(msgId, runtimeConnId);
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
   };
 
@@ -606,7 +626,7 @@ export default function ChatRoom({
     };
     setMessages((prev) => [...prev, userMsg]);
     try {
-      channel.sendFile({ content: file.name, mediaUrl: dataUrl, mimeType: file.type, fileName: file.name, agentId: agentId || undefined }, connId);
+      channel.sendFile({ content: file.name, mediaUrl: dataUrl, mimeType: file.type, fileName: file.name, agentId: agentId || undefined }, runtimeConnId);
     } catch { /* ignore */ }
   };
 
@@ -634,9 +654,9 @@ export default function ChatRoom({
 
     try {
       if (replyId) {
-        channel.sendTextWithParent(inputValue, replyId, agentId || undefined, connId);
+        channel.sendTextWithParent(inputValue, replyId, agentId || undefined, runtimeConnId);
       } else {
-        channel.sendText(inputValue, agentId || undefined, connId);
+        channel.sendText(inputValue, agentId || undefined, runtimeConnId);
       }
     } catch {
       setMessages((prev) => [
@@ -656,7 +676,7 @@ export default function ChatRoom({
     const userMsg: Message = { id: Date.now().toString(), sender: 'user', text, timestamp: Date.now() };
     setMessages((prev) => [...prev, userMsg]);
     try {
-      channel.sendText(text, agentId || undefined, connId);
+      channel.sendText(text, agentId || undefined, runtimeConnId);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -690,7 +710,7 @@ export default function ChatRoom({
         mediaUrl: dataUrl,
         mimeType: file.type,
         agentId: agentId || undefined,
-      }, connId);
+      }, runtimeConnId);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -737,7 +757,7 @@ export default function ChatRoom({
               mediaUrl: dataUrl,
               mimeType: 'audio/webm',
               agentId: agentId || undefined,
-            }, connId);
+            }, runtimeConnId);
           } catch { /* ignore */ }
         };
         reader.readAsDataURL(blob);
@@ -752,7 +772,7 @@ export default function ChatRoom({
         { id: `err-${Date.now()}`, sender: 'ai', text: '⚠️ Microphone access denied.' },
       ]);
     }
-  }, [isRecording, agentId]);
+  }, [agentId, isRecording, runtimeConnId]);
 
   const handleCommandSelect = (cmd: string) => {
     // Commands that need additional arguments → fill input
@@ -786,9 +806,9 @@ export default function ChatRoom({
       // Send to server
       try {
         if (hasReaction) {
-          channel.removeReaction(reactingToMsgId, emoji, connId);
+          channel.removeReaction(reactingToMsgId, emoji, runtimeConnId);
         } else {
-          channel.addReaction(reactingToMsgId, emoji, connId);
+          channel.addReaction(reactingToMsgId, emoji, runtimeConnId);
         }
       } catch { /* ignore */ }
     } else {
@@ -796,7 +816,7 @@ export default function ChatRoom({
       const emojiMsg: Message = { id: Date.now().toString(), sender: 'user', text: emoji, timestamp: Date.now() };
       setMessages((prev) => [...prev, emojiMsg]);
       try {
-        channel.sendText(emoji, undefined, connId);
+        channel.sendText(emoji, undefined, runtimeConnId);
       } catch {
         // ignore
       }
@@ -865,9 +885,30 @@ export default function ChatRoom({
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {!isSplitPane && showSplitButton && agentId && onToggleSplit && (
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={onToggleSplit}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors',
+                splitActive
+                  ? 'border-primary/30 bg-primary/10 text-primary'
+                  : 'border-border/70 bg-white/75 text-text/65 hover:border-primary/25 hover:text-primary dark:border-border-dark/70 dark:bg-card-alt/75 dark:text-text-inv/65'
+              )}
+              aria-label="Toggle split view"
+            >
+              <Columns2 size={15} />
+              <span>Split</span>
+            </motion.button>
+          )}
           <motion.button whileTap={{ scale: 0.9 }} onClick={openHistoryDrawer} className="p-2 text-text dark:text-text-inv" aria-label="Open history drawer">
             <MessageSquare size={20} />
           </motion.button>
+          {isSplitPane && onCloseSplit && (
+            <motion.button whileTap={{ scale: 0.9 }} onClick={onCloseSplit} className="p-2 text-text dark:text-text-inv" aria-label="Close split view">
+              <X size={20} />
+            </motion.button>
+          )}
           <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2 -mr-2 text-text dark:text-text-inv" aria-label="More options">
             <MoreHorizontal size={24} />
           </motion.button>
@@ -1200,7 +1241,7 @@ export default function ChatRoom({
                                 const reactions = m.reactions ?? [];
                                 return { ...m, reactions: hasIt ? reactions.filter(r => r !== e) : [...reactions, e] };
                               }));
-                              if (hasIt) { channel.removeReaction(msg.id, e, connId); } else { channel.addReaction(msg.id, e, connId); }
+                              if (hasIt) { channel.removeReaction(msg.id, e, runtimeConnId); } else { channel.addReaction(msg.id, e, runtimeConnId); }
                             }}
                             className={`w-7 h-7 text-[15px] flex items-center justify-center rounded-full transition-all ${
                               msg.reactions?.includes(e) ? 'bg-primary/20 scale-110' : 'hover:bg-border dark:hover:bg-border-dark hover:scale-110'
@@ -1269,7 +1310,7 @@ export default function ChatRoom({
                             const reactions = m.reactions ?? [];
                             return { ...m, reactions: reactions.filter(r => r !== emoji) };
                           }));
-                          channel.removeReaction(msg.id, emoji, connId);
+                          channel.removeReaction(msg.id, emoji, runtimeConnId);
                         }}
                         className="bg-primary/10 dark:bg-primary/15 border border-primary/30 rounded-full px-2.5 py-1 text-[14px] shadow-sm flex items-center gap-1 hover:bg-primary/20 transition-colors"
                       >
@@ -1355,7 +1396,7 @@ export default function ChatRoom({
                             const reactions = m.reactions ?? [];
                             return { ...m, reactions: hasIt ? reactions.filter(r => r !== e) : [...reactions, e] };
                           }));
-                          if (hasIt) { channel.removeReaction(longPressedMsgId, e, connId); } else { channel.addReaction(longPressedMsgId, e, connId); }
+                          if (hasIt) { channel.removeReaction(longPressedMsgId, e, runtimeConnId); } else { channel.addReaction(longPressedMsgId, e, runtimeConnId); }
                           closeLongPress();
                         }}
                         className={`w-11 h-11 text-[22px] flex items-center justify-center rounded-full transition-colors ${
@@ -1420,7 +1461,7 @@ export default function ChatRoom({
                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute bottom-full left-4 right-4 mb-2 bg-white/70 dark:bg-card-alt/70 backdrop-blur-[20px] border border-white/50 dark:border-border-dark/50 shadow-2xl rounded-[24px] p-2 overflow-hidden"
+                className="absolute bottom-full left-4 right-4 mb-2 bg-white/95 dark:bg-card-alt/95 backdrop-blur-[20px] border border-border/50 dark:border-border-dark/50 shadow-2xl rounded-[24px] p-2 overflow-hidden"
               >
                 {slashCommands
                   .filter((cmd) => cmd.label.startsWith(inputValue) || inputValue === '/')
@@ -1455,7 +1496,7 @@ export default function ChatRoom({
                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute bottom-full left-4 right-4 mb-2 bg-white/70 dark:bg-card-alt/70 backdrop-blur-[20px] border border-white/50 dark:border-border-dark/50 shadow-2xl rounded-[24px] p-4 flex flex-wrap gap-2 justify-center"
+                className="absolute bottom-full left-4 right-4 mb-2 bg-white/95 dark:bg-card-alt/95 backdrop-blur-[20px] border border-border/50 dark:border-border-dark/50 shadow-2xl rounded-[24px] p-4 flex flex-wrap gap-2 justify-center"
               >
                 {EMOJI_LIST.map((emoji) => (
                   <motion.button
@@ -1562,32 +1603,26 @@ export default function ChatRoom({
           <div className="flex min-h-9 items-center justify-between gap-1 px-2 py-1">
             <button
               type="button"
-              disabled={skillCount === 0}
-              onClick={() => {
-                if (skillCount === 0) return;
-                setShowSkills((current) => !current);
-              }}
+              onClick={() => setShowSkills((current) => !current)}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors',
-                skillCount === 0
-                  ? 'cursor-not-allowed text-text/35 dark:text-text-inv/35'
-                  : showSkills
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-text/60 hover:bg-surface hover:text-text dark:text-text-inv/60 dark:hover:bg-surface-dark dark:hover:text-text-inv'
+                showSkills
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-text/60 hover:bg-surface hover:text-text dark:text-text-inv/60 dark:hover:bg-surface-dark dark:hover:text-text-inv'
               )}
             >
               <Puzzle size={14} />
-              <span>技能({skillCount})</span>
+              <span>技能{skillCount > 0 ? `(${skillCount})` : ''}</span>
             </button>
 
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setShowContextViewer(true)}
-                disabled={!agentId || !connId}
+                disabled={!agentId || !runtimeConnId}
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors',
-                  !agentId || !connId
+                  !agentId || !runtimeConnId
                     ? 'cursor-not-allowed text-text/35 dark:text-text-inv/35'
                     : 'text-text/60 hover:bg-surface hover:text-text dark:text-text-inv/60 dark:hover:bg-surface-dark dark:hover:text-text-inv'
                 )}
@@ -1598,10 +1633,10 @@ export default function ChatRoom({
               <button
                 type="button"
                 onClick={refreshAgentMeta}
-                disabled={!connId}
+                disabled={!runtimeConnId}
                 className={cn(
                   'flex h-7 w-7 items-center justify-center rounded-full transition-colors',
-                  !connId
+                  !runtimeConnId
                     ? 'cursor-not-allowed text-text/35 dark:text-text-inv/35'
                     : 'text-text/55 hover:bg-surface hover:text-text dark:text-text-inv/55 dark:hover:bg-surface-dark dark:hover:text-text-inv'
                 )}
@@ -1613,13 +1648,14 @@ export default function ChatRoom({
           </div>
 
           <AnimatePresence initial={false}>
-            {showSkills && skillCount > 0 && (
+            {showSkills && (
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 6 }}
                 className="border-t border-border/80 px-2 pb-2 pt-1 dark:border-border-dark/80"
               >
+                {skillCount > 0 ? (
                 <div className="grid max-h-[200px] gap-2 overflow-y-auto py-1 sm:grid-cols-2">
                   {skills.map((skillName) => (
                     <div
@@ -1636,6 +1672,12 @@ export default function ChatRoom({
                     </div>
                   ))}
                 </div>
+                ) : (
+                <div className="py-3 text-center text-[12px] text-text/40 dark:text-text-inv/40">
+                  <Puzzle size={16} className="mx-auto mb-1 opacity-40" />
+                  暂无技能
+                </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

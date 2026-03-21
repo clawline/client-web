@@ -420,6 +420,11 @@ class ChannelManager {
           this.setAgentContext(instance.connectionId, agentId, { files, timestamp });
         }
         if (packet.type === 'typing') {
+          // Ignore our own typing echo from the server
+          const typingSenderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
+          if (typingSenderId && typingSenderId === instance.currentSenderId) {
+            return;
+          }
           const agentId = this.resolveTypingAgentId(instance, packet);
           const isTyping = packet.data.isTyping === true;
           this.setTypingState(instance.connectionId, agentId, isTyping);

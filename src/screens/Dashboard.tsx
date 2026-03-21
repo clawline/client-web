@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Activity, Server, Wifi, WifiOff, Users, MessageSquare, RefreshCw, Bot, Cpu, Zap, Clock, Radio, Shield } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Activity, ArrowUpRight, Server, Users, RefreshCw, Bot, Cpu, Zap, Clock, Radio, Shield } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { getActiveConnection } from '../services/connectionStore';
+import { cn } from '../lib/utils';
+import { getActiveConnection, getConnections, setActiveConnectionId } from '../services/connectionStore';
 import * as channel from '../services/clawChannel';
 import type { AgentInfo } from '../services/clawChannel';
 import { getUserId } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
 import EmptyState from '../components/EmptyState';
+import { getMessageStats, getRecentMessages, type MessageRecord, type MessageStats } from '../services/messageDB';
 
 /* ── Types ────────────────────────────────────────────────── */
 
@@ -41,9 +44,64 @@ type RelayHealth = {
   timestamp: number;
 };
 
+function getTodayStartTimestamp() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today.getTime();
+}
+
+function formatSummaryDate(date = new Date()) {
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatLastActivity(timestamp: number | null) {
+  if (!timestamp) return 'No activity yet';
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatTimelineTime(timestamp: number) {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function getMessagePreview(message: MessageRecord) {
+  const source = message.text?.trim() || message.mediaType || 'Attachment';
+  return source.length > 80 ? `${source.slice(0, 80)}…` : source;
+}
+
+function getAgentDisplayName(agentId: string | null, connectionId?: string) {
+  if (!agentId) return 'Unknown agent';
+
+  if (connectionId) {
+    const matchedAgent = channel.loadCachedAgents(connectionId).find((agent) => agent.id === agentId);
+    if (matchedAgent) {
+      return `${matchedAgent.identityEmoji || '🤖'} ${matchedAgent.identityName || matchedAgent.name}`;
+    }
+  }
+
+  for (const connection of getConnections()) {
+    const matchedAgent = channel.loadCachedAgents(connection.id).find((agent) => agent.id === agentId);
+    if (matchedAgent) {
+      return `${matchedAgent.identityEmoji || '🤖'} ${matchedAgent.identityName || matchedAgent.name}`;
+    }
+  }
+
+  return agentId;
+}
+
 /* ── Component ────────────────────────────────────────────── */
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const activeConn = getActiveConnection();
   const connId = activeConn?.id || '';
   const cached = activeConn ? channel.loadCachedChannelStatus<ChannelStatus>(activeConn.id) : null;
@@ -53,6 +111,9 @@ export default function Dashboard() {
   const [agents, setAgents] = useState<AgentInfo[]>(activeConn ? channel.loadCachedAgents(activeConn.id) : []);
   const [relayHealth, setRelayHealth] = useState<RelayHealth | null>(null);
   const [uptimeStr, setUptimeStr] = useState('');
+  const [todayStats, setTodayStats] = useState<MessageStats | null>(null);
+  const [recentMessages, setRecentMessages] = useState<MessageRecord[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
   const connectedSince = useRef<number | null>(null);
 
   useEffect(() => {
@@ -81,6 +142,26 @@ export default function Dashboard() {
       if (res.ok) setRelayHealth(await res.json());
     } catch { /* ignore - gateway might not expose healthz to clients */ }
   }, [activeConn?.serverUrl]);
+
+  const loadMessageInsights = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setActivityLoading(true);
+    }
+
+    try {
+      const [nextStats, nextRecentMessages] = await Promise.all([
+        getMessageStats(getTodayStartTimestamp()),
+        getRecentMessages(20),
+      ]);
+      setTodayStats(nextStats);
+      setRecentMessages(nextRecentMessages);
+    } catch {
+      setTodayStats(null);
+      setRecentMessages([]);
+    } finally {
+      setActivityLoading(false);
+    }
+  }, []);
 
   /* ── WebSocket listeners ────────────────────────────────── */
   useEffect(() => {
@@ -137,6 +218,20 @@ export default function Dashboard() {
     return () => { unsubMsg(); unsubStatus(); clearInterval(pollInterval); };
   }, [activeConn?.id, connId, fetchRelayHealth]);
 
+  useEffect(() => {
+    if (!activeConn) return;
+
+    void loadMessageInsights(true);
+
+    const interval = setInterval(() => {
+      void loadMessageInsights();
+    }, 15000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [activeConn?.id, loadMessageInsights]);
+
   /* ── Uptime ticker ──────────────────────────────────────── */
   useEffect(() => {
     const tick = () => {
@@ -155,6 +250,7 @@ export default function Dashboard() {
   /* ── Refresh handler ────────────────────────────────────── */
   const refresh = () => {
     setLoading(true);
+    void loadMessageInsights(true);
     try {
       channel.sendRaw({ type: 'channel.status.get', data: { requestId: `st-${Date.now()}`, includeChats: true } }, connId);
       channel.requestAgentList(connId);
@@ -162,7 +258,30 @@ export default function Dashboard() {
     fetchRelayHealth();
   };
 
+  const openRecentMessage = useCallback((message: MessageRecord) => {
+    if (!message.agentId) return;
+
+    if (message.connectionId) {
+      setActiveConnectionId(message.connectionId);
+    }
+
+    const params = new URLSearchParams();
+    if (message.chatId) {
+      params.set('chatId', message.chatId);
+    }
+    if (message.connectionId) {
+      params.set('connectionId', message.connectionId);
+    }
+
+    navigate({
+      pathname: `/chat/${encodeURIComponent(message.agentId)}`,
+      search: params.toString() ? `?${params.toString()}` : '',
+    });
+  }, [navigate]);
+
   const isConnected = wsStatus === 'connected';
+  const totalTodayMessages = (todayStats?.sentCount ?? 0) + (todayStats?.receivedCount ?? 0);
+  const mostActiveAgentLabel = getAgentDisplayName(todayStats?.mostActiveAgent ?? null);
 
   /* ── Empty state ────────────────────────────────────────── */
   if (!activeConn) {
@@ -178,7 +297,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex flex-col h-full pb-32 px-6 pt-12 max-w-4xl mx-auto w-full overflow-y-auto">
+    <div className="flex flex-col h-full pb-32 px-6 pt-12 max-w-5xl mx-auto w-full overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -194,6 +313,42 @@ export default function Dashboard() {
       </div>
 
       <div className="flex flex-col gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/5 to-info/5">
+            <CardHeader className="pb-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-[18px]">📊 Today</CardTitle>
+                  <p className="mt-1 text-[12px] text-text/45 dark:text-text-inv/45">{formatSummaryDate()}</p>
+                </div>
+                <Badge variant="default" className="bg-white/70 dark:bg-card-alt/80 text-[11px]">
+                  {activityLoading ? 'Syncing…' : `${totalTodayMessages} messages`}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <SummaryMetric label="Sent" value={String(todayStats?.sentCount ?? 0)} />
+                <SummaryMetric label="Received" value={String(todayStats?.receivedCount ?? 0)} />
+                <SummaryMetric label="Active agents" value={String(todayStats?.activeAgents.length ?? 0)} />
+                <SummaryMetric
+                  label="Most active"
+                  value={mostActiveAgentLabel}
+                  compact
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-white/55 px-4 py-3 text-[12px] text-text/55 dark:bg-card-alt/70 dark:text-text-inv/55">
+                <span className="font-medium text-text/65 dark:text-text-inv/65">Last activity</span>
+                <span>{formatLastActivity(todayStats?.lastActivityTime ?? null)}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
         {/* ── Stat Cards Row ────────────────────────────────── */}
         <div className="grid grid-cols-3 gap-3">
           <StatCard icon={<Radio size={16} />} label="Relay" value={isConnected ? (status?.mode ?? 'relay') : 'offline'} color={isConnected ? 'green' : 'red'} />
@@ -291,6 +446,59 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2">
+              <Clock size={18} className="text-primary" /> Recent Activity
+              <Badge variant="default" className="ml-auto text-[11px]">{recentMessages.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {activityLoading ? (
+              <div className="py-10 text-center text-[13px] text-text/50 dark:text-text-inv/50">
+                Loading recent activity…
+              </div>
+            ) : recentMessages.length === 0 ? (
+              <div className="py-10 text-center text-[13px] text-text/50 dark:text-text-inv/50">
+                No recent messages yet.
+              </div>
+            ) : (
+              <div className="relative pl-7">
+                <div className="absolute left-2 top-1 bottom-1 w-0.5 rounded-full bg-primary/20" />
+                <div className="space-y-2">
+                  {recentMessages.map((message, index) => (
+                    <button
+                      key={`${message.connectionId}:${message.id}`}
+                      type="button"
+                      onClick={() => openRecentMessage(message)}
+                      className={cn(
+                        'relative w-full rounded-[22px] px-4 py-3 text-left transition-colors',
+                        index % 2 === 0
+                          ? 'bg-text/[0.025] hover:bg-text/[0.045] dark:bg-text-inv/[0.03] dark:hover:bg-text-inv/[0.05]'
+                          : 'bg-transparent hover:bg-text/[0.03] dark:hover:bg-text-inv/[0.04]'
+                      )}
+                    >
+                      <span className="absolute -left-[21px] top-5 h-3 w-3 rounded-full border-2 border-primary bg-surface dark:bg-surface-dark" />
+                      <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[11px] text-text/45 dark:text-text-inv/45">
+                        <span>{formatTimelineTime(message.timestamp)}</span>
+                        <Badge variant="default" className="bg-primary/8 text-[10px] text-primary dark:bg-primary/12">
+                          {getAgentDisplayName(message.agentId, message.connectionId)}
+                        </Badge>
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="min-w-0 flex-1 text-[13px] text-text/75 dark:text-text-inv/75">
+                          {getMessagePreview(message)}
+                        </p>
+                        <ArrowUpRight size={14} className="mt-0.5 shrink-0 text-text/25 dark:text-text-inv/25" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
@@ -331,6 +539,22 @@ function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label:
     <div className={`bg-gradient-to-br ${colors[color]} rounded-2xl p-3.5 border border-white/5`}>
       <div className="flex items-center gap-1.5 mb-1.5 opacity-70">{icon}<span className="text-[11px] font-medium uppercase tracking-wider">{label}</span></div>
       <div className="text-[18px] font-bold capitalize">{value}</div>
+    </div>
+  );
+}
+
+function SummaryMetric({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
+  return (
+    <div className="rounded-[24px] bg-white/65 px-4 py-3 dark:bg-card-alt/75">
+      <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-text/42 dark:text-text-inv/42">
+        {label}
+      </div>
+      <div className={cn(
+        'mt-2 text-balance text-text dark:text-text-inv',
+        compact ? 'text-lg font-semibold leading-tight' : 'text-3xl font-bold'
+      )}>
+        {value}
+      </div>
     </div>
   );
 }

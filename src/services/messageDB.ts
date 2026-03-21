@@ -71,6 +71,14 @@ type ConversationScopeOptions = {
   limit?: number;
 };
 
+export type MessageStats = {
+  sentCount: number;
+  receivedCount: number;
+  activeAgents: string[];
+  mostActiveAgent: string | null;
+  lastActivityTime: number | null;
+};
+
 let databasePromise: Promise<IDBDatabase> | null = null;
 
 function hasIndexedDBSupport() {
@@ -330,6 +338,101 @@ export async function searchMessages(query: string, options?: MessageSearchOptio
           matches.push(toPublicMessage(record));
         }
 
+        cursor.continue();
+      };
+    });
+  });
+}
+
+export async function getMessageStats(since: number): Promise<MessageStats> {
+  if (!hasIndexedDBSupport()) {
+    return {
+      sentCount: 0,
+      receivedCount: 0,
+      activeAgents: [],
+      mostActiveAgent: null,
+      lastActivityTime: null,
+    };
+  }
+
+  return withStore('readonly', async (store) => {
+    const index = store.index(INDEX_BY_TIMESTAMP);
+    const request = index.openCursor(IDBKeyRange.lowerBound(since), 'next');
+
+    return new Promise<MessageStats>((resolve, reject) => {
+      let sentCount = 0;
+      let receivedCount = 0;
+      let lastActivityTime: number | null = null;
+      const activeAgents = new Set<string>();
+      const messageCountByAgent = new Map<string, number>();
+
+      request.onerror = () => reject(request.error ?? new Error('Failed to load message stats.'));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          let mostActiveAgent: string | null = null;
+          let mostActiveCount = -1;
+
+          messageCountByAgent.forEach((count, agentId) => {
+            if (count > mostActiveCount) {
+              mostActiveCount = count;
+              mostActiveAgent = agentId;
+            }
+          });
+
+          resolve({
+            sentCount,
+            receivedCount,
+            activeAgents: [...activeAgents],
+            mostActiveAgent,
+            lastActivityTime,
+          });
+          return;
+        }
+
+        const record = cursor.value as StoredMessageRecord;
+        if (!record.isStreaming) {
+          if (record.sender === 'user') {
+            sentCount += 1;
+          } else if (record.sender === 'ai') {
+            receivedCount += 1;
+          }
+
+          activeAgents.add(record.agentId);
+          messageCountByAgent.set(record.agentId, (messageCountByAgent.get(record.agentId) ?? 0) + 1);
+          lastActivityTime = record.timestamp;
+        }
+
+        cursor.continue();
+      };
+    });
+  });
+}
+
+export async function getRecentMessages(limit: number): Promise<MessageRecord[]> {
+  if (!hasIndexedDBSupport() || limit <= 0) {
+    return [];
+  }
+
+  return withStore('readonly', async (store) => {
+    const index = store.index(INDEX_BY_TIMESTAMP);
+    const request = index.openCursor(null, 'prev');
+
+    return new Promise<MessageRecord[]>((resolve, reject) => {
+      const rows: MessageRecord[] = [];
+
+      request.onerror = () => reject(request.error ?? new Error('Failed to load recent messages.'));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor || rows.length >= limit) {
+          resolve(rows);
+          return;
+        }
+
+        const record = cursor.value as StoredMessageRecord;
+        if (!record.isStreaming) {
+          rows.push(toPublicMessage(record));
+        }
         cursor.continue();
       };
     });

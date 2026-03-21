@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
 import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List } from 'lucide-react';
 import { Input } from '../components/ui/input';
@@ -76,6 +76,7 @@ function getAgentPalette(agentId: string) {
 
 type PendingOpen = {
   agentId: string;
+  target: 'primary' | 'split';
 };
 
 type AgentResult = {
@@ -151,16 +152,24 @@ function buildLoadingMap(connections: ServerConnection[]) {
 
 export default function ChatList({
   onOpenChat,
+  onOpenSplitChat,
   onAddServer,
   compact,
   activeAgentId,
   activeConnectionId,
+  splitEnabled,
+  splitActiveAgentId,
+  splitActiveConnectionId,
 }: {
   onOpenChat: (connectionId: string, agentId: string, chatId?: string) => void;
+  onOpenSplitChat?: (connectionId: string, agentId: string, chatId?: string) => void;
   onAddServer: () => void;
   compact?: boolean;
   activeAgentId?: string | null;
   activeConnectionId?: string | null;
+  splitEnabled?: boolean;
+  splitActiveAgentId?: string | null;
+  splitActiveConnectionId?: string | null;
 }) {
   const [connections, setConnections] = useState<ServerConnection[]>(() => getConnections());
   const [searchQuery, setSearchQuery] = useState('');
@@ -440,6 +449,11 @@ export default function ChatList({
 
           pendingOpenRef.current[connection.id] = undefined;
           setRefreshingMap((prev) => ({ ...prev, [connection.id]: false }));
+          if (pendingOpen.target === 'split' && onOpenSplitChat) {
+            onOpenSplitChat(connection.id, pendingOpen.agentId, conversations[0]?.chatId);
+            return;
+          }
+
           setActiveConnectionId(connection.id);
           onOpenChat(connection.id, pendingOpen.agentId, conversations[0]?.chatId);
         }
@@ -586,11 +600,12 @@ export default function ChatList({
     });
   };
 
-  const handleAgentClick = (connection: ServerConnection, agent: AgentInfo) => {
+  const handleAgentClick = (event: ReactMouseEvent<HTMLButtonElement>, connection: ServerConnection, agent: AgentInfo) => {
     const status = statusMap[connection.id] || 'disconnected';
     if (attemptedMap[connection.id] && status === 'disconnected') return;
+    const target: PendingOpen['target'] = event.shiftKey && splitEnabled && onOpenSplitChat ? 'split' : 'primary';
 
-    pendingOpenRef.current[connection.id] = { agentId: agent.id };
+    pendingOpenRef.current[connection.id] = { agentId: agent.id, target };
     setRefreshingMap((prev) => ({ ...prev, [connection.id]: true }));
 
     channel.connect({
@@ -649,6 +664,7 @@ export default function ChatList({
     const status = statusMap[connection.id] || 'disconnected';
     const isDisabled = attemptedMap[connection.id] && status === 'disconnected';
     const isActive = activeConnectionId === connection.id && activeAgentId === agent.id;
+    const isSplitActive = splitActiveConnectionId === connection.id && splitActiveAgentId === agent.id;
     const previewKey = getPreviewStateKey(connection.id, agent.id);
     const lastMessage = Object.prototype.hasOwnProperty.call(previewMap, previewKey)
       ? previewMap[previewKey]
@@ -673,7 +689,7 @@ export default function ChatList({
       >
         <button
           type="button"
-          onClick={() => handleAgentClick(connection, agent)}
+          onClick={(event) => handleAgentClick(event, connection, agent)}
           disabled={isDisabled}
           className={cn(
             'relative w-full text-left flex items-center gap-3 transition-all duration-150',
@@ -683,6 +699,8 @@ export default function ChatList({
             !isDisabled && 'cursor-pointer',
             isActive
               ? 'bg-primary/10 dark:bg-primary/15 border-l-2 border-l-primary'
+              : isSplitActive
+                ? 'bg-info/8 dark:bg-info/12 border-l-2 border-l-info'
               : 'border-l-2 border-l-transparent hover:bg-text/[0.04] dark:hover:bg-text-inv/[0.04]'
           )}
         >
@@ -771,6 +789,7 @@ export default function ChatList({
     const status = statusMap[connection.id] || 'disconnected';
     const isDisabled = attemptedMap[connection.id] && status === 'disconnected';
     const isActive = activeConnectionId === connection.id && activeAgentId === agent.id;
+    const isSplitActive = splitActiveConnectionId === connection.id && splitActiveAgentId === agent.id;
     const palette = getAgentPalette(agent.id);
     const initials = agent.name.slice(0, 2).toUpperCase();
     const previewKey = getPreviewStateKey(connection.id, agent.id);
@@ -792,7 +811,7 @@ export default function ChatList({
       >
         <button
           type="button"
-          onClick={() => handleAgentClick(connection, agent)}
+          onClick={(event) => handleAgentClick(event, connection, agent)}
           disabled={isDisabled}
           className={cn(
             'relative w-full flex flex-col items-center text-center p-3 pb-2.5 rounded-2xl transition-all duration-150',
@@ -801,6 +820,8 @@ export default function ChatList({
             !isDisabled && 'cursor-pointer active:scale-[0.96]',
             isActive
               ? 'ring-2 ring-primary/30 bg-primary/5 dark:bg-primary/10'
+              : isSplitActive
+                ? 'ring-2 ring-info/25 bg-info/6 dark:bg-info/10'
               : 'hover:bg-text/[0.02] dark:hover:bg-text-inv/[0.02]'
           )}
         >
