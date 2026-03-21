@@ -743,6 +743,7 @@ export default function ChatRoom({
 
   // Long-press for mobile message actions
   const [longPressedMsgId, setLongPressedMsgId] = useState<string | null>(null);
+  const [activeToolbarMsgId, setActiveToolbarMsgId] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleTouchStart = (msgId: string) => {
     longPressTimer.current = setTimeout(() => setLongPressedMsgId(msgId), 400);
@@ -986,7 +987,12 @@ export default function ChatRoom({
                   ? { type: 'spring', stiffness: 500, damping: 25 }
                   : { delay: Math.min(i, 10) * 0.03 }
                 }
-                className={`flex ${isUser ? 'justify-end' : 'justify-start'} group relative`}
+                className={`flex ${isUser ? 'justify-end' : 'justify-start'} relative`}
+                onClick={(e) => {
+                  // Toggle toolbar on click (desktop); skip if clicking inside toolbar or a link/button
+                  if ((e.target as HTMLElement).closest('[data-toolbar]') || (e.target as HTMLElement).closest('a')) return;
+                  setActiveToolbarMsgId(prev => prev === msg.id ? null : msg.id);
+                }}
                 onTouchStart={() => handleTouchStart(msg.id)}
                 onTouchEnd={handleTouchEnd}
                 onTouchMove={handleTouchEnd}
@@ -1082,9 +1088,18 @@ export default function ChatRoom({
                     )}
                   </div>
                   
-                  {/* Reaction & Reply & Edit/Delete — desktop: hover only; mobile: long-press popup */}
+                  {/* Reaction & Reply & Edit/Delete — click to toggle on both desktop & mobile */}
                   {!isStreaming && (
-                  <div className={`hidden md:group-hover:flex items-center gap-1 mt-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                  <AnimatePresence>
+                  {activeToolbarMsgId === msg.id && (
+                  <motion.div
+                    data-toolbar
+                    initial={{ opacity: 0, y: 4, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 4, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className={`hidden md:flex items-center gap-1 mt-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+                  >
                     {/* Quick-react bar */}
                     <div className="flex items-center gap-0.5 bg-white/80 dark:bg-card-alt/80 backdrop-blur-sm rounded-full px-1 py-0.5 border border-border dark:border-border-dark shadow-sm">
                       {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
@@ -1117,7 +1132,7 @@ export default function ChatRoom({
                     </div>
                     <motion.button
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => startReply(msg)}
+                      onClick={() => { startReply(msg); setActiveToolbarMsgId(null); }}
                       className="p-1 text-text/55 dark:text-text-inv/55 hover:text-info transition-colors"
                     >
                       <CornerDownLeft size={14} />
@@ -1126,21 +1141,23 @@ export default function ChatRoom({
                       <>
                         <motion.button
                           whileTap={{ scale: 0.9 }}
-                          onClick={() => handleEditMessage(msg)}
+                          onClick={() => { handleEditMessage(msg); setActiveToolbarMsgId(null); }}
                           className="p-1 text-text/55 dark:text-text-inv/55 hover:text-amber-500 transition-colors"
                         >
                           <Pencil size={14} />
                         </motion.button>
                         <motion.button
                           whileTap={{ scale: 0.9 }}
-                          onClick={() => handleDeleteMessage(msg.id)}
+                          onClick={() => { handleDeleteMessage(msg.id); setActiveToolbarMsgId(null); }}
                           className="p-1 text-text/55 dark:text-text-inv/55 hover:text-red-500 transition-colors"
                         >
                           <Trash2 size={14} />
                         </motion.button>
                       </>
                     )}
-                  </div>
+                  </motion.div>
+                  )}
+                  </AnimatePresence>
                   )}
 
                 {/* Action Card for AI messages (hide for streaming) */}
