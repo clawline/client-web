@@ -387,7 +387,9 @@ export default function ChatRoom({
 
     // 如果已连接：只调 selectAgent() + requestHistory()，不调 connect()
     if (currentStatus === 'connected') {
-      if (agentId) {
+      // 只在 agent 未被选中时才发 selectAgent，避免重复
+      const currentAgent = channel.getCurrentAgentId(runtimeConnId);
+      if (agentId && currentAgent !== agentId) {
         try { channel.selectAgent(agentId, runtimeConnId); } catch { /* ignore */ }
       }
       if (!chatId || currentChatId === chatId) {

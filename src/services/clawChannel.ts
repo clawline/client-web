@@ -1010,6 +1010,10 @@ export function getChatId(connectionId?: string) {
   return manager.getChatId(connectionId);
 }
 
+export function getCurrentAgentId(connectionId?: string) {
+  return manager.get(connectionId)?.currentAgentId || '';
+}
+
 export function getTypingAgents(connectionId?: string) {
   return manager.getTypingAgents(connectionId);
 }
