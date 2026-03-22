@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
-import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List } from 'lucide-react';
+import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List, ArrowUpDown, Check } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
 import { CONNECTIONS_UPDATED_EVENT, getConnections, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
@@ -206,6 +206,7 @@ export default function ChatList({
   const [customAvatars, setCustomAvatarsState] = useState<Record<string, string>>(() => getCustomAvatars());
   const [avatarMenuAgent, setAvatarMenuAgent] = useState<{ agentId: string; x: number; y: number } | null>(null);
   const [avatarUploadAgent, setAvatarUploadAgent] = useState<string | null>(null);
+  const [reorderMode, setReorderMode] = useState(false);
 
   const handleAvatarContextMenu = (e: React.MouseEvent, agentId: string) => {
     e.preventDefault();
@@ -254,10 +255,18 @@ export default function ChatList({
 
   const pendingOpenRef = useRef<Record<string, PendingOpen | undefined>>({});
   const agentMapRef = useRef(agentMap);
+  const onOpenChatRef = useRef(onOpenChat);
+  const onOpenSplitChatRef = useRef(onOpenSplitChat);
+  const searchQueryRef = useRef(searchQuery);
+  const expandedIdsRef = useRef(expandedIds);
 
   useEffect(() => {
     agentMapRef.current = agentMap;
   }, [agentMap]);
+  useEffect(() => { onOpenChatRef.current = onOpenChat; }, [onOpenChat]);
+  useEffect(() => { onOpenSplitChatRef.current = onOpenSplitChat; }, [onOpenSplitChat]);
+  useEffect(() => { searchQueryRef.current = searchQuery; }, [searchQuery]);
+  useEffect(() => { expandedIdsRef.current = expandedIds; }, [expandedIds]);
 
   const syncConnections = useCallback(() => {
     const nextConnections = getConnections();
@@ -395,8 +404,6 @@ export default function ChatList({
   }, []);
 
   // Load agents on mount and when connections change — NOT on expandedIds change
-  const expandedIdsRef = useRef(expandedIds);
-  expandedIdsRef.current = expandedIds;
 
   useEffect(() => {
     if (connections.length === 1 && connections[0]) {
@@ -426,7 +433,7 @@ export default function ChatList({
             } catch {
               setRefreshingMap((prev) => ({ ...prev, [connection.id]: false }));
             }
-          } else if (searchQuery.trim() || expandedIds.includes(connection.id) || connections.length === 1) {
+          } else if (searchQueryRef.current.trim() || expandedIdsRef.current.includes(connection.id) || connections.length === 1) {
             try {
               channel.requestAgentList(connection.id);
             } catch {
@@ -453,13 +460,13 @@ export default function ChatList({
 
           pendingOpenRef.current[connection.id] = undefined;
           setRefreshingMap((prev) => ({ ...prev, [connection.id]: false }));
-          if (pendingOpen.target === 'split' && onOpenSplitChat) {
-            onOpenSplitChat(connection.id, pendingOpen.agentId, conversations[0]?.chatId);
+          if (pendingOpen.target === 'split' && onOpenSplitChatRef.current) {
+            onOpenSplitChatRef.current(connection.id, pendingOpen.agentId, conversations[0]?.chatId);
             return;
           }
 
           setActiveConnectionId(connection.id);
-          onOpenChat(connection.id, pendingOpen.agentId, conversations[0]?.chatId);
+          onOpenChatRef.current(connection.id, pendingOpen.agentId, conversations[0]?.chatId);
         }
       }, connection.id);
 
@@ -487,7 +494,8 @@ export default function ChatList({
     return () => {
       cleanups.forEach((cleanup) => cleanup());
     };
-  }, [connections, expandedIds, onOpenChat, searchQuery]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connections]);
 
   useEffect(() => {
     const previewTargets = connections.flatMap((connection) =>
@@ -694,16 +702,16 @@ export default function ChatList({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6 }}
         transition={{ delay: Math.min(index * 0.02, 0.12), duration: 0.18 }}
-        whileDrag={{ scale: 1.02, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: 50 }}
-        dragListener={false}
-        style={{ touchAction: 'pan-y' }}
+        whileDrag={reorderMode ? { scale: 1.02, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: 50 } : undefined}
+        dragListener={reorderMode}
+        style={{ touchAction: reorderMode ? 'none' : 'pan-y' }}
         onDragStart={() => { isDraggingRef.current = true; dragCooldownRef.current = true; }}
         onDragEnd={() => { isDraggingRef.current = false; setTimeout(() => { dragCooldownRef.current = false; }, 300); }}
       >
         <button
           type="button"
-          onClick={(event) => handleAgentClick(event, connection, agent)}
-          disabled={isDisabled}
+          onClick={(event) => !reorderMode && handleAgentClick(event, connection, agent)}
+          disabled={isDisabled || reorderMode}
           className={cn(
             'relative w-full text-left flex items-center gap-3 transition-all duration-150',
             compact ? 'px-2.5 py-2' : 'px-4 py-2.5',
@@ -819,16 +827,16 @@ export default function ChatList({
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
         transition={{ delay: Math.min(index * 0.03, 0.15), duration: 0.2 }}
-        whileDrag={{ scale: 1.05, boxShadow: '0 8px 30px rgba(0,0,0,0.15)', zIndex: 50 }}
-        dragListener={false}
-        style={{ touchAction: 'pan-y' }}
+        whileDrag={reorderMode ? { scale: 1.05, boxShadow: '0 8px 30px rgba(0,0,0,0.15)', zIndex: 50 } : undefined}
+        dragListener={reorderMode}
+        style={{ touchAction: reorderMode ? 'none' : 'pan-y' }}
         onDragStart={() => { isDraggingRef.current = true; dragCooldownRef.current = true; }}
         onDragEnd={() => { isDraggingRef.current = false; setTimeout(() => { dragCooldownRef.current = false; }, 300); }}
       >
         <button
           type="button"
-          onClick={(event) => handleAgentClick(event, connection, agent)}
-          disabled={isDisabled}
+          onClick={(event) => !reorderMode && handleAgentClick(event, connection, agent)}
+          disabled={isDisabled || reorderMode}
           className={cn(
             'relative w-full flex flex-col items-center text-center p-3 pb-2.5 rounded-2xl transition-all duration-150',
             'bg-white/60 dark:bg-card-alt/40',
@@ -957,6 +965,14 @@ export default function ChatList({
               title={viewMode === 'list' ? 'Grid view' : 'List view'}
             >
               {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setReorderMode((m) => !m)}
+              className={cn('p-1.5 transition-colors', reorderMode ? 'text-primary' : 'text-text/35 dark:text-text-inv/30 hover:text-primary')}
+              title={reorderMode ? 'Exit reorder' : 'Reorder agents'}
+            >
+              {reorderMode ? <Check size={14} /> : <ArrowUpDown size={14} />}
             </motion.button>
             <motion.button
               whileTap={{ scale: 0.9 }}

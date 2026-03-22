@@ -1282,7 +1282,8 @@ export default function ChatRoom({
                       </span>
                     )}
 
-                    {/* Emoji trigger — hover to expand picker row */}
+                    {/* Emoji trigger — hover to expand picker row (AI messages only) */}
+                    {!isUser && (
                     <div className="relative group/emoji">
                       <button
                         type="button"
@@ -1291,7 +1292,7 @@ export default function ChatRoom({
                         <SmilePlus size={12} />
                       </button>
                       {/* Hover flyout: quick emoji row — after:pseudo bridges the gap so hover stays active */}
-                      <div className={`absolute bottom-full ${isUser ? 'right-0' : 'left-0'} mb-1.5 hidden group-hover/emoji:flex items-center gap-0.5 bg-white dark:bg-card-alt rounded-full px-1.5 py-1 border border-border dark:border-border-dark shadow-lg z-20 after:content-[''] after:absolute after:inset-x-0 after:-bottom-3 after:h-3`}>
+                      <div className={`absolute bottom-full left-0 mb-1.5 hidden group-hover/emoji:flex items-center gap-0.5 bg-white dark:bg-card-alt rounded-full px-1.5 py-1 border border-border dark:border-border-dark shadow-lg z-20 after:content-[''] after:absolute after:inset-x-0 after:-bottom-3 after:h-3`}>
                         {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
                           <button
                             key={e}
@@ -1321,6 +1322,7 @@ export default function ChatRoom({
                         </button>
                       </div>
                     </div>
+                    )}
 
                     {/* Reply */}
                     <button
@@ -1361,23 +1363,16 @@ export default function ChatRoom({
                         {formatTime(msg.timestamp)}
                       </span>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const hasIt = msg.reactions?.includes('👍');
-                        setMessages((prev) => prev.map((m) => {
-                          if (m.id !== msg.id) return m;
-                          const reactions = m.reactions ?? [];
-                          return { ...m, reactions: hasIt ? reactions.filter(r => r !== '👍') : [...reactions, '👍'] };
-                        }));
-                        if (hasIt) { channel.removeReaction(msg.id, '👍', runtimeConnId); } else { channel.addReaction(msg.id, '👍', runtimeConnId); }
-                      }}
-                      className={`w-6 h-6 flex items-center justify-center rounded-full transition-colors text-[13px] ${
-                        msg.reactions?.includes('👍') ? 'bg-primary/20' : 'text-text/25 dark:text-text-inv/20'
-                      }`}
-                    >
-                      👍
-                    </button>
+                    {/* Emoji entry — only for AI messages */}
+                    {!isUser && (
+                      <button
+                        type="button"
+                        onClick={() => openReactionPicker(msg.id)}
+                        className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 rounded-full transition-colors"
+                      >
+                        <SmilePlus size={12} />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => startReply(msg)}
