@@ -385,24 +385,33 @@ export default function ChatRoom({
     const currentStatus = channel.getStatus(runtimeConnId);
     const currentChatId = channel.getChatId(runtimeConnId);
 
-    if (currentStatus !== 'connecting') {
+    // 如果已连接：只调 selectAgent() + requestHistory()，不调 connect()
+    if (currentStatus === 'connected') {
+      if (agentId) {
+        try { channel.selectAgent(agentId, runtimeConnId); } catch { /* ignore */ }
+      }
+      if (!chatId || currentChatId === chatId) {
+        requestSelectedHistory();
+      }
+    } else if (currentStatus !== 'connecting') {
+      // 如果未连接：调 connect()，但不传 agentId（agentId 通过后续 selectAgent 设置）
       channel.connect({
         connectionId: runtimeConnId,
         chatId: conversationId,
         senderId: activeConn.senderId || getUserId(),
         senderName: activeConn.displayName,
         serverUrl: activeConn.serverUrl,
-        agentId: agentId || undefined,
+        // 不传 agentId
         token: activeConn.token,
       });
     }
 
-    if (currentStatus === 'connected' && (!chatId || currentChatId === chatId)) {
-      requestSelectedHistory();
-    }
-
     const unsubMsg = channel.onMessage((packet) => {
       if (packet.type === 'connection.open') {
+        // connection.open 后设置 agentId
+        if (agentId) {
+          try { channel.selectAgent(agentId, runtimeConnId); } catch { /* ignore */ }
+        }
         requestSelectedHistory();
       } else if (packet.type === 'message.send' && (packet.data?.content || packet.data?.mediaUrl)) {
         setIsThinking(false);
