@@ -416,10 +416,11 @@ export default function ChatList({
     if (attemptedMap[connection.id] && status === 'disconnected') return;
     const target: PendingOpen['target'] = shiftKey && splitEnabled && onOpenSplitChat ? 'split' : 'primary';
 
-    // 立即导航，不等响应
-    if (status === 'connected') {
-      channel.selectAgent(agent.id, connection.id);
-      // ChatRoom 会自己发 selectAgent（检测是否已选中），这里只做导航
+    // 立即导航 — 只要不是 disconnected 就直接进 ChatRoom，让 ChatRoom 处理连接
+    if (status !== 'disconnected') {
+      if (status === 'connected') {
+        try { channel.selectAgent(agent.id, connection.id); } catch { /* ignore */ }
+      }
       if (target === 'split' && onOpenSplitChat) {
         onOpenSplitChat(connection.id, agent.id);
       } else {
@@ -429,7 +430,7 @@ export default function ChatList({
       return;
     }
 
-    // 未连接：先设置 pendingOpenRef，connection.open 后再导航
+    // disconnected：先连接，connection.open 后再导航
     pendingOpenRef.current[connection.id] = { agentId: agent.id, target };
     setRefreshingMap(p => ({ ...p, [connection.id]: true }));
     channel.connect({

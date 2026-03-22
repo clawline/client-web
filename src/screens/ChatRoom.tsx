@@ -385,9 +385,8 @@ export default function ChatRoom({
     const currentStatus = channel.getStatus(runtimeConnId);
     const currentChatId = channel.getChatId(runtimeConnId);
 
-    // 如果已连接：只调 selectAgent() + requestHistory()，不调 connect()
+    // 如果已连接或正在重连：selectAgent + requestHistory
     if (currentStatus === 'connected') {
-      // 只在 agent 未被选中时才发 selectAgent，避免重复
       const currentAgent = channel.getCurrentAgentId(runtimeConnId);
       if (agentId && currentAgent !== agentId) {
         try { channel.selectAgent(agentId, runtimeConnId); } catch { /* ignore */ }
@@ -395,6 +394,9 @@ export default function ChatRoom({
       if (!chatId || currentChatId === chatId) {
         requestSelectedHistory();
       }
+    } else if (currentStatus === 'reconnecting') {
+      // reconnecting — WS 正在恢复，connection.open 回调会处理 selectAgent + history
+      // 不需要手动 connect，等自动重连完成即可
     } else if (currentStatus !== 'connecting') {
       // 如果未连接：调 connect()，但不传 agentId（agentId 通过后续 selectAgent 设置）
       channel.connect({
