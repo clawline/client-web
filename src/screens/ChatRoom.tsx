@@ -385,37 +385,24 @@ export default function ChatRoom({
     const currentStatus = channel.getStatus(runtimeConnId);
     const currentChatId = channel.getChatId(runtimeConnId);
 
-    // 如果已连接或正在重连：selectAgent + requestHistory
-    if (currentStatus === 'connected') {
-      const currentAgent = channel.getCurrentAgentId(runtimeConnId);
-      if (agentId && currentAgent !== agentId) {
-        try { channel.selectAgent(agentId, runtimeConnId); } catch { /* ignore */ }
-      }
-      if (!chatId || currentChatId === chatId) {
-        requestSelectedHistory();
-      }
-    } else if (currentStatus === 'reconnecting') {
-      // reconnecting — WS 正在恢复，connection.open 回调会处理 selectAgent + history
-      // 不需要手动 connect，等自动重连完成即可
-    } else if (currentStatus !== 'connecting') {
-      // 如果未连接：调 connect()，但不传 agentId（agentId 通过后续 selectAgent 设置）
+    if (currentStatus !== 'connecting') {
       channel.connect({
         connectionId: runtimeConnId,
         chatId: conversationId,
         senderId: activeConn.senderId || getUserId(),
         senderName: activeConn.displayName,
         serverUrl: activeConn.serverUrl,
-        // 不传 agentId
+        agentId: agentId || undefined,
         token: activeConn.token,
       });
     }
 
+    if (currentStatus === 'connected' && (!chatId || currentChatId === chatId)) {
+      requestSelectedHistory();
+    }
+
     const unsubMsg = channel.onMessage((packet) => {
       if (packet.type === 'connection.open') {
-        // connection.open 后设置 agentId
-        if (agentId) {
-          try { channel.selectAgent(agentId, runtimeConnId); } catch { /* ignore */ }
-        }
         requestSelectedHistory();
       } else if (packet.type === 'message.send' && (packet.data?.content || packet.data?.mediaUrl)) {
         setIsThinking(false);

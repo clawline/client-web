@@ -382,12 +382,12 @@ class ChannelManager {
       }
     }
 
-    // 不比较 agentId — agent 切换通过 selectAgent() 处理，不需要重建连接
     if (
       instance.ws &&
       (instance.ws.readyState === WebSocket.CONNECTING || instance.ws.readyState === WebSocket.OPEN) &&
       instance.currentChatId === nextChatId &&
-      instance.currentServerUrl === nextServerUrl
+      instance.currentServerUrl === nextServerUrl &&
+      instance.currentAgentId === nextAgentId
     ) {
       this.touch(instance);
       this.enforcePoolLimit(instance.connectionId);
@@ -1008,10 +1008,6 @@ export function getStatus(connectionId?: string) {
 
 export function getChatId(connectionId?: string) {
   return manager.getChatId(connectionId);
-}
-
-export function getCurrentAgentId(connectionId?: string) {
-  return manager.get(connectionId)?.currentAgentId || '';
 }
 
 export function getTypingAgents(connectionId?: string) {

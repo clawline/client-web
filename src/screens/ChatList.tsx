@@ -234,25 +234,6 @@ export default function ChatList({
     });
   }, [connections]);
 
-  // ── Auto-connect all servers on mount ──
-  useEffect(() => {
-    // 进入 app 后自动对所有已配置的 server 建立 WS 连接（不带 agentId）
-    connections.forEach(c => {
-      const status = channel.getStatus(c.id);
-      if (status !== 'connected' && status !== 'connecting') {
-        channel.connect({
-          connectionId: c.id,
-          chatId: c.chatId,
-          senderId: c.senderId || getUserId(),
-          senderName: c.displayName,
-          serverUrl: c.serverUrl,
-          token: c.token,
-          // 注意：不传 agentId
-        });
-      }
-    });
-  }, [connections]);
-
   // ── Agent loading ──
   const ensureAgentsLoaded = useCallback((connection: ServerConnection, force = false) => {
     if (!force && (agentMapRef.current[connection.id]?.length ?? 0) > 0) return;
@@ -261,7 +242,6 @@ export default function ChatList({
     setRefreshingMap(p => ({ ...p, [connection.id]: true }));
     const status = channel.getStatus(connection.id);
     if (status !== 'connected' && status !== 'connecting') {
-      // connect 不带 agentId
       channel.connect({ connectionId: connection.id, chatId: connection.chatId, senderId: connection.senderId || getUserId(), senderName: connection.displayName, serverUrl: connection.serverUrl, token: connection.token });
       return;
     }
@@ -286,23 +266,12 @@ export default function ChatList({
       const unMsg = channel.onMessage((packet) => {
         if (packet.type === 'connection.open') {
           if (pendingOpenRef.current[connection.id]) {
-            // 有 pendingOpenRef：selectAgent + 直接导航
-            const pending = pendingOpenRef.current[connection.id];
-            if (pending) {
-              try {
-                channel.selectAgent(pending.agentId, connection.id);
-              } catch { /* ignore */ }
-              pendingOpenRef.current[connection.id] = undefined;
-              setRefreshingMap(p => ({ ...p, [connection.id]: false }));
-              if (pending.target === 'split' && onOpenSplitChatRef.current) {
-                onOpenSplitChatRef.current(connection.id, pending.agentId);
-                return;
-              }
-              setActiveConnectionId(connection.id);
-              onOpenChatRef.current(connection.id, pending.agentId);
-            }
+            try { channel.requestConversationList(pendingOpenRef.current[connection.id]?.agentId, connection.id); }
+            catch { setRefreshingMap(p => ({ ...p, [connection.id]: false })); }
+          } else if (searchQueryRef.current.trim() || expandedIdsRef.current.includes(connection.id) || connections.length === 1) {
+            try { channel.requestAgentList(connection.id); }
+            catch { setRefreshingMap(p => ({ ...p, [connection.id]: false })); setLoadingMap(p => ({ ...p, [connection.id]: false })); }
           }
-          // 没有 pendingOpenRef：socket.onopen 已经请求了 agent.list，这里不需要重复请求
         } else if (packet.type === 'agent.list') {
           const agents = Array.isArray((packet.data as { agents?: AgentInfo[] }).agents) ? (packet.data as { agents: AgentInfo[] }).agents : [];
           setAgentMap(p => ({ ...p, [connection.id]: agents }));
@@ -329,21 +298,8 @@ export default function ChatList({
       const unStatus = channel.onStatus((status) => {
         setStatusMap(p => ({ ...p, [connection.id]: status }));
         if (status === 'connected' && pendingOpenRef.current[connection.id]) {
-          // 有 pendingOpenRef：selectAgent + 直接导航
-          const pending = pendingOpenRef.current[connection.id];
-          if (pending) {
-            try {
-              channel.selectAgent(pending.agentId, connection.id);
-            } catch { /* ignore */ }
-            pendingOpenRef.current[connection.id] = undefined;
-            setRefreshingMap(p => ({ ...p, [connection.id]: false }));
-            if (pending.target === 'split' && onOpenSplitChatRef.current) {
-              onOpenSplitChatRef.current(connection.id, pending.agentId);
-              return;
-            }
-            setActiveConnectionId(connection.id);
-            onOpenChatRef.current(connection.id, pending.agentId);
-          }
+          try { channel.requestConversationList(pendingOpenRef.current[connection.id]?.agentId, connection.id); }
+          catch { setRefreshingMap(p => ({ ...p, [connection.id]: false })); }
         }
         if (status === 'disconnected') {
           setRefreshingMap(p => ({ ...p, [connection.id]: false }));
@@ -411,37 +367,17 @@ export default function ChatList({
   };
 
   const handleAgentClick = (connection: ServerConnection, agent: AgentInfo, shiftKey = false) => {
-    if (reorderMode) return;
+    if (reorderMode) return; // safety guard — shouldn't happen since button is disabled
     const status = statusMap[connection.id] || 'disconnected';
     if (attemptedMap[connection.id] && status === 'disconnected') return;
     const target: PendingOpen['target'] = shiftKey && splitEnabled && onOpenSplitChat ? 'split' : 'primary';
-
-    // 立即导航 — 只要不是 disconnected 就直接进 ChatRoom，让 ChatRoom 处理连接
-    if (status !== 'disconnected') {
-      if (status === 'connected') {
-        try { channel.selectAgent(agent.id, connection.id); } catch { /* ignore */ }
-      }
-      if (target === 'split' && onOpenSplitChat) {
-        onOpenSplitChat(connection.id, agent.id);
-      } else {
-        setActiveConnectionId(connection.id);
-        onOpenChat(connection.id, agent.id);
-      }
-      return;
-    }
-
-    // disconnected：先连接，connection.open 后再导航
     pendingOpenRef.current[connection.id] = { agentId: agent.id, target };
     setRefreshingMap(p => ({ ...p, [connection.id]: true }));
-    channel.connect({
-      connectionId: connection.id,
-      chatId: connection.chatId,
-      senderId: connection.senderId || getUserId(),
-      senderName: connection.displayName,
-      serverUrl: connection.serverUrl,
-      token: connection.token,
-      // 不带 agentId
-    });
+    channel.connect({ connectionId: connection.id, chatId: connection.chatId, senderId: connection.senderId || getUserId(), senderName: connection.displayName, serverUrl: connection.serverUrl, token: connection.token, agentId: agent.id });
+    if (channel.getStatus(connection.id) === 'connected') {
+      try { channel.requestConversationList(agent.id, connection.id); }
+      catch { pendingOpenRef.current[connection.id] = undefined; setRefreshingMap(p => ({ ...p, [connection.id]: false })); }
+    }
   };
 
   const toggleViewMode = () => {
