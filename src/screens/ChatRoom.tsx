@@ -486,7 +486,17 @@ export default function ChatRoom({
             mediaType,
           };
         });
-        setMessages(history);
+        setMessages((prev) => {
+          // Merge history — don't replace if we already have messages, to prevent disappearing
+          if (prev.length === 0) return history;
+          const existingIds = new Set(prev.map(m => m.id));
+          const newMsgs = history.filter(m => !existingIds.has(m.id));
+          if (newMsgs.length === 0) return prev; // no new messages, keep current
+          // If history has significantly more messages, it's a fresh load — use it
+          if (history.length > prev.length * 1.5) return history;
+          // Otherwise merge new messages and sort by timestamp
+          return [...prev, ...newMsgs].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+        });
       } else if (packet.type === 'conversation.list') {
         const nextConversations = Array.isArray((packet.data as { conversations?: ConversationSummary[] }).conversations)
           ? [ ...((packet.data as { conversations?: ConversationSummary[] }).conversations || []) ].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
@@ -1262,7 +1272,7 @@ export default function ChatRoom({
                     )}
                   </div>
                   
-                  {/* Inline message actions — always visible next to timestamp on desktop */}
+                {/* Inline message actions — always visible next to timestamp on desktop */}
                   {!isStreaming && (
                   <div className={`hidden md:flex items-center gap-0.5 mt-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                     {/* Timestamp */}
@@ -1343,6 +1353,48 @@ export default function ChatRoom({
                   </div>
                   )}
 
+                {/* Mobile compact action bar — visible on mobile, hidden on desktop */}
+                {!isStreaming && (
+                  <div className={`flex md:hidden items-center gap-1 mt-1.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                    {msg.timestamp && (
+                      <span className="text-[10px] text-text/40 dark:text-text-inv/35 tabular-nums mr-1">
+                        {formatTime(msg.timestamp)}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const hasIt = msg.reactions?.includes('👍');
+                        setMessages((prev) => prev.map((m) => {
+                          if (m.id !== msg.id) return m;
+                          const reactions = m.reactions ?? [];
+                          return { ...m, reactions: hasIt ? reactions.filter(r => r !== '👍') : [...reactions, '👍'] };
+                        }));
+                        if (hasIt) { channel.removeReaction(msg.id, '👍', runtimeConnId); } else { channel.addReaction(msg.id, '👍', runtimeConnId); }
+                      }}
+                      className={`w-6 h-6 flex items-center justify-center rounded-full transition-colors text-[13px] ${
+                        msg.reactions?.includes('👍') ? 'bg-primary/20' : 'text-text/25 dark:text-text-inv/20'
+                      }`}
+                    >
+                      👍
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startReply(msg)}
+                      className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 rounded-full transition-colors"
+                    >
+                      <CornerDownLeft size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLongPressedMsgId(msg.id)}
+                      className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 rounded-full transition-colors"
+                    >
+                      <MoreHorizontal size={12} />
+                    </button>
+                  </div>
+                )}
+
                 {/* Action Card for AI messages (hide for streaming) */}
                 {!isUser && !isStreaming && <ActionCard text={msg.text} onSend={quickSend} />}
 
@@ -1372,12 +1424,7 @@ export default function ChatRoom({
                   </div>
                 )}
 
-                {/* Message time — mobile only (desktop shows inline with actions) */}
-                {msg.timestamp && (
-                  <span className={`md:hidden text-[10px] text-text/55 dark:text-text-inv/55 mt-1 ${isUser ? 'text-right' : 'text-left'}`}>
-                    {formatTime(msg.timestamp)}
-                  </span>
-                )}
+                {/* Message time — shown in mobile action bar now, hide standalone */}
               </div>
             </motion.div>
             </div>
@@ -1436,8 +1483,8 @@ export default function ChatRoom({
                   className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white dark:bg-card-alt rounded-t-3xl shadow-2xl p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
                 >
                   {/* Quick reactions row */}
-                  <div className="flex items-center justify-center gap-2 mb-4">
-                    {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
+                  <div className="flex items-center justify-center gap-3 mb-4">
+                    {['👍', '❤️', '😂', '🎉'].map((e) => (
                       <motion.button
                         key={e}
                         whileTap={{ scale: 0.8 }}
@@ -1451,7 +1498,7 @@ export default function ChatRoom({
                           if (hasIt) { channel.removeReaction(longPressedMsgId, e, runtimeConnId); } else { channel.addReaction(longPressedMsgId, e, runtimeConnId); }
                           closeLongPress();
                         }}
-                        className={`w-11 h-11 text-[22px] flex items-center justify-center rounded-full transition-colors ${
+                        className={`w-12 h-12 text-[24px] flex items-center justify-center rounded-full transition-colors ${
                           lMsg.reactions?.includes(e) ? 'bg-primary/20 ring-2 ring-primary/40' : 'bg-surface dark:bg-surface-dark'
                         }`}
                       >
@@ -1606,7 +1653,7 @@ export default function ChatRoom({
                 className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
               >
                 <Puzzle size={12} />
-                技能{skillCount > 0 ? `(${skillCount})` : ''}
+                {skillCount > 0 && <span className="text-[10px] bg-primary/20 rounded-full px-1 min-w-[16px] text-center">{skillCount}</span>}
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.95 }}
@@ -1614,7 +1661,7 @@ export default function ChatRoom({
                 className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
               >
                 <FileText size={12} />
-                上下文
+
               </motion.button>
               {CONTEXT_SUGGESTIONS.map((sug) => (
                 <motion.button
@@ -1644,7 +1691,7 @@ export default function ChatRoom({
                 className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
               >
                 <Puzzle size={12} />
-                技能{skillCount > 0 ? `(${skillCount})` : ''}
+                {skillCount > 0 && <span className="text-[10px] bg-primary/20 rounded-full px-1 min-w-[16px] text-center">{skillCount}</span>}
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.95 }}
@@ -1652,7 +1699,7 @@ export default function ChatRoom({
                 className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
               >
                 <FileText size={12} />
-                上下文
+
               </motion.button>
               {QUICK_COMMANDS.map((cmd) => (
                 <motion.button

@@ -604,7 +604,13 @@ export default function ChatList({
     });
   };
 
+  // Track drag state to prevent click-after-drag
+  const isDraggingRef = useRef(false);
+  const dragCooldownRef = useRef(false);
+
   const handleAgentClick = (event: ReactMouseEvent<HTMLButtonElement>, connection: ServerConnection, agent: AgentInfo) => {
+    // Prevent click if user just finished dragging
+    if (dragCooldownRef.current) return;
     const status = statusMap[connection.id] || 'disconnected';
     if (attemptedMap[connection.id] && status === 'disconnected') return;
     const target: PendingOpen['target'] = event.shiftKey && splitEnabled && onOpenSplitChat ? 'split' : 'primary';
@@ -689,7 +695,10 @@ export default function ChatList({
         exit={{ opacity: 0, y: -6 }}
         transition={{ delay: Math.min(index * 0.02, 0.12), duration: 0.18 }}
         whileDrag={{ scale: 1.02, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: 50 }}
-        style={{ touchAction: 'none' }}
+        dragListener={false}
+        style={{ touchAction: 'pan-y' }}
+        onDragStart={() => { isDraggingRef.current = true; dragCooldownRef.current = true; }}
+        onDragEnd={() => { isDraggingRef.current = false; setTimeout(() => { dragCooldownRef.current = false; }, 300); }}
       >
         <button
           type="button"
@@ -811,7 +820,10 @@ export default function ChatList({
         exit={{ opacity: 0, scale: 0.9 }}
         transition={{ delay: Math.min(index * 0.03, 0.15), duration: 0.2 }}
         whileDrag={{ scale: 1.05, boxShadow: '0 8px 30px rgba(0,0,0,0.15)', zIndex: 50 }}
-        style={{ touchAction: 'none' }}
+        dragListener={false}
+        style={{ touchAction: 'pan-y' }}
+        onDragStart={() => { isDraggingRef.current = true; dragCooldownRef.current = true; }}
+        onDragEnd={() => { isDraggingRef.current = false; setTimeout(() => { dragCooldownRef.current = false; }, 300); }}
       >
         <button
           type="button"
