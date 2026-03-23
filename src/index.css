@@ -12,8 +12,8 @@
   --color-text-inv: #e2e8f0;
   --color-border: #EDF2F0;
   --color-border-dark: #2d3748;
-  --color-primary: #67B88B;
-  --color-primary-deep: #4a9a70;
+  --color-primary: #EF5A23;
+  --color-primary-deep: #D04A1A;
   --color-info: #5B8DEF;
   --color-accent: #8B5CF6;
   --color-warn: #F59E0B;
@@ -46,7 +46,7 @@
   --text-secondary: #5B6669;
   --text-muted: #92A0A4;
   --border-color: #EDF2F0;
-  --primary: #67B88B;
+  --primary: #EF5A23;
 }
 
 /* Dark mode */
@@ -57,7 +57,7 @@
   --text-secondary: #a0aec0;
   --text-muted: #64748b;
   --border-color: #2d3748;
-  --primary: #67B88B;
+  --primary: #EF5A23;
 }
 
 .dark body,
@@ -190,7 +190,7 @@ input, select, textarea {
 }
 
 .ios-toggle:checked {
-  background: #67B88B;
+  background: #EF5A23;
 }
 
 .ios-toggle:checked::after {
@@ -199,7 +199,7 @@ input, select, textarea {
 
 .ios-toggle:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 4px rgba(103, 184, 139, 0.2);
+  box-shadow: 0 0 0 4px rgba(239, 90, 35, 0.2);
 }
 
 /* Respect reduced motion preference */

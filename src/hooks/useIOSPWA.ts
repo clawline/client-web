@@ -14,7 +14,7 @@ export function useIOSPWA() {
       const themeColorMetas = document.querySelectorAll('meta[name="theme-color"]');
 
       themeColorMetas.forEach((meta) => {
-        meta.setAttribute('content', isDark ? '#1a1b2e' : '#67B88B');
+        meta.setAttribute('content', isDark ? '#1a1b2e' : '#EF5A23');
       });
     };
 

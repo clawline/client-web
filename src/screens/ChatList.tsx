@@ -46,7 +46,7 @@ function TypingDots() {
 }
 
 const AVATAR_PALETTES = [
-  { from: '#67B88B', to: '#4a9a70' },
+  { from: '#EF5A23', to: '#D04A1A' },
   { from: '#5B8DEF', to: '#3b6fd0' },
   { from: '#8B5CF6', to: '#6D28D9' },
   { from: '#F59E0B', to: '#D97706' },

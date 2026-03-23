@@ -14,7 +14,7 @@ if (localStorage.getItem('openclaw.darkMode') === '1') {
 if (typeof console !== 'undefined') {
   console.log(
     '%c🐾 Clawline %cv' + (import.meta.env.VITE_APP_VERSION || 'dev'),
-    'font-size:18px;font-weight:bold;color:#67B88B;',
+    'font-size:18px;font-weight:bold;color:#EF5A23;',
     'font-size:12px;color:#888;margin-left:4px;',
   );
   console.log(

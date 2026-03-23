@@ -5,7 +5,7 @@ import { useLogto } from '@logto/react';
 import { Button } from '../components/ui/button';
 
 const FEATURES = [
-  { icon: MessageSquare, text: 'Real-time chat with OpenClaw agents via WebSocket', color: '#67B88B' },
+  { icon: MessageSquare, text: 'Real-time chat with OpenClaw agents via WebSocket', color: '#EF5A23' },
   { icon: Server, text: 'Connect to multiple workspaces at once', color: '#5B8DEF' },
   { icon: Zap, text: '/slash commands for specialized workflows', color: '#F59E0B' },
   { icon: Shield, text: 'All data stays on your device — no cloud needed', color: '#8B5CF6' },
