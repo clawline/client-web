@@ -375,8 +375,9 @@ export default function ChatRoom({
     // Use explicit chatId if provided; otherwise let server assign via connection.open
     const conversationId = chatId || activeConn.chatId || undefined;
     const requestSelectedHistory = () => {
-      if (!chatId) return;
-      try { channel.requestHistory(chatId, agentId || undefined, runtimeConnId); } catch { /* ignore */ }
+      const effectiveId = chatId || activeConn?.chatId;
+      if (!effectiveId) return;
+      try { channel.requestHistory(effectiveId, agentId || undefined, runtimeConnId); } catch { /* ignore */ }
     };
 
     setIsThinking(false);

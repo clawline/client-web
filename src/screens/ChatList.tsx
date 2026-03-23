@@ -376,9 +376,9 @@ export default function ChatList({
       // Already connected: just switch agent + navigate immediately
       channel.selectAgent(agent.id, connection.id);
       if (target === 'split' && onOpenSplitChat) {
-        onOpenSplitChat(connection.id, agent.id);
+        onOpenSplitChat(connection.id, agent.id, connection.chatId);
       } else {
-        onOpenChat(connection.id, agent.id);
+        onOpenChat(connection.id, agent.id, connection.chatId);
       }
       return;
     }
