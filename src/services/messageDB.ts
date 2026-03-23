@@ -93,8 +93,39 @@ function waitForTransaction(transaction: IDBTransaction) {
   });
 }
 
+/**
+ * Builds a scope ID that uniquely identifies a conversation scope.
+ *
+ * Format:
+ * - Both chatId and agentId: `${chatId}::${agentId}`
+ * - Only chatId: `chatId`
+ * - Only agentId: `agentId`
+ * - Neither: `'default'`
+ *
+ * MIGRATION NOTE (2026-03-23):
+ * This is a breaking change from the previous implementation where chatId took precedence.
+ * Old scope keys like 'CC-OWL' will no longer match; messages stored with the old key format
+ * will not appear in history. However, no data corruption occurs - old messages remain in
+ * IndexedDB under the old keys, and new messages will be stored correctly with the new format.
+ * Users will see empty chat history after upgrade, but can continue chatting normally.
+ */
 function buildScopeId(agentId: string, chatId?: string | null) {
-  return chatId || agentId || 'default';
+  const hasChatId = chatId && chatId.trim() !== '';
+  const hasAgentId = agentId && agentId.trim() !== '';
+
+  if (hasChatId && hasAgentId) {
+    return `${chatId}::${agentId}`;
+  }
+
+  if (hasChatId) {
+    return chatId as string;
+  }
+
+  if (hasAgentId) {
+    return agentId;
+  }
+
+  return 'default';
 }
 
 function buildRecordKey(connectionId: string, scopeId: string, messageId: string) {
