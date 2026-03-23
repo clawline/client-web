@@ -385,26 +385,41 @@ export default function ChatRoom({
     const currentStatus = channel.getStatus(runtimeConnId);
     const currentChatId = channel.getChatId(runtimeConnId);
 
-    if (currentStatus !== 'connecting') {
+    // If already connected to the same chat: just select agent + request history
+    if (currentStatus === 'connected' && (!chatId || currentChatId === chatId)) {
+      // Select the agent (sends agent.select message)
+      if (agentId) {
+        channel.selectAgent(agentId, runtimeConnId);
+      }
+      requestSelectedHistory();
+    } else if (currentStatus !== 'connecting') {
+      // Not connected: establish connection (without agentId)
       channel.connect({
         connectionId: runtimeConnId,
         chatId: conversationId,
         senderId: activeConn.senderId || getUserId(),
         senderName: activeConn.displayName,
         serverUrl: activeConn.serverUrl,
-        agentId: agentId || undefined,
+        // Note: agentId not passed — agent is selected after connection via selectAgent()
         token: activeConn.token,
       });
     }
 
-    if (currentStatus === 'connected' && (!chatId || currentChatId === chatId)) {
-      requestSelectedHistory();
-    }
-
     const unsubMsg = channel.onMessage((packet) => {
       if (packet.type === 'connection.open') {
+        // Connection established: select agent + request history
+        if (agentId) {
+          channel.selectAgent(agentId, runtimeConnId);
+        }
         requestSelectedHistory();
       } else if (packet.type === 'message.send' && (packet.data?.content || packet.data?.mediaUrl)) {
+        // Message isolation: only accept messages for current agent
+        const packetAgentId = packet.data.agentId as string | undefined;
+        if (packetAgentId && agentId && packetAgentId !== agentId) {
+          // Ignore messages from other agents (prevents cross-agent contamination)
+          return;
+        }
+
         setIsThinking(false);
         const content = (packet.data.content as string) || '';
         const mediaUrl = packet.data.mediaUrl as string | undefined;
@@ -510,6 +525,12 @@ export default function ChatRoom({
         channel.saveCachedAgents(connId, nextAgents);
         setAgentInfo(nextAgents.find((agent) => agent.id === agentId) ?? null);
       } else if (packet.type === 'text.delta') {
+        // Message isolation: only accept streaming for current agent
+        const packetAgentId = packet.data.agentId as string | undefined;
+        if (packetAgentId && agentId && packetAgentId !== agentId) {
+          return;
+        }
+
         if (localStorage.getItem('openclaw.streaming.enabled') === 'false') return;
 
         // Streaming text output from backend
@@ -588,7 +609,7 @@ export default function ChatRoom({
         senderId: activeConn.senderId || getUserId(),
         senderName: activeConn.displayName,
         serverUrl: activeConn.serverUrl,
-        agentId: agentId || undefined,
+        // Note: agentId not passed — agent is selected via selectAgent()
         token: activeConn.token,
       });
     }

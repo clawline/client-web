@@ -382,12 +382,13 @@ class ChannelManager {
       }
     }
 
+    // Connection reuse: only check serverUrl + chatId (not agentId)
+    // Agent switching is handled by selectAgent() without reconnecting
     if (
       instance.ws &&
       (instance.ws.readyState === WebSocket.CONNECTING || instance.ws.readyState === WebSocket.OPEN) &&
       instance.currentChatId === nextChatId &&
-      instance.currentServerUrl === nextServerUrl &&
-      instance.currentAgentId === nextAgentId
+      instance.currentServerUrl === nextServerUrl
     ) {
       this.touch(instance);
       this.enforcePoolLimit(instance.connectionId);
@@ -400,14 +401,15 @@ class ChannelManager {
     instance.currentChatId = nextChatId;
     instance.currentSenderId = opts.senderId;
     instance.currentSenderName = opts.senderName;
-    instance.currentAgentId = nextAgentId;
+    // Note: currentAgentId is managed by selectAgent(), not connect()
     instance.currentAuthToken = opts.token || '';
     instance.manualClose = false;
 
     const token = ++instance.connectionToken;
     this.updateStatus(instance, instance.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
 
-    const socket = new WebSocket(buildSocketUrl(nextServerUrl, opts.chatId, opts.agentId, opts.token));
+    // Don't pass agentId to URL — agent is selected via selectAgent() message
+    const socket = new WebSocket(buildSocketUrl(nextServerUrl, opts.chatId, undefined, opts.token));
     instance.ws = socket;
     this.touch(instance);
     this.enforcePoolLimit(instance.connectionId);
@@ -799,6 +801,10 @@ class ChannelManager {
     return this.get(connectionId)?.currentChatId || '';
   }
 
+  getCurrentAgentId(connectionId?: string) {
+    return this.get(connectionId)?.currentAgentId || '';
+  }
+
   getTypingAgents(connectionId?: string) {
     const resolved = getResolvedConnectionId(connectionId);
     if (!resolved) return [];
@@ -1008,6 +1014,10 @@ export function getStatus(connectionId?: string) {
 
 export function getChatId(connectionId?: string) {
   return manager.getChatId(connectionId);
+}
+
+export function getCurrentAgentId(connectionId?: string) {
+  return manager.getCurrentAgentId(connectionId);
 }
 
 export function getTypingAgents(connectionId?: string) {

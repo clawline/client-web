@@ -371,13 +371,30 @@ export default function ChatList({
     const status = statusMap[connection.id] || 'disconnected';
     if (attemptedMap[connection.id] && status === 'disconnected') return;
     const target: PendingOpen['target'] = shiftKey && splitEnabled && onOpenSplitChat ? 'split' : 'primary';
+
+    if (status === 'connected') {
+      // Already connected: just switch agent + navigate immediately
+      channel.selectAgent(agent.id, connection.id);
+      if (target === 'split' && onOpenSplitChat) {
+        onOpenSplitChat(connection.id, agent.id);
+      } else {
+        onOpenChat(connection.id, agent.id);
+      }
+      return;
+    }
+
+    // Not connected: establish connection, pendingOpen tracks the agent to open
     pendingOpenRef.current[connection.id] = { agentId: agent.id, target };
     setRefreshingMap(p => ({ ...p, [connection.id]: true }));
-    channel.connect({ connectionId: connection.id, chatId: connection.chatId, senderId: connection.senderId || getUserId(), senderName: connection.displayName, serverUrl: connection.serverUrl, token: connection.token, agentId: agent.id });
-    if (channel.getStatus(connection.id) === 'connected') {
-      try { channel.requestConversationList(agent.id, connection.id); }
-      catch { pendingOpenRef.current[connection.id] = undefined; setRefreshingMap(p => ({ ...p, [connection.id]: false })); }
-    }
+    channel.connect({
+      connectionId: connection.id,
+      chatId: connection.chatId,
+      senderId: connection.senderId || getUserId(),
+      senderName: connection.displayName,
+      serverUrl: connection.serverUrl,
+      token: connection.token,
+      // Note: agentId not passed — agent is selected after connection via selectAgent()
+    });
   };
 
   const toggleViewMode = () => {
