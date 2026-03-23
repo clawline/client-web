@@ -376,7 +376,7 @@ export default function ChatRoom({
     const conversationId = chatId || activeConn.chatId || undefined;
     const requestSelectedHistory = () => {
       if (!chatId) return;
-      try { channel.requestHistory(chatId, runtimeConnId); } catch { /* ignore */ }
+      try { channel.requestHistory(chatId, agentId || undefined, runtimeConnId); } catch { /* ignore */ }
     };
 
     setIsThinking(false);
@@ -401,7 +401,7 @@ export default function ChatRoom({
         channel.selectAgent(agentId, runtimeConnId);
         // Bug 1: Fallback timeout in case agent.selected is not received
         if (agentReadyTimeoutRef.current) clearTimeout(agentReadyTimeoutRef.current);
-        agentReadyTimeoutRef.current = setTimeout(() => setAgentReady(true), 3000);
+        agentReadyTimeoutRef.current = setTimeout(() => setAgentReady(true), 1500);
       } else if (agentId) {
         // Agent unchanged, already ready
         setAgentReady(true);
@@ -428,12 +428,12 @@ export default function ChatRoom({
           channel.selectAgent(agentId, runtimeConnId);
           // Bug 1: Fallback timeout in case agent.selected is not received
           if (agentReadyTimeoutRef.current) clearTimeout(agentReadyTimeoutRef.current);
-          agentReadyTimeoutRef.current = setTimeout(() => setAgentReady(true), 3000);
+          agentReadyTimeoutRef.current = setTimeout(() => setAgentReady(true), 1500);
         }
         // Bug 4: Use packet.data.chatId if our chatId is empty (first-time entry)
         const effectiveChatId = chatId || (packet.data?.chatId as string);
         if (effectiveChatId) {
-          try { channel.requestHistory(effectiveChatId, runtimeConnId); } catch { /* ignore */ }
+          try { channel.requestHistory(effectiveChatId, agentId || undefined, runtimeConnId); } catch { /* ignore */ }
         }
       } else if (packet.type === 'agent.selected') {
         // Bug 1: Server confirmed agent selection
@@ -513,6 +513,11 @@ export default function ChatRoom({
         const d = packet.data as { messageId: string };
         setMessages((prev) => prev.filter((m) => m.id !== d.messageId));
       } else if (packet.type === 'history.sync' && Array.isArray(packet.data?.messages)) {
+        // Message isolation: only accept history for current agent
+        const historyAgentId = packet.data.agentId as string | undefined;
+        if (historyAgentId && agentId && historyAgentId !== agentId) {
+          return;
+        }
         const history = (packet.data.messages as Array<{messageId?: string; content?: string; direction?: string; senderId?: string; timestamp?: number; mediaUrl?: string; contentType?: string; mimeType?: string}>).map((m) => {
           let mediaType: string | undefined;
           if (m.contentType === 'image' || m.mimeType?.startsWith('image/')) {

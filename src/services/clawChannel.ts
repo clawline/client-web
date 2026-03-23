@@ -2,7 +2,7 @@ import { getActiveConnectionId } from './connectionStore';
 
 const DEFAULT_WS_URL = 'wss://gateway.clawlines.net/client';
 const MAX_RECONNECT_ATTEMPTS = 6;
-const MAX_ACTIVE_CONNECTIONS = 3;
+const MAX_ACTIVE_CONNECTIONS = 6;
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const LEGACY_AGENT_CACHE_KEY = 'openclaw.agentList';
 const LEGACY_STATUS_CACHE_KEY = 'openclaw.channelStatus';
@@ -419,11 +419,6 @@ class ChannelManager {
       instance.reconnectAttempts = 0;
       this.updateStatus(instance, 'connected');
       this.touch(instance);
-      try {
-        this.requestAgentList(instance.connectionId);
-      } catch {
-        // ignore
-      }
     });
 
     socket.addEventListener('message', (event) => {
@@ -624,12 +619,13 @@ class ChannelManager {
     }, connectionId);
   }
 
-  requestHistory(chatId: string, connectionId?: string) {
+  requestHistory(chatId: string, agentId?: string, connectionId?: string) {
     this.sendRaw({
       type: 'history.get',
       data: {
         requestId: createStableId('history'),
         chatId,
+        agentId: agentId || undefined,
       },
     }, connectionId);
   }
@@ -964,8 +960,8 @@ export function requestConversationList(agentId?: string, connectionId?: string)
   manager.requestConversationList(agentId, connectionId);
 }
 
-export function requestHistory(chatId: string, connectionId?: string) {
-  manager.requestHistory(chatId, connectionId);
+export function requestHistory(chatId: string, agentId?: string, connectionId?: string) {
+  manager.requestHistory(chatId, agentId, connectionId);
 }
 
 export function selectAgent(agentId: string | null, connectionId?: string) {
