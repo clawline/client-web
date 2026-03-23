@@ -700,8 +700,13 @@ export default function ChatRoom({
     };
   }, [agentId, chatId, activeConn?.id, connId, runtimeConnId]);
 
+  const lastConvListRequestRef = useRef<number>(0);
   const requestConversationList = useCallback(() => {
     if (!agentId || !runtimeConnId) return;
+    // Debounce: skip if requested within last 2 seconds
+    const now = Date.now();
+    if (now - lastConvListRequestRef.current < 2000) return;
+    lastConvListRequestRef.current = now;
     setLoadingConversations(true);
     try {
       channel.requestConversationList(agentId, runtimeConnId);
@@ -726,18 +731,12 @@ export default function ChatRoom({
       });
     }
 
-    if (drawerStatus === 'connected') {
+    if (drawerStatus === 'connected' || wsStatus === 'connected') {
       requestConversationList();
     } else {
       setLoadingConversations(true);
     }
-  }, [activeConn, agentId, chatId, requestConversationList, runtimeConnId, showHistoryDrawer]);
-
-  useEffect(() => {
-    if (showHistoryDrawer && wsStatus === 'connected') {
-      requestConversationList();
-    }
-  }, [requestConversationList, showHistoryDrawer, wsStatus]);
+  }, [activeConn, agentId, chatId, requestConversationList, runtimeConnId, showHistoryDrawer, wsStatus]);
 
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
