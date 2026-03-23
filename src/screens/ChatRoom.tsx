@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Columns2, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Brain, Puzzle, RefreshCw } from 'lucide-react';
+import { ChevronLeft, Columns2, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Brain, Puzzle, RefreshCw, Copy } from 'lucide-react';
 import { cn } from '../lib/utils';
 import * as channel from '../services/clawChannel';
 import type { AgentContext, AgentInfo, ConversationSummary } from '../services/clawChannel';
@@ -1406,12 +1406,12 @@ export default function ChatRoom({
                 onTouchMove={handleTouchEnd}
               >
               {!isUser && (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 mr-3 flex items-center justify-center text-white shadow-sm text-lg">
+                <div className="hidden md:flex w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 mr-3 items-center justify-center text-white shadow-sm text-lg">
                   {agentInfo?.identityEmoji || '🤖'}
                 </div>
               )}
               
-              <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[75%]`}>
+              <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[85%] md:max-w-[75%]`}>
                 <div
                     className={`px-5 py-3.5 rounded-[24px] text-[15px] leading-relaxed relative ${
                       isUser
@@ -1444,6 +1444,11 @@ export default function ChatRoom({
                       <div className="bg-transparent border-none p-0">
                         <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover" />
                         {msg.text && <p className="mt-2 text-[14px]">{msg.text}</p>}
+                        {msg.timestamp && (
+                          <span className={`md:hidden text-[10px] float-right mt-1 ml-3 tabular-nums ${isUser ? 'text-white/55' : 'text-text/35 dark:text-text-inv/30'}`}>
+                            {formatTime(msg.timestamp)}
+                          </span>
+                        )}
                       </div>
                     ) : (msg.mediaType === 'voice' || msg.mediaType === 'audio') && msg.mediaUrl ? (
                       <div className="flex flex-col gap-1 min-w-[220px]">
@@ -1463,13 +1468,26 @@ export default function ChatRoom({
                         </div>
                       </div>
                     ) : isUser ? (
-                      <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                      <div>
+                        <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                        {msg.timestamp && (
+                          <span className="md:hidden text-[10px] text-white/55 float-right mt-1 ml-3 tabular-nums">
+                            {formatTime(msg.timestamp)}
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <div className="relative">
                         <MarkdownRenderer content={msg.text} />
                         {/* Streaming cursor indicator */}
                         {isStreaming && (
                           <span className="inline-block w-2 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
+                        )}
+                        {/* WhatsApp-style inline timestamp (mobile only) */}
+                        {!isStreaming && msg.timestamp && (
+                          <span className="md:hidden text-[10px] text-text/35 dark:text-text-inv/30 float-right mt-1 ml-3 tabular-nums">
+                            {formatTime(msg.timestamp)}
+                          </span>
                         )}
                       </div>
                     )}
@@ -1558,40 +1576,7 @@ export default function ChatRoom({
                   </div>
                   )}
 
-                {/* Mobile compact action bar — visible on mobile, hidden on desktop */}
-                {!isStreaming && (
-                  <div className={`flex md:hidden items-center gap-1 mt-1.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                    {msg.timestamp && (
-                      <span className="text-[10px] text-text/40 dark:text-text-inv/35 tabular-nums mr-1">
-                        {formatTime(msg.timestamp)}
-                      </span>
-                    )}
-                    {/* Emoji entry — only for AI messages */}
-                    {!isUser && (
-                      <button
-                        type="button"
-                        onClick={() => openReactionPicker(msg.id)}
-                        className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 rounded-full transition-colors"
-                      >
-                        <SmilePlus size={12} />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => startReply(msg)}
-                      className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 rounded-full transition-colors"
-                    >
-                      <CornerDownLeft size={12} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLongPressedMsgId(msg.id)}
-                      className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 rounded-full transition-colors"
-                    >
-                      <MoreHorizontal size={12} />
-                    </button>
-                  </div>
-                )}
+                {/* Mobile: actions via long-press only (timestamp now inside bubble) */}
 
                 {/* Action Card for AI messages (hide for streaming) */}
                 {!isUser && !isStreaming && <ActionCard text={msg.text} onSend={quickSend} />}
@@ -1660,7 +1645,7 @@ export default function ChatRoom({
         </AnimatePresence>
         <div ref={messagesEndRef} />
 
-        {/* Mobile long-press action sheet */}
+        {/* WhatsApp-style long-press action sheet */}
         <AnimatePresence>
           {longPressedMsgId && (() => {
             const lMsg = messages.find(m => m.id === longPressedMsgId);
@@ -1668,24 +1653,31 @@ export default function ChatRoom({
             const lIsUser = lMsg.sender === 'user';
             return (
               <>
+                {/* Blurred backdrop */}
                 <motion.div
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  className="fixed inset-0 bg-black/30 z-50 md:hidden"
+                  className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 md:hidden"
                   onClick={closeLongPress}
                 />
+                {/* Floating message preview + emoji bar */}
                 <motion.div
-                  initial={{ opacity: 0, y: 30, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 30, scale: 0.95 }}
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.92 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-                  className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white dark:bg-card-alt rounded-t-3xl shadow-2xl p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+                  className="fixed inset-x-4 top-[15vh] z-50 md:hidden flex flex-col items-center"
                 >
-                  {/* Quick reactions row */}
-                  <div className="flex items-center justify-center gap-3 mb-4">
-                    {['👍', '❤️', '😂', '🎉'].map((e) => (
+                  {/* Emoji reaction bar — floating above message */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.05 }}
+                    className="flex items-center gap-1 bg-[#1f2c34] dark:bg-[#1f2c34] rounded-full px-2 py-1.5 shadow-xl mb-2"
+                  >
+                    {['👍', '❤️', '😂', '😮', '😢', '🙏', '👏'].map((e) => (
                       <motion.button
                         key={e}
-                        whileTap={{ scale: 0.8 }}
+                        whileTap={{ scale: 0.75 }}
                         onClick={() => {
                           const hasIt = lMsg.reactions?.includes(e);
                           setMessages(prev => prev.map(m => {
@@ -1696,43 +1688,80 @@ export default function ChatRoom({
                           if (hasIt) { channel.removeReaction(longPressedMsgId, e, runtimeConnId); } else { channel.addReaction(longPressedMsgId, e, runtimeConnId); }
                           closeLongPress();
                         }}
-                        className={`w-12 h-12 text-[24px] flex items-center justify-center rounded-full transition-colors ${
-                          lMsg.reactions?.includes(e) ? 'bg-primary/20 ring-2 ring-primary/40' : 'bg-surface dark:bg-surface-dark'
+                        className={`w-10 h-10 text-[22px] flex items-center justify-center rounded-full transition-all ${
+                          lMsg.reactions?.includes(e) ? 'bg-white/20 scale-110' : 'hover:bg-white/10'
                         }`}
                       >
                         {e}
                       </motion.button>
                     ))}
                     <motion.button
-                      whileTap={{ scale: 0.9 }}
+                      whileTap={{ scale: 0.85 }}
                       onClick={() => { openReactionPicker(longPressedMsgId); closeLongPress(); }}
-                      className="w-11 h-11 flex items-center justify-center rounded-full bg-surface dark:bg-surface-dark text-text/55 dark:text-text-inv/55"
+                      className="w-10 h-10 flex items-center justify-center rounded-full text-white/60 hover:bg-white/10"
                     >
                       <SmilePlus size={18} />
                     </motion.button>
-                  </div>
+                  </motion.div>
 
-                  {/* Action buttons */}
-                  <div className="flex flex-col gap-0.5">
+                  {/* Message preview bubble */}
+                  <div className={`max-w-[85%] ${lIsUser ? 'self-end' : 'self-start'}`}>
+                    <div className={`px-4 py-3 rounded-[18px] text-[15px] leading-relaxed shadow-lg ${
+                      lIsUser
+                        ? 'bg-primary text-white rounded-tr-[6px]'
+                        : 'bg-white dark:bg-card-alt text-text dark:text-text-inv rounded-tl-[6px]'
+                    }`}>
+                      <p className="line-clamp-4">{lMsg.text}</p>
+                      {lMsg.timestamp && (
+                        <span className={`text-[10px] float-right mt-1 ml-3 ${lIsUser ? 'text-white/60' : 'text-text/40 dark:text-text-inv/35'}`}>
+                          {formatTime(lMsg.timestamp)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Bottom action sheet */}
+                <motion.div
+                  initial={{ opacity: 0, y: 100 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 100 }}
+                  transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                  className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-[#1f2c34] dark:bg-[#1f2c34] rounded-t-2xl shadow-2xl pb-[max(1rem,env(safe-area-inset-bottom))]"
+                >
+                  <div className="flex flex-col">
                     <button
                       onClick={() => { startReply(lMsg); closeLongPress(); }}
-                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                      className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-white/90 active:bg-white/10 transition-colors"
                     >
-                      <CornerDownLeft size={18} className="text-info" /> Reply
+                      <CornerDownLeft size={20} className="text-white/60" />
+                      Reply
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(lMsg.text).catch(() => {});
+                        closeLongPress();
+                      }}
+                      className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-white/90 active:bg-white/10 transition-colors"
+                    >
+                      <Copy size={20} className="text-white/60" />
+                      Copy
                     </button>
                     {lIsUser && (
                       <>
                         <button
                           onClick={() => { handleEditMessage(lMsg); closeLongPress(); }}
-                          className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                          className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-white/90 active:bg-white/10 transition-colors"
                         >
-                          <Pencil size={18} className="text-amber-500" /> Edit
+                          <Pencil size={20} className="text-white/60" />
+                          Edit
                         </button>
                         <button
                           onClick={() => { handleDeleteMessage(lMsg.id); closeLongPress(); }}
-                          className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-red-400 active:bg-white/10 transition-colors"
                         >
-                          <Trash2 size={18} /> Delete
+                          <Trash2 size={20} className="text-red-400/80" />
+                          Delete
                         </button>
                       </>
                     )}
