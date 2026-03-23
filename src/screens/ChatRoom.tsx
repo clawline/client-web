@@ -384,7 +384,7 @@ export default function ChatRoom({
     const requestSelectedHistory = () => {
       const effectiveId = chatId || activeConn?.chatId;
       if (!effectiveId) return;
-      try { channel.requestHistory(effectiveId, agentId || undefined, runtimeConnId); } catch { /* ignore */ }
+      try { channel.requestHistory(effectiveId, agentId || undefined, runtimeConnId, { limit: 20 }); } catch { /* ignore */ }
     };
 
     setIsThinking(false);
@@ -441,7 +441,7 @@ export default function ChatRoom({
         // Bug 4: Use packet.data.chatId if our chatId is empty (first-time entry)
         const effectiveChatId = chatId || (packet.data?.chatId as string);
         if (effectiveChatId) {
-          try { channel.requestHistory(effectiveChatId, agentId || undefined, runtimeConnId); } catch { /* ignore */ }
+          try { channel.requestHistory(effectiveChatId, agentId || undefined, runtimeConnId, { limit: 20 }); } catch { /* ignore */ }
         }
       } else if (packet.type === 'agent.selected') {
         // Bug 1: Server confirmed agent selection
@@ -752,7 +752,7 @@ export default function ChatRoom({
     const oldest = messages[0];
     if (!oldest?.timestamp) return;
     setLoadingMoreHistory(true);
-    channel.requestHistory(chatId, agentId, runtimeConnId, { limit: 50, before: oldest.timestamp });
+    channel.requestHistory(chatId, agentId, runtimeConnId, { limit: 20, before: oldest.timestamp });
   }, [loadingMoreHistory, hasMoreHistory, chatId, agentId, runtimeConnId, messages]);
 
   useEffect(() => {
