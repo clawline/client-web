@@ -58,9 +58,12 @@ export type AgentContext = {
 export type ConversationSummary = {
   chatId: string;
   agentId?: string;
+  title?: string;
   senderName?: string;
   lastMessage?: string;
+  lastContent?: string;
   timestamp?: number;
+  lastTimestamp?: number;
   unreadCount?: number;
 };
 

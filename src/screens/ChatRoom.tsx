@@ -575,7 +575,7 @@ export default function ChatRoom({
         });
       } else if (packet.type === 'conversation.list') {
         const nextConversations = Array.isArray((packet.data as { conversations?: ConversationSummary[] }).conversations)
-          ? [ ...((packet.data as { conversations?: ConversationSummary[] }).conversations || []) ].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+          ? [ ...((packet.data as { conversations?: ConversationSummary[] }).conversations || []) ].sort((a, b) => ((b.timestamp || b.lastTimestamp || 0) - (a.timestamp || a.lastTimestamp || 0)))
           : [];
         setConversations(nextConversations);
         setLoadingConversations(false);
@@ -1200,9 +1200,23 @@ export default function ChatRoom({
                     {agentInfo?.name || agentId || 'Agent'}
                   </p>
                 </div>
-                <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHistoryDrawer(false)} className="p-2 text-text/55 dark:text-text-inv/55">
-                  <X size={18} />
-                </motion.button>
+                <div className="flex items-center gap-1">
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      const newChatId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                      setShowHistoryDrawer(false);
+                      onOpenConversation(newChatId);
+                    }}
+                    className="p-2 text-primary hover:bg-primary/10 rounded-full"
+                    title="New conversation"
+                  >
+                    <Plus size={18} />
+                  </motion.button>
+                  <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHistoryDrawer(false)} className="p-2 text-text/55 dark:text-text-inv/55">
+                    <X size={18} />
+                  </motion.button>
+                </div>
               </div>
 
               <div className="overflow-y-auto p-3 space-y-2 max-h-[calc(78vh-76px)] md:max-h-[calc(100vh-76px)]">
@@ -1224,15 +1238,15 @@ export default function ChatRoom({
                     )}
                   >
                     <div className="flex items-center justify-between gap-3 mb-1">
-                      <p className="font-medium text-[14px] truncate">{conversation.chatId}</p>
-                      {conversation.timestamp && (
+                      <p className="font-medium text-[14px] truncate">{conversation.title || conversation.lastMessage || conversation.lastContent || conversation.chatId}</p>
+                      {(conversation.timestamp || conversation.lastTimestamp) && (
                         <span className="text-[11px] text-text/40 dark:text-text-inv/40 shrink-0">
-                          {formatRelativeTime(conversation.timestamp)}
+                          {formatRelativeTime((conversation.timestamp || conversation.lastTimestamp)!)}
                         </span>
                       )}
                     </div>
                     <p className="text-[12px] text-text/45 dark:text-text-inv/45 line-clamp-2">
-                      {conversation.lastMessage || 'No messages yet'}
+                      {conversation.lastMessage || conversation.lastContent || 'No messages yet'}
                     </p>
                   </button>
                 )) : (
