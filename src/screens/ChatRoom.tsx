@@ -220,6 +220,8 @@ export default function ChatRoom({
   const [showMoreIcons, setShowMoreIcons] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
   const [agentReady, setAgentReady] = useState(false);
   const agentReadyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevAgentIdRef = useRef<string | null | undefined>(undefined);
@@ -227,6 +229,7 @@ export default function ChatRoom({
   const lastTypingSentRef = useRef(0);
   const fileInputRef2 = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -306,6 +309,8 @@ export default function ChatRoom({
   useEffect(() => {
     setMessages([]);
     setHasLoadedMessages(false);
+    setHasMoreHistory(false);
+    setLoadingMoreHistory(false);
     streamingSourceAgentRef.current = null; // Clear streaming source tracking on agent change
 
     if (!connId || !agentId) {
@@ -544,6 +549,9 @@ export default function ChatRoom({
         if (historyAgentId && agentId && historyAgentId !== agentId) {
           return;
         }
+        const hasMore = Boolean(packet.data.hasMore);
+        setHasMoreHistory(hasMore);
+        setLoadingMoreHistory(false);
         const history = (packet.data.messages as Array<{messageId?: string; content?: string; direction?: string; senderId?: string; timestamp?: number; mediaUrl?: string; contentType?: string; mimeType?: string}>).map((m) => {
           let mediaType: string | undefined;
           if (m.contentType === 'image' || m.mimeType?.startsWith('image/')) {
@@ -737,6 +745,35 @@ export default function ChatRoom({
       setLoadingConversations(true);
     }
   }, [activeConn, agentId, chatId, requestConversationList, runtimeConnId, showHistoryDrawer, wsStatus]);
+
+  // ── Load more history on scroll to top ──
+  const loadMoreHistory = useCallback(() => {
+    if (loadingMoreHistory || !hasMoreHistory || !chatId || !agentId || !runtimeConnId) return;
+    const oldest = messages[0];
+    if (!oldest?.timestamp) return;
+    setLoadingMoreHistory(true);
+    channel.requestHistory(chatId, agentId, runtimeConnId, { limit: 50, before: oldest.timestamp });
+  }, [loadingMoreHistory, hasMoreHistory, chatId, agentId, runtimeConnId, messages]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      if (container.scrollTop < 80 && hasMoreHistory && !loadingMoreHistory) {
+        loadMoreHistory();
+      }
+    };
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [hasMoreHistory, loadingMoreHistory, loadMoreHistory]);
+
+  // Preserve scroll position when prepending older messages
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !loadingMoreHistory) return;
+    // After messages update + loadingMoreHistory becomes false, scroll will auto-adjust
+    // because React inserts at top — we rely on browser's scroll anchoring
+  }, [messages, loadingMoreHistory]);
 
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1288,7 +1325,22 @@ export default function ChatRoom({
       </AnimatePresence>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 pb-4 flex flex-col gap-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-4 flex flex-col gap-4">
+        {/* Load more indicator */}
+        {loadingMoreHistory && (
+          <div className="flex justify-center py-3">
+            <Loader2 size={18} className="text-primary animate-spin" />
+          </div>
+        )}
+        {hasMoreHistory && !loadingMoreHistory && messages.length > 0 && (
+          <button
+            type="button"
+            onClick={loadMoreHistory}
+            className="text-[12px] text-primary/70 hover:text-primary text-center py-2"
+          >
+            Load earlier messages…
+          </button>
+        )}
         {/* Empty chat welcome */}
         {!hasLoadedMessages && (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-6">

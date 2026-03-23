@@ -672,13 +672,15 @@ class ChannelManager {
     }, connectionId);
   }
 
-  requestHistory(chatId: string, agentId?: string, connectionId?: string) {
+  requestHistory(chatId: string, agentId?: string, connectionId?: string, opts?: { limit?: number; before?: number }) {
     this.sendRaw({
       type: 'history.get',
       data: {
         requestId: createStableId('history'),
         chatId,
         agentId: agentId || undefined,
+        limit: opts?.limit,
+        before: opts?.before,
       },
     }, connectionId);
   }
@@ -1010,8 +1012,8 @@ export function requestConversationList(agentId?: string, connectionId?: string)
   manager.requestConversationList(agentId, connectionId);
 }
 
-export function requestHistory(chatId: string, agentId?: string, connectionId?: string) {
-  manager.requestHistory(chatId, agentId, connectionId);
+export function requestHistory(chatId: string, agentId?: string, connectionId?: string, opts?: { limit?: number; before?: number }) {
+  manager.requestHistory(chatId, agentId, connectionId, opts);
 }
 
 export function selectAgent(agentId: string | null, connectionId?: string) {
