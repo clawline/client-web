@@ -853,25 +853,25 @@ export default function ChatRoom({
       setShowSlashMenu(false);
       return;
     }
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      sender: 'user',
-      text: inputValue,
-      replyTo: replyingTo?.id,
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
     const replyId = replyingTo?.id;
+    const capturedInput = inputValue;
     setInputValue('');
     setShowSlashMenu(false);
     setReplyingTo(null);
 
     try {
-      if (replyId) {
-        channel.sendTextWithParent(inputValue, replyId, agentId || undefined, runtimeConnId);
-      } else {
-        channel.sendText(inputValue, agentId || undefined, runtimeConnId);
-      }
+      // Send first to get the stable messageId, then use it for the local message
+      const payload = replyId
+        ? channel.sendTextWithParent(capturedInput, replyId, agentId || undefined, runtimeConnId)
+        : channel.sendText(capturedInput, agentId || undefined, runtimeConnId);
+      const userMsg: Message = {
+        id: payload.messageId || Date.now().toString(),
+        sender: 'user',
+        text: capturedInput,
+        replyTo: replyId,
+        timestamp: payload.timestamp || Date.now(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -887,10 +887,10 @@ export default function ChatRoom({
       setInputValue('');
       return;
     }
-    const userMsg: Message = { id: Date.now().toString(), sender: 'user', text, timestamp: Date.now() };
-    setMessages((prev) => [...prev, userMsg]);
     try {
-      channel.sendText(text, agentId || undefined, runtimeConnId);
+      const payload = channel.sendText(text, agentId || undefined, runtimeConnId);
+      const userMsg: Message = { id: payload.messageId || Date.now().toString(), sender: 'user', text, timestamp: payload.timestamp || Date.now() };
+      setMessages((prev) => [...prev, userMsg]);
     } catch {
       setMessages((prev) => [
         ...prev,
