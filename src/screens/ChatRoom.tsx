@@ -1413,7 +1413,7 @@ export default function ChatRoom({
               
               <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[85%] md:max-w-[75%]`}>
                 <div
-                    className={`px-5 py-3.5 rounded-[24px] text-[15px] leading-relaxed relative ${
+                    className={`px-5 py-3.5 rounded-[24px] text-[15px] leading-relaxed relative ${msg.reactions && msg.reactions.length > 0 ? 'mb-4' : ''} ${
                       isUser
                         ? 'bg-primary text-white rounded-tr-[8px] shadow-md shadow-primary/20'
                         : isErrorMsg
@@ -1489,6 +1489,36 @@ export default function ChatRoom({
                             {formatTime(msg.timestamp)}
                           </span>
                         )}
+                      </div>
+                    )}
+                    {/* Reactions pinned to bubble bottom-right corner (WhatsApp style) */}
+                    {msg.reactions && msg.reactions.length > 0 && (
+                      <div className={`absolute -bottom-3 flex gap-0.5 ${isUser ? 'right-2' : 'right-2'}`}>
+                        <div className="flex items-center gap-0.5 bg-[#1f2c34] dark:bg-[#1f2c34] rounded-full px-1.5 py-0.5 shadow-md">
+                          {msg.reactions.map((emoji, idx) => (
+                            <motion.button
+                              key={idx}
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: 'spring', stiffness: 600, damping: 15 }}
+                              whileTap={{ scale: 0.8 }}
+                              onClick={() => {
+                                setMessages((prev) => prev.map((m) => {
+                                  if (m.id !== msg.id) return m;
+                                  const reactions = m.reactions ?? [];
+                                  return { ...m, reactions: reactions.filter(r => r !== emoji) };
+                                }));
+                                channel.removeReaction(msg.id, emoji, runtimeConnId);
+                              }}
+                              className="text-[14px] leading-none"
+                            >
+                              {emoji}
+                            </motion.button>
+                          ))}
+                          {msg.reactions.length > 1 && (
+                            <span className="text-[10px] text-white/50 ml-0.5">{msg.reactions.length}</span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1581,31 +1611,7 @@ export default function ChatRoom({
                 {/* Action Card for AI messages (hide for streaming) */}
                 {!isUser && !isStreaming && <ActionCard text={msg.text} onSend={quickSend} />}
 
-                {/* Reactions Display — pinned to bubble bottom-right */}
-                {msg.reactions && msg.reactions.length > 0 && (
-                  <div className={`flex flex-wrap gap-1 -mb-3 mt-1 ${isUser ? 'justify-end -mr-1' : 'justify-start -ml-1'}`}>
-                    {msg.reactions.map((emoji, idx) => (
-                      <motion.button
-                        key={idx}
-                        initial={{ scale: 0, rotate: -15 }}
-                        animate={{ scale: 1, rotate: 0 }}
-                        transition={{ type: 'spring', stiffness: 600, damping: 15 }}
-                        whileTap={{ scale: 0.8 }}
-                        onClick={() => {
-                          setMessages((prev) => prev.map((m) => {
-                            if (m.id !== msg.id) return m;
-                            const reactions = m.reactions ?? [];
-                            return { ...m, reactions: reactions.filter(r => r !== emoji) };
-                          }));
-                          channel.removeReaction(msg.id, emoji, runtimeConnId);
-                        }}
-                        className="bg-white dark:bg-card-alt border border-border/50 dark:border-border-dark/50 rounded-full px-2 py-0.5 text-[13px] shadow-sm flex items-center gap-0.5 hover:bg-primary/10 transition-colors"
-                      >
-                        <span>{emoji}</span>
-                      </motion.button>
-                    ))}
-                  </div>
-                )}
+                {/* Reactions Display — pinned to bubble bottom-right (WhatsApp style) */}
 
                 {/* Message time — shown in mobile action bar now, hide standalone */}
               </div>
