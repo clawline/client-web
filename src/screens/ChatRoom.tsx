@@ -447,13 +447,18 @@ export default function ChatRoom({
         setAgentReady(true);
       } else if (packet.type === 'message.send' && (packet.data?.content || packet.data?.mediaUrl)) {
         // Message isolation: only accept messages for current agent
-        const packetAgentId = packet.data.agentId as string | undefined;
+        const packetAgentId = (packet.data.agentId as string | undefined) || undefined;
         if (packetAgentId && agentId && packetAgentId !== agentId) {
           // Ignore messages from other agents (prevents cross-agent contamination)
           return;
         }
+        // Fallback: if server didn't send agentId, use streaming source tracking
+        if (!packetAgentId && agentId && streamingSourceAgentRef.current && streamingSourceAgentRef.current !== agentId) {
+          return;
+        }
 
-        setIsThinking(false);
+        // Clear streaming source on final message delivery
+        streamingSourceAgentRef.current = null;
         const content = (packet.data.content as string) || '';
         const mediaUrl = packet.data.mediaUrl as string | undefined;
         const contentType = packet.data.contentType as string | undefined;
