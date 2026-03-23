@@ -501,13 +501,13 @@ class ChannelManager {
           this.setTypingState(instance.connectionId, agentId, isTyping);
         }
         if (packet.type === 'thinking.start') {
-          const thinkingAgentId = typeof packet.data.agentId === 'string' ? packet.data.agentId : instance.currentAgentId;
+          const thinkingAgentId = typeof packet.data.agentId === 'string' ? packet.data.agentId : undefined;
           if (thinkingAgentId) {
             this.setThinkingState(instance.connectionId, thinkingAgentId, true);
           }
         }
         if (packet.type === 'thinking.end') {
-          const thinkingAgentId = typeof packet.data.agentId === 'string' ? packet.data.agentId : instance.currentAgentId;
+          const thinkingAgentId = typeof packet.data.agentId === 'string' ? packet.data.agentId : undefined;
           if (thinkingAgentId) {
             this.setThinkingState(instance.connectionId, thinkingAgentId, false);
           }

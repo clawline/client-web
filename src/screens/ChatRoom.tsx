@@ -509,9 +509,16 @@ export default function ChatRoom({
           return { ...m, reactions: reactions.filter((r) => r !== emoji) };
         }));
       } else if (packet.type === 'thinking.start') {
-        setIsThinking(true);
+        // Only accept thinking for current agent (ignore events without agentId or from other agents)
+        const thinkAgentId = (packet.data as { agentId?: string }).agentId;
+        if (!thinkAgentId || !agentId || thinkAgentId === agentId) {
+          setIsThinking(true);
+        }
       } else if (packet.type === 'thinking.update') {
-        setIsThinking(true);
+        const thinkAgentId = (packet.data as { agentId?: string }).agentId;
+        if (!thinkAgentId || !agentId || thinkAgentId === agentId) {
+          setIsThinking(true);
+        }
       } else if (packet.type === 'thinking.end') {
         // keep thinking visible until message.send arrives
       } else if (packet.type === 'message.edit') {
