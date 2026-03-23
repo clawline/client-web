@@ -370,7 +370,7 @@ class ChannelManager {
     if (!instance) return;
 
     const nextServerUrl = opts.serverUrl || DEFAULT_WS_URL;
-    const nextAgentId = opts.agentId || '';
+    // Note: agentId is managed by selectAgent(), not passed to connect()
     let nextChatId = opts.chatId || '';
 
     if (!nextChatId) {

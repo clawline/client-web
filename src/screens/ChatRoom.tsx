@@ -567,6 +567,50 @@ export default function ChatRoom({
           : [];
         channel.saveCachedAgents(connId, nextAgents);
         setAgentInfo(nextAgents.find((agent) => agent.id === agentId) ?? null);
+      } else if (packet.type === 'stream.resume') {
+        // Stream resume after reconnection — restore accumulated streaming text
+        const resumeData = packet.data as { chatId?: string; agentId?: string; text?: string; isComplete?: boolean; startTime?: number };
+        const resumeAgentId = resumeData.agentId;
+        
+        // Message isolation: only accept for current agent
+        if (resumeAgentId && agentId && resumeAgentId !== agentId) {
+          return;
+        }
+        
+        setIsThinking(false); // Hide thinking indicator
+        
+        if (resumeData.isComplete) {
+          // Stream already completed on server — show as final message
+          streamingSourceAgentRef.current = null;
+          setMessages((prev) => {
+            const withoutStreaming = prev.filter((m) => !m.isStreaming);
+            return [
+              ...withoutStreaming,
+              {
+                id: `resumed-${Date.now()}`,
+                sender: 'ai',
+                text: resumeData.text || '',
+                timestamp: resumeData.startTime || Date.now(),
+              },
+            ];
+          });
+        } else if (typeof resumeData.text === 'string') {
+          // Stream still in progress — show as streaming message
+          streamingSourceAgentRef.current = resumeAgentId || agentId || null;
+          setMessages((prev) => {
+            const withoutStreaming = prev.filter((m) => !m.isStreaming);
+            return [
+              ...withoutStreaming,
+              {
+                id: `streaming-${Date.now()}`,
+                sender: 'ai',
+                text: resumeData.text,
+                isStreaming: true,
+                timestamp: resumeData.startTime || Date.now(),
+              },
+            ];
+          });
+        }
       } else if (packet.type === 'text.delta') {
         // Message isolation: only accept streaming for current agent
         const packetAgentId = (packet.data.agentId as string | undefined) || undefined;
