@@ -1421,12 +1421,7 @@ export default function ChatRoom({
                           : `bg-white dark:bg-card-alt text-text dark:text-text-inv border border-border dark:border-border-dark rounded-tl-[8px] shadow-sm${hasCodeBlock ? ' border-l-[3px] border-l-primary/60' : ''}`
                     }`}
                   >
-                    {/* Model badge - small top-right indicator for AI messages */}
-                    {!isUser && agentInfo?.model && (
-                      <span className="absolute -top-1 -right-1 px-2 py-0.5 bg-[#5B8DEF] text-white text-[10px] font-medium rounded-full shadow-sm">
-                        {agentInfo.model.split('/').pop()}
-                      </span>
-                    )}
+                    {/* Model badge removed — now shown inline with timestamp below bubble */}
                     {/* Quote reference */}
                     {msg.replyTo && (() => {
                       const quoted = messages.find((m) => m.id === msg.replyTo);
@@ -1468,10 +1463,10 @@ export default function ChatRoom({
                         </div>
                       </div>
                     ) : isUser ? (
-                      <div>
-                        <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                      <div className="inline">
+                        <span className="whitespace-pre-wrap break-words">{msg.text}</span>
                         {msg.timestamp && (
-                          <span className="md:hidden text-[10px] text-white/55 float-right mt-1 ml-3 tabular-nums">
+                          <span className="md:hidden text-[10px] text-white/55 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
                             {formatTime(msg.timestamp)}
                           </span>
                         )}
@@ -1483,10 +1478,14 @@ export default function ChatRoom({
                         {isStreaming && (
                           <span className="inline-block w-2 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
                         )}
-                        {/* WhatsApp-style inline timestamp (mobile only) */}
+                        {/* WhatsApp-style inline timestamp + model (mobile only) */}
                         {!isStreaming && msg.timestamp && (
-                          <span className="md:hidden text-[10px] text-text/35 dark:text-text-inv/30 float-right mt-1 ml-3 tabular-nums">
-                            {formatTime(msg.timestamp)}
+                          <span className="md:hidden text-[10px] text-text/35 dark:text-text-inv/30 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
+                            {formatTime(msg.timestamp)}{agentInfo?.model && (
+                              <span className="ml-1.5 border border-border dark:border-border-dark rounded-full px-1.5 py-px text-text/40 dark:text-text-inv/35 font-medium">
+                                {agentInfo.model.split('/').pop()}
+                              </span>
+                            )}
                           </span>
                         )}
                       </div>
@@ -1494,7 +1493,7 @@ export default function ChatRoom({
                     {/* Reactions pinned to bubble bottom-right corner (WhatsApp style) */}
                     {msg.reactions && msg.reactions.length > 0 && (
                       <div className={`absolute -bottom-3 flex gap-0.5 ${isUser ? 'right-2' : 'right-2'}`}>
-                        <div className="flex items-center gap-0.5 bg-[#1f2c34] dark:bg-[#1f2c34] rounded-full px-1.5 py-0.5 shadow-md">
+                        <div className="flex items-center gap-0.5 bg-white dark:bg-[#1f2c34] rounded-full px-1.5 py-0.5 shadow-md border border-border dark:border-transparent">
                           {msg.reactions.map((emoji, idx) => (
                             <motion.button
                               key={idx}
@@ -1516,7 +1515,7 @@ export default function ChatRoom({
                             </motion.button>
                           ))}
                           {msg.reactions.length > 1 && (
-                            <span className="text-[10px] text-white/50 ml-0.5">{msg.reactions.length}</span>
+                            <span className="text-[10px] text-text/40 dark:text-white/50 ml-0.5">{msg.reactions.length}</span>
                           )}
                         </div>
                       </div>
@@ -1530,6 +1529,13 @@ export default function ChatRoom({
                     {msg.timestamp && (
                       <span className="text-[10px] text-text/40 dark:text-text-inv/35 mr-1.5 tabular-nums">
                         {formatTime(msg.timestamp)}
+                      </span>
+                    )}
+
+                    {/* Model badge — inline outlined tag for bot messages */}
+                    {!isUser && agentInfo?.model && (
+                      <span className="text-[10px] text-text/45 dark:text-text-inv/40 font-medium border border-border dark:border-border-dark rounded-full px-2 py-0.5 mr-1.5">
+                        {agentInfo.model.split('/').pop()}
                       </span>
                     )}
 
