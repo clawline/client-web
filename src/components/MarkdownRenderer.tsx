@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Markdown from 'react-markdown';
+import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/core';
 import type { LanguageFn } from 'highlight.js';
 
@@ -76,7 +77,7 @@ function LazyCodeBlock({ lang, children }: { lang: string; children: string }) {
   return (
     <pre className="my-2 overflow-x-auto rounded-lg border border-[#313244] bg-[#1e1e2e] p-3 text-[13px]">
       {lang && <span className="float-right text-[10px] uppercase text-[#6c7086]">{lang}</span>}
-      <code className="text-[#cdd6f4]" dangerouslySetInnerHTML={{ __html: html }} />
+      <code className="text-[#cdd6f4]" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
     </pre>
   );
 }

@@ -207,6 +207,7 @@ export default function ChatRoom({
   const [wsStatus, setWsStatus] = useState<string>(channel.getStatus(runtimeConnId));
   const prevWsStatusRef = useRef<string>(channel.getStatus(runtimeConnId));
   const [showReconnected, setShowReconnected] = useState(false);
+  const [errorToast, setErrorToast] = useState<{ code: string; message: string } | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -696,9 +697,15 @@ export default function ChatRoom({
       }
     }, runtimeConnId);
 
+    const unsubError = channel.onError((_connId, error) => {
+      setErrorToast(error);
+      setTimeout(() => setErrorToast(null), 6000);
+    });
+
     return () => {
       unsubMsg();
       unsubStatus();
+      unsubError();
       if (agentReadyTimeoutRef.current) {
         clearTimeout(agentReadyTimeoutRef.current);
         agentReadyTimeoutRef.current = null;
@@ -878,7 +885,8 @@ export default function ChatRoom({
       }, runtimeConnId);
     } catch (err) {
       console.error('[ChatRoom] Failed to send file message:', err);
-      // Ideally show error toast
+      setErrorToast({ code: 'SEND_FAILED', message: err instanceof Error ? err.message : 'Failed to send file' });
+      setTimeout(() => setErrorToast(null), 6000);
     }
   };
 
@@ -1324,6 +1332,27 @@ export default function ChatRoom({
         )}
       </AnimatePresence>
 
+      {/* Error toast */}
+      <AnimatePresence>
+        {errorToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="absolute top-16 left-4 right-4 z-30 bg-red-500 text-white text-[13px] font-medium px-4 py-3 rounded-2xl shadow-lg flex items-start gap-3"
+          >
+            <WifiOff size={16} className="flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold">Connection Error</p>
+              <p className="text-white/80 text-[12px] mt-0.5 break-words">{errorToast.message}</p>
+            </div>
+            <button onClick={() => setErrorToast(null)} className="flex-shrink-0 text-white/70 hover:text-white">
+              <X size={16} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Messages */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-4 flex flex-col gap-4">
         {/* Load more indicator */}
@@ -1585,7 +1614,7 @@ export default function ChatRoom({
                     <button
                       type="button"
                       onClick={() => startReply(msg)}
-                      className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-info rounded transition-colors"
+                      className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-info rounded transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                     >
                       <CornerDownLeft size={12} />
                     </button>
@@ -1596,14 +1625,14 @@ export default function ChatRoom({
                         <button
                           type="button"
                           onClick={() => handleEditMessage(msg)}
-                          className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-amber-500 rounded transition-colors"
+                          className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-amber-500 rounded transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                         >
                           <Pencil size={12} />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteMessage(msg.id)}
-                          className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-red-500 rounded transition-colors"
+                          className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-red-500 rounded transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                         >
                           <Trash2 size={12} />
                         </button>
@@ -2163,7 +2192,8 @@ export default function ChatRoom({
             onKeyDown={(e) => e.key === 'Enter' && agentReady && handleSend()}
             placeholder={agentReady ? "Message..." : "Switching agent..."}
             disabled={!agentReady}
-            className="flex-1 bg-transparent border-none focus:outline-none text-[15px] py-2 px-2 text-text dark:text-text-inv placeholder:text-text/45 dark:placeholder:text-text-inv/45 disabled:opacity-50"
+            aria-label="Type a message"
+            className="flex-1 bg-transparent border-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-md text-[15px] py-2 px-2 text-text dark:text-text-inv placeholder:text-text/45 dark:placeholder:text-text-inv/45 disabled:opacity-50"
           />
 
           {/* Voice button when no text, Send button when has text */}

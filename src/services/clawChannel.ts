@@ -73,6 +73,7 @@ type StatusListener = (status: ConnectionStatus) => void;
 type MessageListener = (packet: InboundPacket) => void;
 type TypingListener = (connectionId: string, agentIds: string[]) => void;
 type AgentContextListener = (connectionId: string, agentId: string, context: AgentContext) => void;
+type ErrorListener = (connectionId: string, error: { code: string; message: string }) => void;
 
 export type ConnectOptions = {
   connectionId?: string;
@@ -154,6 +155,7 @@ class ChannelManager {
   private thinkingListeners = new Set<TypingListener>();
   private agentContexts = new Map<string, Map<string, AgentContext>>();
   private agentContextListeners = new Set<AgentContextListener>();
+  private errorListeners = new Set<ErrorListener>();
 
   // ── File upload ──
   async uploadFile(file: File, connectionId?: string): Promise<string> {
@@ -187,7 +189,10 @@ class ChannelManager {
       headers,
     });
     
-    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    if (!res.ok) {
+      const statusText = res.status === 413 ? 'File too large (max 10MB)' : res.status === 401 ? 'Authentication failed' : res.status === 403 ? 'Access denied (CORS)' : `Upload failed (${res.status})`;
+      throw new Error(statusText);
+    }
     const data = await res.json();
     return data.url;
   }
@@ -380,6 +385,7 @@ class ChannelManager {
   private scheduleReconnect(instance: ChannelInstance) {
     if (instance.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       this.updateStatus(instance, 'disconnected');
+      this.emitError(instance.connectionId, 'CONNECTION_FAILED', `Unable to connect after ${MAX_RECONNECT_ATTEMPTS} attempts. The server may be unreachable or rejecting connections (CORS/auth issue).`);
       return;
     }
 
@@ -844,6 +850,15 @@ class ChannelManager {
     };
   }
 
+  private emitError(connectionId: string, code: string, message: string) {
+    this.errorListeners.forEach((fn) => fn(connectionId, { code, message }));
+  }
+
+  onError(fn: ErrorListener) {
+    this.errorListeners.add(fn);
+    return () => { this.errorListeners.delete(fn); };
+  }
+
   getStatus(connectionId?: string) {
     return this.get(connectionId)?.currentStatus || 'disconnected';
   }
@@ -1054,6 +1069,10 @@ export function onMessage(fn: MessageListener, connectionId?: string) {
 
 export function onStatus(fn: StatusListener, connectionId?: string) {
   return manager.onStatus(fn, connectionId);
+}
+
+export function onError(fn: ErrorListener) {
+  return manager.onError(fn);
 }
 
 export function getStatus(connectionId?: string) {
