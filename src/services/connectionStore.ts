@@ -13,6 +13,7 @@ export type ServerConnection = {
   serverUrl: string;
   token?: string;
   chatId?: string;
+  channelId?: string;
   senderId?: string;
 };
 
@@ -38,7 +39,7 @@ export function getConnectionById(id: string): ServerConnection | undefined {
   return readAll().find((c) => c.id === id);
 }
 
-export function addConnection(name: string, serverUrl: string, displayName: string, token?: string, chatId?: string, senderId?: string): ServerConnection {
+export function addConnection(name: string, serverUrl: string, displayName: string, token?: string, chatId?: string, senderId?: string, channelId?: string): ServerConnection {
   const list = readAll();
   const conn: ServerConnection = {
     id: `conn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -47,6 +48,7 @@ export function addConnection(name: string, serverUrl: string, displayName: stri
     serverUrl: serverUrl.replace(/\/+$/, ''),
     token: token || undefined,
     chatId: chatId || undefined,
+    channelId: channelId || undefined,
     senderId: senderId || undefined,
   };
   list.push(conn);

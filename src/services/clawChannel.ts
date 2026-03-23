@@ -1,4 +1,4 @@
-import { getActiveConnectionId } from './connectionStore';
+import { getActiveConnectionId, getConnectionById } from './connectionStore';
 
 const DEFAULT_WS_URL = 'wss://gateway.clawlines.net/client';
 const MAX_RECONNECT_ATTEMPTS = 6;
@@ -107,9 +107,11 @@ function createStableId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function buildSocketUrl(serverUrl: string, chatId?: string, agentId?: string, token?: string) {
+function buildSocketUrl(serverUrl: string, chatId?: string, agentId?: string, token?: string, channelId?: string) {
   const base = serverUrl || DEFAULT_WS_URL;
   const parsed = new URL(base);
+  const effectiveChannelId = channelId || chatId;
+  if (effectiveChannelId) parsed.searchParams.set('channelId', effectiveChannelId);
   if (chatId) parsed.searchParams.set('chatId', chatId);
   if (agentId) parsed.searchParams.set('agentId', agentId);
   if (token) parsed.searchParams.set('token', token);
@@ -409,7 +411,8 @@ class ChannelManager {
     this.updateStatus(instance, instance.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
 
     // Don't pass agentId to URL — agent is selected via selectAgent() message
-    const socket = new WebSocket(buildSocketUrl(nextServerUrl, opts.chatId, undefined, opts.token));
+    const connData = getConnectionById(instance.connectionId);
+    const socket = new WebSocket(buildSocketUrl(nextServerUrl, opts.chatId, undefined, opts.token, connData?.channelId));
     instance.ws = socket;
     this.touch(instance);
     this.enforcePoolLimit(instance.connectionId);

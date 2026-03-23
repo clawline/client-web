@@ -120,6 +120,7 @@ export default function Pairing({ onBack, onPaired }: { onBack: () => void; onPa
       parsedUrl.token,
       parsedUrl.chatId || parsedUrl.channelId,
       parsedUrl.senderId,
+      parsedUrl.channelId,
     );
     onPaired(conn.id);
   };
