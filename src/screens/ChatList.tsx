@@ -234,9 +234,30 @@ export default function ChatList({
     });
   }, [connections]);
 
+  // ── Thinking sync ──
+  const [thinkingAgents, setThinkingAgents] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const sync = () => {
+      const next = new Set<string>();
+      connections.forEach(c => channel.getThinkingAgents(c.id).forEach(a => next.add(getPreviewStateKey(c.id, a))));
+      setThinkingAgents(next);
+    };
+    sync();
+    return channel.onThinkingChange((cid, agentIds) => {
+      setThinkingAgents(prev => {
+        const next = new Set(prev);
+        [...next].forEach(k => { if (k.startsWith(`${cid}:`)) next.delete(k); });
+        agentIds.forEach(a => next.add(getPreviewStateKey(cid, a)));
+        return next;
+      });
+    });
+  }, [connections]);
+
   // ── Agent loading ──
   const ensureAgentsLoaded = useCallback((connection: ServerConnection, force = false) => {
+    // P0 fix: Prevent repeated requests when already refreshing
     if (!force && (agentMapRef.current[connection.id]?.length ?? 0) > 0) return;
+    if (!force && refreshingMap[connection.id]) return; // Already refreshing, skip
     setAttemptedMap(p => ({ ...p, [connection.id]: true }));
     setLoadingMap(p => ({ ...p, [connection.id]: force ? true : p[connection.id] && (agentMapRef.current[connection.id]?.length ?? 0) === 0 }));
     setRefreshingMap(p => ({ ...p, [connection.id]: true }));
@@ -251,7 +272,7 @@ export default function ChatList({
         setLoadingMap(p => ({ ...p, [connection.id]: false }));
       }
     }
-  }, []);
+  }, [refreshingMap]);
 
   useEffect(() => {
     if (connections.length === 1 && connections[0]) { ensureAgentsLoaded(connections[0]); return; }
@@ -455,6 +476,8 @@ export default function ChatList({
     const lastMessage = Object.prototype.hasOwnProperty.call(previewMap, previewKey) ? previewMap[previewKey] : getStoredPreview(agent.id, connection.id);
     const preview = lastMessage?.text ? (lastMessage.text.length > 50 ? `${lastMessage.text.slice(0, 50)}…` : lastMessage.text) : null;
     const isTyping = typingAgents.has(previewKey);
+    const isThinking = thinkingAgents.has(previewKey);
+    const showStatus = isThinking || isTyping;
 
     return (
       <motion.div key={agent.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -473,7 +496,7 @@ export default function ChatList({
           <div className="relative flex-shrink-0" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
             onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
             {renderAvatar(agent, compact ? 'sm' : 'md')}
-            {isTyping && (
+            {showStatus && (
               <span className={cn('absolute -bottom-0.5 -right-0.5 bg-primary rounded-full border-2 border-white dark:border-surface-dark flex items-center justify-center', compact ? 'w-3 h-3' : 'w-3.5 h-3.5')}>
                 <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
               </span>
@@ -486,7 +509,9 @@ export default function ChatList({
               {agent.isDefault && <span className="text-[8px] font-medium text-text/40 dark:text-text-inv/35 bg-text/[0.05] dark:bg-text-inv/[0.05] rounded px-1 py-px leading-none shrink-0">default</span>}
               {agent.model && <span className={cn('text-[9px] truncate ml-auto shrink-0', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/30 dark:text-text-inv/30')}>{agent.model.split('/').pop()}</span>}
             </div>
-            {isTyping ? (
+            {isThinking ? (
+              <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[11px]' : 'text-[13px]')}>思考中... <TypingDots /></p>
+            ) : isTyping ? (
               <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[11px]' : 'text-[13px]')}>正在输入... <TypingDots /></p>
             ) : preview ? (
               <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/55 dark:text-text-inv/50' : 'text-[13px] text-text/50 dark:text-text-inv/45')}>{preview}</p>
@@ -514,6 +539,8 @@ export default function ChatList({
     const previewKey = getPreviewStateKey(connection.id, agent.id);
     const lastMessage = Object.prototype.hasOwnProperty.call(previewMap, previewKey) ? previewMap[previewKey] : getStoredPreview(agent.id, connection.id);
     const isTyping = typingAgents.has(previewKey);
+    const isThinking = thinkingAgents.has(previewKey);
+    const showStatus = isThinking || isTyping;
 
     return (
       <motion.div key={agent.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
@@ -531,10 +558,12 @@ export default function ChatList({
           <div className="relative mb-2" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
             onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
             {renderAvatar(agent, 'lg')}
-            {isTyping && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />}
+            {showStatus && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />}
           </div>
           <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{agent.name}</h3>
-          {isTyping ? (
+          {isThinking ? (
+            <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">思考中... <TypingDots /></div>
+          ) : isTyping ? (
             <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">正在输入... <TypingDots /></div>
           ) : lastMessage?.text ? (
             <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-text/50 dark:text-text-inv/40 truncate w-full max-w-full">

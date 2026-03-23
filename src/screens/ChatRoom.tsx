@@ -1765,7 +1765,7 @@ export default function ChatRoom({
         {/* Dynamic suggestions area */}
         <AnimatePresence mode="popLayout">
           {/* Context suggestions after last bot message */}
-          {!inputValue && messages.length > 0 && messages[messages.length - 1]?.sender === 'ai' && !showSlashMenu && !showEmojiPicker && (
+          {messages.length > 0 && messages[messages.length - 1]?.sender === 'ai' && !showSlashMenu && !showEmojiPicker && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1802,8 +1802,8 @@ export default function ChatRoom({
             </motion.div>
           )}
 
-          {/* Default quick commands when input empty and no context */}
-          {!inputValue && (messages.length === 0 || messages[messages.length - 1]?.sender === 'user') && !showSlashMenu && !showEmojiPicker && (
+          {/* Default quick commands when no context */}
+          {(messages.length === 0 || messages[messages.length - 1]?.sender === 'user') && !showSlashMenu && !showEmojiPicker && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}

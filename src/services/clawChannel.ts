@@ -147,6 +147,8 @@ class ChannelManager {
   private typingAgents = new Map<string, Set<string>>();
   private typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private typingListeners = new Set<TypingListener>();
+  private thinkingAgents = new Map<string, Set<string>>();
+  private thinkingListeners = new Set<TypingListener>();
   private agentContexts = new Map<string, Map<string, AgentContext>>();
   private agentContextListeners = new Set<AgentContextListener>();
 
@@ -232,6 +234,40 @@ class ChannelManager {
     typingAgents.forEach((agentId) => this.clearTypingTimer(connectionId, agentId));
     this.typingAgents.delete(connectionId);
     this.emitTypingChange(connectionId);
+  }
+
+  private emitThinkingChange(connectionId: string) {
+    const agentIds = [...(this.thinkingAgents.get(connectionId) ?? new Set<string>())];
+    this.thinkingListeners.forEach((listener) => listener(connectionId, agentIds));
+  }
+
+  private setThinkingState(connectionId: string, agentId: string, isThinking: boolean) {
+    if (!connectionId || !agentId) {
+      return;
+    }
+
+    const nextThinkingAgents = new Set(this.thinkingAgents.get(connectionId) ?? []);
+
+    if (isThinking) {
+      nextThinkingAgents.add(agentId);
+      this.thinkingAgents.set(connectionId, nextThinkingAgents);
+    } else {
+      nextThinkingAgents.delete(agentId);
+      if (nextThinkingAgents.size === 0) {
+        this.thinkingAgents.delete(connectionId);
+      } else {
+        this.thinkingAgents.set(connectionId, nextThinkingAgents);
+      }
+    }
+
+    this.emitThinkingChange(connectionId);
+  }
+
+  private clearConnectionThinking(connectionId: string) {
+    if (this.thinkingAgents.has(connectionId)) {
+      this.thinkingAgents.delete(connectionId);
+      this.emitThinkingChange(connectionId);
+    }
   }
 
   private setAgentContext(connectionId: string, agentId: string, context: AgentContext) {
@@ -464,6 +500,18 @@ class ChannelManager {
           const isTyping = packet.data.isTyping === true;
           this.setTypingState(instance.connectionId, agentId, isTyping);
         }
+        if (packet.type === 'thinking.start') {
+          const thinkingAgentId = typeof packet.data.agentId === 'string' ? packet.data.agentId : instance.currentAgentId;
+          if (thinkingAgentId) {
+            this.setThinkingState(instance.connectionId, thinkingAgentId, true);
+          }
+        }
+        if (packet.type === 'thinking.end') {
+          const thinkingAgentId = typeof packet.data.agentId === 'string' ? packet.data.agentId : instance.currentAgentId;
+          if (thinkingAgentId) {
+            this.setThinkingState(instance.connectionId, thinkingAgentId, false);
+          }
+        }
         instance.messageListeners.forEach((fn) => fn(packet));
       } catch {
         // ignore malformed packets
@@ -503,6 +551,7 @@ class ChannelManager {
     this.clearReconnectTimer(instance);
     this.clearIdleTimer(instance);
     this.clearConnectionTyping(instance.connectionId);
+    this.clearConnectionThinking(instance.connectionId);
     instance.connectionToken += 1;
 
     const socket = instance.ws;
@@ -808,10 +857,23 @@ class ChannelManager {
     return [...(this.typingAgents.get(resolved) ?? new Set<string>())];
   }
 
+  getThinkingAgents(connectionId?: string) {
+    const resolved = getResolvedConnectionId(connectionId);
+    if (!resolved) return [];
+    return [...(this.thinkingAgents.get(resolved) ?? new Set<string>())];
+  }
+
   onTypingChange(fn: TypingListener) {
     this.typingListeners.add(fn);
     return () => {
       this.typingListeners.delete(fn);
+    };
+  }
+
+  onThinkingChange(fn: TypingListener) {
+    this.thinkingListeners.add(fn);
+    return () => {
+      this.thinkingListeners.delete(fn);
     };
   }
 
@@ -1005,8 +1067,16 @@ export function getTypingAgents(connectionId?: string) {
   return manager.getTypingAgents(connectionId);
 }
 
+export function getThinkingAgents(connectionId?: string) {
+  return manager.getThinkingAgents(connectionId);
+}
+
 export function onTypingChange(fn: TypingListener) {
   return manager.onTypingChange(fn);
+}
+
+export function onThinkingChange(fn: TypingListener) {
+  return manager.onThinkingChange(fn);
 }
 
 export function getAgentContext(connectionId?: string, agentId?: string) {
