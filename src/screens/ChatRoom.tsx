@@ -220,6 +220,10 @@ export default function ChatRoom({
   const [showMoreIcons, setShowMoreIcons] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
+  const [agentReady, setAgentReady] = useState(false);
+  const agentReadyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevAgentIdRef = useRef<string | null | undefined>(undefined);
+  const lastTypingSentRef = useRef(0);
   const fileInputRef2 = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -385,11 +389,22 @@ export default function ChatRoom({
     const currentStatus = channel.getStatus(runtimeConnId);
     const currentChatId = channel.getChatId(runtimeConnId);
 
+    // Bug 3: Only call selectAgent if agentId actually changed
+    const agentChanged = prevAgentIdRef.current !== agentId;
+    prevAgentIdRef.current = agentId;
+
     // If already connected to the same chat: just select agent + request history
     if (currentStatus === 'connected' && (!chatId || currentChatId === chatId)) {
-      // Select the agent (sends agent.select message)
-      if (agentId) {
+      // Bug 1 & 3: Only select agent if it actually changed
+      if (agentId && agentChanged) {
+        setAgentReady(false);
         channel.selectAgent(agentId, runtimeConnId);
+        // Bug 1: Fallback timeout in case agent.selected is not received
+        if (agentReadyTimeoutRef.current) clearTimeout(agentReadyTimeoutRef.current);
+        agentReadyTimeoutRef.current = setTimeout(() => setAgentReady(true), 3000);
+      } else if (agentId) {
+        // Agent unchanged, already ready
+        setAgentReady(true);
       }
       requestSelectedHistory();
     } else if (currentStatus !== 'connecting') {
@@ -409,9 +424,24 @@ export default function ChatRoom({
       if (packet.type === 'connection.open') {
         // Connection established: select agent + request history
         if (agentId) {
+          setAgentReady(false);
           channel.selectAgent(agentId, runtimeConnId);
+          // Bug 1: Fallback timeout in case agent.selected is not received
+          if (agentReadyTimeoutRef.current) clearTimeout(agentReadyTimeoutRef.current);
+          agentReadyTimeoutRef.current = setTimeout(() => setAgentReady(true), 3000);
         }
-        requestSelectedHistory();
+        // Bug 4: Use packet.data.chatId if our chatId is empty (first-time entry)
+        const effectiveChatId = chatId || (packet.data?.chatId as string);
+        if (effectiveChatId) {
+          try { channel.requestHistory(effectiveChatId, runtimeConnId); } catch { /* ignore */ }
+        }
+      } else if (packet.type === 'agent.selected') {
+        // Bug 1: Server confirmed agent selection
+        if (agentReadyTimeoutRef.current) {
+          clearTimeout(agentReadyTimeoutRef.current);
+          agentReadyTimeoutRef.current = null;
+        }
+        setAgentReady(true);
       } else if (packet.type === 'message.send' && (packet.data?.content || packet.data?.mediaUrl)) {
         // Message isolation: only accept messages for current agent
         const packetAgentId = packet.data.agentId as string | undefined;
@@ -583,6 +613,10 @@ export default function ChatRoom({
     return () => {
       unsubMsg();
       unsubStatus();
+      if (agentReadyTimeoutRef.current) {
+        clearTimeout(agentReadyTimeoutRef.current);
+        agentReadyTimeoutRef.current = null;
+      }
       // Don't close channel here — next connect() will replace it,
       // and StrictMode double-invoke would kill the connection prematurely
     };
@@ -634,9 +668,13 @@ export default function ChatRoom({
     setInputValue(val);
     setShowSlashMenu(val.startsWith('/') && !val.includes(' '));
 
-    // Send typing indicator (debounced)
+    // Bug 2: Throttle typing indicator to prevent WS spam
     if (val.trim()) {
-      try { channel.sendTyping(true, runtimeConnId); } catch {}
+      const now = Date.now();
+      if (now - lastTypingSentRef.current > 3000) {
+        try { channel.sendTyping(true, runtimeConnId); } catch {}
+        lastTypingSentRef.current = now;
+      }
       if (typingTimer.current) clearTimeout(typingTimer.current);
       typingTimer.current = setTimeout(() => { try { channel.sendTyping(false, runtimeConnId); } catch {} }, 3000);
     }
@@ -738,6 +776,7 @@ export default function ChatRoom({
   const handleSend = () => {
     if (editingMsg) { handleSaveEdit(); return; }
     if (!inputValue.trim()) return;
+    if (!agentReady) return; // Bug 1: Prevent sending before agent is ready
     if (inputValue.trim() === '/memory') {
       setShowMemory(true);
       setInputValue('');
@@ -1937,9 +1976,10 @@ export default function ChatRoom({
             value={inputValue}
             onChange={handleInputChange}
             onFocus={() => { setShowEmojiPicker(false); }}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Message..."
-            className="flex-1 bg-transparent border-none focus:outline-none text-[15px] py-2 px-2 text-text dark:text-text-inv placeholder:text-text/45 dark:placeholder:text-text-inv/45"
+            onKeyDown={(e) => e.key === 'Enter' && agentReady && handleSend()}
+            placeholder={agentReady ? "Message..." : "Switching agent..."}
+            disabled={!agentReady}
+            className="flex-1 bg-transparent border-none focus:outline-none text-[15px] py-2 px-2 text-text dark:text-text-inv placeholder:text-text/45 dark:placeholder:text-text-inv/45 disabled:opacity-50"
           />
 
           {/* Voice button when no text, Send button when has text */}
@@ -1950,8 +1990,9 @@ export default function ChatRoom({
               whileHover={{ scale: 1.08, y: -2 }}
               whileTap={{ scale: 0.9 }}
               onClick={handleSend}
+              disabled={!agentReady}
               aria-label="Send message"
-              className="p-3 rounded-full flex items-center justify-center bg-primary text-white shadow-md shadow-primary/30"
+              className="p-3 rounded-full flex items-center justify-center bg-primary text-white shadow-md shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send size={20} />
             </motion.button>
