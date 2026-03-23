@@ -4,8 +4,6 @@ const DEFAULT_WS_URL = 'wss://gateway.clawlines.net/client';
 const MAX_RECONNECT_ATTEMPTS = 6;
 const MAX_ACTIVE_CONNECTIONS = 6;
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-const LEGACY_AGENT_CACHE_KEY = 'openclaw.agentList';
-const LEGACY_STATUS_CACHE_KEY = 'openclaw.channelStatus';
 const AGENT_CACHE_PREFIX = 'openclaw.agentList.';
 const STATUS_CACHE_PREFIX = 'openclaw.channelStatus.';
 
@@ -854,21 +852,15 @@ export function getStatusCacheKey(connectionId: string) {
 
 export function loadCachedAgents(connectionId?: string): AgentInfo[] {
   const resolved = getResolvedConnectionId(connectionId);
-  const keys = resolved
-    ? [getAgentCacheKey(resolved)]
-    : [];
+  if (!resolved) return [];
 
-  if (!resolved || getActiveConnectionId() === resolved) {
-    keys.push(LEGACY_AGENT_CACHE_KEY);
-  }
-
-  for (const key of keys) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw) return JSON.parse(raw) as AgentInfo[];
-    } catch {
-      // ignore cache parse failures
-    }
+  // Only read connection-specific cache (no legacy fallback to prevent cross-connection leakage)
+  const key = getAgentCacheKey(resolved);
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw) as AgentInfo[];
+  } catch {
+    // ignore cache parse failures
   }
 
   return [];
@@ -877,9 +869,7 @@ export function loadCachedAgents(connectionId?: string): AgentInfo[] {
 export function saveCachedAgents(connectionId: string, agents: AgentInfo[]) {
   try {
     localStorage.setItem(getAgentCacheKey(connectionId), JSON.stringify(agents));
-    if (getActiveConnectionId() === connectionId) {
-      localStorage.setItem(LEGACY_AGENT_CACHE_KEY, JSON.stringify(agents));
-    }
+    // No longer write to legacy key to prevent cross-connection cache leakage
   } catch {
     // ignore cache failures
   }
@@ -887,21 +877,15 @@ export function saveCachedAgents(connectionId: string, agents: AgentInfo[]) {
 
 export function loadCachedChannelStatus<T>(connectionId?: string): T | null {
   const resolved = getResolvedConnectionId(connectionId);
-  const keys = resolved
-    ? [getStatusCacheKey(resolved)]
-    : [];
+  if (!resolved) return null;
 
-  if (!resolved || getActiveConnectionId() === resolved) {
-    keys.push(LEGACY_STATUS_CACHE_KEY);
-  }
-
-  for (const key of keys) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw) return JSON.parse(raw) as T;
-    } catch {
-      // ignore cache parse failures
-    }
+  // Only read connection-specific cache (no legacy fallback to prevent cross-connection leakage)
+  const key = getStatusCacheKey(resolved);
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw) as T;
+  } catch {
+    // ignore cache parse failures
   }
 
   return null;
@@ -910,9 +894,7 @@ export function loadCachedChannelStatus<T>(connectionId?: string): T | null {
 export function saveCachedChannelStatus<T>(connectionId: string, status: T) {
   try {
     localStorage.setItem(getStatusCacheKey(connectionId), JSON.stringify(status));
-    if (getActiveConnectionId() === connectionId) {
-      localStorage.setItem(LEGACY_STATUS_CACHE_KEY, JSON.stringify(status));
-    }
+    // No longer write to legacy key to prevent cross-connection cache leakage
   } catch {
     // ignore cache failures
   }
