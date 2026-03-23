@@ -223,6 +223,7 @@ export default function ChatRoom({
   const [agentReady, setAgentReady] = useState(false);
   const agentReadyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevAgentIdRef = useRef<string | null | undefined>(undefined);
+  const streamingSourceAgentRef = useRef<string | null>(null); // Track which agent owns current streaming
   const lastTypingSentRef = useRef(0);
   const fileInputRef2 = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -305,6 +306,7 @@ export default function ChatRoom({
   useEffect(() => {
     setMessages([]);
     setHasLoadedMessages(false);
+    streamingSourceAgentRef.current = null; // Clear streaming source tracking on agent change
 
     if (!connId || !agentId) {
       setHasLoadedMessages(true);
@@ -562,43 +564,56 @@ export default function ChatRoom({
         setAgentInfo(nextAgents.find((agent) => agent.id === agentId) ?? null);
       } else if (packet.type === 'text.delta') {
         // Message isolation: only accept streaming for current agent
-        const packetAgentId = packet.data.agentId as string | undefined;
-        if (packetAgentId && agentId && packetAgentId !== agentId) {
-          return;
-        }
-
-        if (localStorage.getItem('openclaw.streaming.enabled') === 'false') return;
-
-        // Streaming text output from backend
+        const packetAgentId = (packet.data.agentId as string | undefined) || undefined;
         const deltaData = packet.data as { chatId?: string; text?: string; done?: boolean; timestamp?: number };
-        setIsThinking(false); // Hide thinking indicator when streaming starts
-
+        
         if (deltaData.done) {
-          // Streaming finished - remove the streaming placeholder message
-          // The final message.send will replace it with a permanent message
+          // Streaming finished - clear source tracking and remove streaming placeholder
+          streamingSourceAgentRef.current = null;
           setMessages((prev) => prev.filter((m) => !m.isStreaming));
-        } else if (typeof deltaData.text === 'string') {
-          // Update or create streaming bubble with accumulated text
-          setMessages((prev) => {
-            const streamingIdx = prev.findIndex((m) => m.isStreaming);
-            if (streamingIdx >= 0) {
-              // Update existing streaming message
-              const updated = [...prev];
-              updated[streamingIdx] = { ...updated[streamingIdx], text: deltaData.text! };
-              return updated;
-            }
-            // Create new streaming message
-            return [
-              ...prev,
-              {
-                id: `streaming-${Date.now()}`,
-                sender: 'ai',
-                text: deltaData.text,
-                isStreaming: true,
-                timestamp: deltaData.timestamp || Date.now(),
-              },
-            ];
-          });
+        } else {
+          // Determine the source agent of this stream
+          // First delta without agentId — assume it belongs to current agent at time of request
+          if (!streamingSourceAgentRef.current && !packetAgentId) {
+            streamingSourceAgentRef.current = agentId || null;
+          } else if (packetAgentId && !streamingSourceAgentRef.current) {
+            streamingSourceAgentRef.current = packetAgentId;
+          }
+          
+          // Filter: reject if source agent doesn't match current view
+          const sourceAgent = packetAgentId || streamingSourceAgentRef.current;
+          if (sourceAgent && agentId && sourceAgent !== agentId) {
+            return;
+          }
+
+          if (localStorage.getItem('openclaw.streaming.enabled') === 'false') return;
+
+          // Streaming text output from backend
+          setIsThinking(false); // Hide thinking indicator when streaming starts
+
+          if (typeof deltaData.text === 'string') {
+            // Update or create streaming bubble with accumulated text
+            setMessages((prev) => {
+              const streamingIdx = prev.findIndex((m) => m.isStreaming);
+              if (streamingIdx >= 0) {
+                // Update existing streaming message
+                const updated = [...prev];
+                updated[streamingIdx] = { ...updated[streamingIdx], text: deltaData.text! };
+                return updated;
+              }
+              // Create new streaming message
+              return [
+                ...prev,
+                {
+                  id: `streaming-${Date.now()}`,
+                  sender: 'ai',
+                  text: deltaData.text,
+                  isStreaming: true,
+                  timestamp: deltaData.timestamp || Date.now(),
+                },
+              ];
+            });
+          }
         }
       }
     }, runtimeConnId);
