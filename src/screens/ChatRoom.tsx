@@ -476,11 +476,22 @@ export default function ChatRoom({
 
         // Remove any streaming placeholder before adding the final message
         setMessages((prev) => {
+          const msgId = packet.data.messageId || Date.now().toString();
+          // Deduplicate: if a message with this ID already exists, update it instead of appending
+          if (prev.some((m) => m.id === msgId && !m.isStreaming)) {
+            return prev.map((m) => m.id === msgId ? {
+              ...m,
+              text: content || m.text,
+              mediaUrl: mediaUrl || m.mediaUrl,
+              mediaType: mediaType || m.mediaType,
+              replyTo: (packet.data.replyTo as string) || m.replyTo,
+            } : m);
+          }
           const withoutStreaming = prev.filter((m) => !m.isStreaming);
           return [
             ...withoutStreaming,
             {
-              id: packet.data.messageId || Date.now().toString(),
+              id: msgId,
               sender: 'ai',
               text: content || (mediaType === 'image' ? '[Image]' : mediaType === 'file' ? `📎 File` : ''),
               replyTo: (packet.data.replyTo as string) || undefined,
@@ -587,20 +598,10 @@ export default function ChatRoom({
         setIsThinking(false); // Hide thinking indicator
         
         if (resumeData.isComplete) {
-          // Stream already completed on server — show as final message
+          // Stream already completed on server — history.sync will deliver the final message.
+          // Just clear streaming state; don't create a duplicate message here.
           streamingSourceAgentRef.current = null;
-          setMessages((prev) => {
-            const withoutStreaming = prev.filter((m) => !m.isStreaming);
-            return [
-              ...withoutStreaming,
-              {
-                id: `resumed-${Date.now()}`,
-                sender: 'ai',
-                text: resumeData.text || '',
-                timestamp: resumeData.startTime || Date.now(),
-              },
-            ];
-          });
+          setMessages((prev) => prev.filter((m) => !m.isStreaming));
         } else if (typeof resumeData.text === 'string') {
           // Stream still in progress — show as streaming message
           streamingSourceAgentRef.current = resumeAgentId || agentId || null;
