@@ -122,6 +122,24 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
               {children}
             </blockquote>
           ),
+          table: ({ children }) => (
+            <div className="my-2 overflow-x-auto rounded-lg border border-border dark:border-border-dark">
+              <table className="w-full text-[13px] border-collapse">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead className="bg-surface dark:bg-surface-dark">{children}</thead>
+          ),
+          tbody: ({ children }) => <tbody>{children}</tbody>,
+          tr: ({ children }) => (
+            <tr className="border-b border-border dark:border-border-dark last:border-b-0">{children}</tr>
+          ),
+          th: ({ children }) => (
+            <th className="px-3 py-2 text-left font-semibold text-text/80 dark:text-text-inv/80 border-r border-border dark:border-border-dark last:border-r-0">{children}</th>
+          ),
+          td: ({ children }) => (
+            <td className="px-3 py-2 text-text/70 dark:text-text-inv/70 border-r border-border dark:border-border-dark last:border-r-0">{children}</td>
+          ),
           strong: ({ children }) => <strong className="font-bold">{children}</strong>,
         }}
       >

@@ -1893,19 +1893,19 @@ export default function ChatRoom({
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowSkills((c) => !c)}
-                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 bg-primary/12 border border-primary/25 rounded-full text-[12.5px] font-semibold text-primary shadow-sm shadow-primary/5 transition-colors"
+                className="flex-shrink-0 inline-flex items-center gap-1 w-9 h-9 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                title="Skills"
               >
-                <Puzzle size={13} />
-                Skills
-                {skillCount > 0 && <span className="text-[10px] bg-primary/20 rounded-full px-1.5 min-w-[18px] text-center">{skillCount}</span>}
+                <Puzzle size={15} />
+                {skillCount > 0 && <span className="sr-only">{skillCount} skills</span>}
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 bg-primary/12 border border-primary/25 rounded-full text-[12.5px] font-semibold text-primary shadow-sm shadow-primary/5 transition-colors"
+                className="flex-shrink-0 inline-flex items-center justify-center w-9 h-9 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                title="Context"
               >
-                <FileText size={13} />
-                Context
+                <FileText size={15} />
               </motion.button>
               <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
               {CONTEXT_SUGGESTIONS.map((sug) => (
@@ -1933,19 +1933,19 @@ export default function ChatRoom({
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowSkills((c) => !c)}
-                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 bg-primary/12 border border-primary/25 rounded-full text-[12.5px] font-semibold text-primary shadow-sm shadow-primary/5 transition-colors"
+                className="flex-shrink-0 inline-flex items-center gap-1 w-9 h-9 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                title="Skills"
               >
-                <Puzzle size={13} />
-                Skills
-                {skillCount > 0 && <span className="text-[10px] bg-primary/20 rounded-full px-1.5 min-w-[18px] text-center">{skillCount}</span>}
+                <Puzzle size={15} />
+                {skillCount > 0 && <span className="sr-only">{skillCount} skills</span>}
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 bg-primary/12 border border-primary/25 rounded-full text-[12.5px] font-semibold text-primary shadow-sm shadow-primary/5 transition-colors"
+                className="flex-shrink-0 inline-flex items-center justify-center w-9 h-9 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                title="Context"
               >
-                <FileText size={13} />
-                Context
+                <FileText size={15} />
               </motion.button>
               <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
               {QUICK_COMMANDS.map((cmd) => (
