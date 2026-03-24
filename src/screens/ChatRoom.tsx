@@ -98,45 +98,13 @@ function isDifferentDay(ts1?: number, ts2?: number) {
   return new Date(ts1).toDateString() !== new Date(ts2).toDateString();
 }
 
-// Bubble grouping for consecutive same-sender messages (WhatsApp/Telegram style)
-type BubbleGroupPos = 'solo' | 'first' | 'middle' | 'last';
-
-function getBubbleGroupPos(messages: Message[], index: number): BubbleGroupPos {
-  const cur = messages[index];
-  if (!cur) return 'solo';
-  const prev = index > 0 ? messages[index - 1] : null;
-  const next = index < messages.length - 1 ? messages[index + 1] : null;
-  const sameAsPrev = !!(prev && prev.sender === cur.sender && !isDifferentDay(prev.timestamp, cur.timestamp));
-  const sameAsNext = !!(next && next.sender === cur.sender && !isDifferentDay(cur.timestamp, next.timestamp));
-  if (sameAsPrev && sameAsNext) return 'middle';
-  if (sameAsPrev) return 'last';
-  if (sameAsNext) return 'first';
-  return 'solo';
-}
-
-function getBubbleRadius(pos: BubbleGroupPos, isUser: boolean): string {
-  // All corners 24px except the "speaker side" corner which shrinks for grouped messages
-  const base = 'rounded-[24px]';
-  if (pos === 'solo') return isUser ? `${base} rounded-tr-[8px]` : `${base} rounded-tl-[8px]`;
-  if (isUser) {
-    if (pos === 'first') return `${base} rounded-br-[6px]`;
-    if (pos === 'middle') return `${base} rounded-tr-[6px] rounded-br-[6px]`;
-    if (pos === 'last') return `${base} rounded-tr-[6px]`;
-  } else {
-    if (pos === 'first') return `${base} rounded-bl-[6px]`;
-    if (pos === 'middle') return `${base} rounded-tl-[6px] rounded-bl-[6px]`;
-    if (pos === 'last') return `${base} rounded-tl-[6px]`;
-  }
-  return base;
-}
-
-function getMessageGap(messages: Message[], index: number): string {
-  if (index === 0) return '';
+// Consecutive same-sender grouping: show avatar+name only on first message
+function isGroupedWithPrev(messages: Message[], index: number): boolean {
+  if (index === 0) return false;
   const cur = messages[index];
   const prev = messages[index - 1];
-  if (!cur || !prev) return 'mt-3';
-  if (isDifferentDay(prev.timestamp, cur.timestamp)) return '';
-  return prev.sender === cur.sender ? 'mt-[3px]' : 'mt-3';
+  if (!cur || !prev) return false;
+  return prev.sender === cur.sender && !isDifferentDay(prev.timestamp, cur.timestamp);
 }
 
 // --- File to data URL ---
@@ -251,6 +219,8 @@ export default function ChatRoom({
   const [errorToast, setErrorToast] = useState<{ code: string; message: string } | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
   const [editingMsg, setEditingMsg] = useState<Message | null>(null);
@@ -1009,6 +979,8 @@ export default function ChatRoom({
     if (isRecording && mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+      setRecordingSeconds(0);
+      if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
       return;
     }
 
@@ -1023,6 +995,7 @@ export default function ChatRoom({
 
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const reader = new FileReader();
         reader.onload = () => {
@@ -1051,6 +1024,8 @@ export default function ChatRoom({
       mediaRecorderRef.current = recorder;
       recorder.start();
       setIsRecording(true);
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -1458,10 +1433,7 @@ export default function ChatRoom({
           const isErrorMsg = !isUser && msg.text?.startsWith('⚠️');
           const prevMsg = i > 0 ? messages[i - 1] : null;
           const showDateSep = isDifferentDay(prevMsg?.timestamp, msg.timestamp);
-          const groupPos = getBubbleGroupPos(messages, i);
-          const bubbleRadius = getBubbleRadius(groupPos, isUser);
-          const gapClass = showDateSep ? '' : getMessageGap(messages, i);
-          const showAvatar = !isUser && (groupPos === 'solo' || groupPos === 'last');
+          const grouped = !showDateSep && isGroupedWithPrev(messages, i);
           return (
             <div key={msg.id}>
               {/* Date separator */}
@@ -1472,67 +1444,83 @@ export default function ChatRoom({
                   <div className="flex-1 h-px bg-border dark:bg-border-dark" />
                 </div>
               )}
+              {/* Flat thread-style message (Slack/Discord inspired, no bubbles) */}
               <motion.div
-                initial={isUser ? { opacity: 0, scale: 0.9, y: 10 } : { opacity: 0, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={isUser
-                  ? { type: 'spring', stiffness: 500, damping: 25 }
-                  : { delay: Math.min(i, 10) * 0.03 }
-                }
-                className={`flex ${isUser ? 'justify-end' : 'justify-start'} relative ${gapClass}`}
+                initial={isUser ? { opacity: 0, y: 6 } : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.15 }}
+                className={`group/msg flex gap-3 px-2 py-0.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors relative ${grouped ? '' : 'mt-3'}`}
                 onTouchStart={() => handleTouchStart(msg.id)}
                 onTouchEnd={handleTouchEnd}
                 onTouchMove={handleTouchEnd}
               >
-              {!isUser && (
-                <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 mr-2 md:mr-3 items-center justify-center text-white shadow-sm text-sm md:text-lg ${showAvatar ? 'flex' : 'invisible'}`}>
-                  {agentInfo?.identityEmoji || '🤖'}
-                </div>
-              )}
-              
-              <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[85%] md:max-w-[75%]`}>
-                <div
-                    className={`px-5 py-3.5 ${bubbleRadius} text-[15px] leading-relaxed relative ${msg.reactions && msg.reactions.length > 0 ? 'mb-4' : ''} ${
+                {/* Avatar column — show avatar or time-on-hover placeholder */}
+                <div className="w-8 flex-shrink-0 pt-0.5">
+                  {!grouped ? (
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm text-sm ${
                       isUser
-                        ? 'bg-primary text-white shadow-md shadow-primary/20'
-                        : isErrorMsg
-                          ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/40'
-                          : `bg-white dark:bg-card-alt text-text dark:text-text-inv border border-border dark:border-border-dark shadow-sm${hasCodeBlock ? ' border-l-[3px] border-l-primary/60' : ''}`
-                    }`}
-                  >
-                    {/* Model badge removed — now shown inline with timestamp below bubble */}
+                        ? 'bg-gradient-to-br from-info to-accent'
+                        : 'bg-gradient-to-br from-primary to-primary-deep'
+                    }`}>
+                      {isUser ? <User size={16} /> : (agentInfo?.identityEmoji || '🤖')}
+                    </div>
+                  ) : (
+                    <span className="hidden group-hover/msg:block text-[10px] text-text/30 dark:text-text-inv/25 tabular-nums leading-8 text-center">
+                      {formatTime(msg.timestamp)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Content column */}
+                <div className="flex-1 min-w-0">
+                  {/* Header row: name + timestamp (only for first in group) */}
+                  {!grouped && (
+                    <div className="flex items-baseline gap-2 mb-0.5">
+                      <span className={`text-[14px] font-semibold ${isUser ? 'text-info' : 'text-primary'}`}>
+                        {isUser ? 'You' : (agentInfo?.name || 'Bot')}
+                      </span>
+                      {msg.timestamp && (
+                        <span className="text-[11px] text-text/35 dark:text-text-inv/30 tabular-nums">
+                          {formatTime(msg.timestamp)}
+                        </span>
+                      )}
+                      {!isUser && agentInfo?.model && (
+                        <span className="text-[10px] text-text/30 dark:text-text-inv/25 font-medium border border-border dark:border-border-dark rounded-full px-1.5 py-px">
+                          {agentInfo.model.split('/').pop()}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Message content */}
+                  <div className={`text-[15px] leading-relaxed relative ${
+                    isErrorMsg ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-inv'
+                  } ${hasCodeBlock ? 'border-l-[3px] border-l-primary/50 pl-3' : ''}`}>
                     {/* Quote reference */}
                     {msg.replyTo && (() => {
                       const quoted = messages.find((m) => m.id === msg.replyTo);
                       return quoted ? (
-                        <div className={`text-[12px] mb-2 px-3 py-1.5 rounded-lg border-l-2 ${
-                          isUser ? 'bg-white/15 border-white/40 text-white/80' : 'bg-surface dark:bg-[#131420] border-primary text-text/60 dark:text-text-inv/60'
-                        }`}>
+                        <div className="text-[12px] mb-1.5 px-3 py-1.5 rounded-lg border-l-2 bg-surface dark:bg-[#131420] border-primary/40 text-text/55 dark:text-text-inv/50">
                           <span className="font-medium">{quoted.sender === 'user' ? 'You' : 'Bot'}: </span>
                           {quoted.text.slice(0, 80)}{quoted.text.length > 80 ? '…' : ''}
                         </div>
                       ) : null;
                     })()}
-                    {/* Message content (Image, Voice, File, Text/Markdown) */}
+                    {/* Image / Voice / File / Text */}
                     {(msg.mediaType === 'image' && msg.mediaUrl) ? (
-                      <div className="bg-transparent border-none p-0">
-                        <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover" />
-                        {msg.text && <p className="mt-2 text-[14px]">{msg.text}</p>}
-                        {msg.timestamp && (
-                          <span className={`md:hidden text-[10px] float-right mt-1 ml-3 tabular-nums ${isUser ? 'text-white/55' : 'text-text/35 dark:text-text-inv/30'}`}>
-                            {formatTime(msg.timestamp)}
-                          </span>
-                        )}
+                      <div>
+                        <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover mt-1" />
+                        {msg.text && <p className="mt-1.5 text-[14px]">{msg.text}</p>}
                       </div>
                     ) : (msg.mediaType === 'voice' || msg.mediaType === 'audio') && msg.mediaUrl ? (
-                      <div className="flex flex-col gap-1 min-w-[220px]">
-                        <div className="flex items-center gap-2 bg-surface/50 dark:bg-[#131420]/50 p-2 rounded-lg">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2 bg-surface/60 dark:bg-[#131420]/60 p-2 rounded-lg max-w-[280px]">
                           <audio src={msg.mediaUrl} controls className="h-8 w-full max-w-[240px]" />
                         </div>
-                        {msg.text && <p className="text-[13px] opacity-80 px-1">{msg.text}</p>}
+                        {msg.text && <p className="text-[13px] opacity-80">{msg.text}</p>}
                       </div>
                     ) : msg.mediaType === 'file' && msg.mediaUrl ? (
-                      <div className="flex items-center gap-3 bg-surface dark:bg-[#131420] p-3 rounded-xl border border-border dark:border-border-dark min-w-[200px]">
+                      <div className="flex items-center gap-3 bg-surface dark:bg-[#131420] p-3 rounded-xl border border-border dark:border-border-dark max-w-[300px] mt-1">
                         <div className="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center text-info shrink-0">
                           <FileText size={20} />
                         </div>
@@ -1542,165 +1530,102 @@ export default function ChatRoom({
                         </div>
                       </div>
                     ) : isUser ? (
-                      <div className="inline">
-                        <span className="whitespace-pre-wrap break-words">{msg.text}</span>
-                        {msg.timestamp && (
-                          <span className="md:hidden text-[10px] text-white/55 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
-                            {formatTime(msg.timestamp)}
-                          </span>
-                        )}
-                      </div>
+                      <span className="whitespace-pre-wrap break-words">{msg.text}</span>
                     ) : (
-                      <div className="relative">
+                      <div>
                         <MarkdownRenderer content={msg.text} />
-                        {/* Streaming cursor indicator */}
                         {isStreaming && (
                           <span className="inline-block w-2 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
                         )}
-                        {/* WhatsApp-style inline timestamp + model (mobile only) */}
-                        {!isStreaming && msg.timestamp && (
-                          <span className="md:hidden text-[10px] text-text/35 dark:text-text-inv/30 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
-                            {formatTime(msg.timestamp)}{agentInfo?.model && (
-                              <span className="ml-1.5 border border-border dark:border-border-dark rounded-full px-1.5 py-px text-text/40 dark:text-text-inv/35 font-medium">
-                                {agentInfo.model.split('/').pop()}
-                              </span>
-                            )}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {/* Reactions pinned to bubble bottom-right corner (WhatsApp style) */}
-                    {msg.reactions && msg.reactions.length > 0 && (
-                      <div className={`absolute -bottom-3 flex gap-0.5 ${isUser ? 'right-2' : 'right-2'}`}>
-                        <div className="flex items-center gap-0.5 bg-white dark:bg-[#1f2c34] rounded-full px-1.5 py-0.5 shadow-md border border-border dark:border-transparent">
-                          {msg.reactions.map((emoji, idx) => (
-                            <motion.button
-                              key={idx}
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              transition={{ type: 'spring', stiffness: 600, damping: 15 }}
-                              whileTap={{ scale: 0.8 }}
-                              onClick={() => {
-                                setMessages((prev) => prev.map((m) => {
-                                  if (m.id !== msg.id) return m;
-                                  const reactions = m.reactions ?? [];
-                                  return { ...m, reactions: reactions.filter(r => r !== emoji) };
-                                }));
-                                channel.removeReaction(msg.id, emoji, runtimeConnId);
-                              }}
-                              className="text-[14px] leading-none"
-                            >
-                              {emoji}
-                            </motion.button>
-                          ))}
-                          {msg.reactions.length > 1 && (
-                            <span className="text-[10px] text-text/40 dark:text-white/50 ml-0.5">{msg.reactions.length}</span>
-                          )}
-                        </div>
                       </div>
                     )}
                   </div>
-                  
-                {/* Inline message actions — always visible next to timestamp on desktop */}
-                  {!isStreaming && (
-                  <div className={`hidden md:flex items-center gap-0.5 mt-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                    {/* Timestamp */}
-                    {msg.timestamp && (
-                      <span className="text-[10px] text-text/40 dark:text-text-inv/35 mr-1.5 tabular-nums">
-                        {formatTime(msg.timestamp)}
-                      </span>
-                    )}
 
-                    {/* Model badge — inline outlined tag for bot messages */}
-                    {!isUser && agentInfo?.model && (
-                      <span className="text-[10px] text-text/45 dark:text-text-inv/40 font-medium border border-border dark:border-border-dark rounded-full px-2 py-0.5 mr-1.5">
-                        {agentInfo.model.split('/').pop()}
-                      </span>
-                    )}
-
-                    {/* Emoji trigger — hover to expand picker row (AI messages only) */}
-                    {!isUser && (
-                    <div className="relative group/emoji">
-                      <button
-                        type="button"
-                        className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-text/50 dark:hover:text-text-inv/45 rounded transition-colors"
-                      >
-                        <SmilePlus size={12} />
-                      </button>
-                      {/* Hover flyout: quick emoji row — after:pseudo bridges the gap so hover stays active */}
-                      <div className={`absolute bottom-full left-0 mb-1.5 hidden group-hover/emoji:flex items-center gap-0.5 bg-white dark:bg-card-alt rounded-full px-1.5 py-1 border border-border dark:border-border-dark shadow-lg z-20 after:content-[''] after:absolute after:inset-x-0 after:-bottom-3 after:h-3`}>
-                        {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
-                          <button
-                            key={e}
-                            type="button"
-                            onClick={() => {
-                              const hasIt = msg.reactions?.includes(e);
-                              setMessages((prev) => prev.map((m) => {
-                                if (m.id !== msg.id) return m;
-                                const reactions = m.reactions ?? [];
-                                return { ...m, reactions: hasIt ? reactions.filter(r => r !== e) : [...reactions, e] };
-                              }));
-                              if (hasIt) { channel.removeReaction(msg.id, e, runtimeConnId); } else { channel.addReaction(msg.id, e, runtimeConnId); }
-                            }}
-                            className={`w-7 h-7 text-[15px] flex items-center justify-center rounded-full transition-all ${
-                              msg.reactions?.includes(e) ? 'bg-primary/20 scale-110' : 'hover:bg-border dark:hover:bg-border-dark hover:scale-110'
-                            }`}
-                          >
-                            {e}
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => openReactionPicker(msg.id)}
-                          className="w-7 h-7 flex items-center justify-center text-text/40 dark:text-text-inv/35 hover:text-primary rounded-full hover:bg-border dark:hover:bg-border-dark transition-colors"
+                  {/* Reactions */}
+                  {msg.reactions && msg.reactions.length > 0 && (
+                    <div className="flex gap-1 mt-1">
+                      {msg.reactions.map((emoji, idx) => (
+                        <motion.button
+                          key={idx}
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ type: 'spring', stiffness: 600, damping: 15 }}
+                          whileTap={{ scale: 0.8 }}
+                          onClick={() => {
+                            setMessages((prev) => prev.map((m) => {
+                              if (m.id !== msg.id) return m;
+                              const reactions = m.reactions ?? [];
+                              return { ...m, reactions: reactions.filter(r => r !== emoji) };
+                            }));
+                            channel.removeReaction(msg.id, emoji, runtimeConnId);
+                          }}
+                          className="inline-flex items-center gap-0.5 bg-surface dark:bg-[#1f2c34] rounded-full px-1.5 py-0.5 border border-border dark:border-border-dark text-[13px] hover:border-primary/30 transition-colors"
                         >
+                          {emoji}
+                        </motion.button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Action Card for AI messages (hide for streaming) */}
+                  {!isUser && !isStreaming && <ActionCard text={msg.text} onSend={quickSend} />}
+                </div>
+
+                {/* Hover actions (desktop) */}
+                {!isStreaming && (
+                  <div className="hidden md:flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity absolute right-1 top-0.5">
+                    {!isUser && (
+                      <div className="relative group/emoji">
+                        <button type="button" className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-text/50 dark:hover:text-text-inv/45 rounded transition-colors">
                           <SmilePlus size={13} />
                         </button>
+                        <div className={`absolute bottom-full right-0 mb-1.5 hidden group-hover/emoji:flex items-center gap-0.5 bg-white dark:bg-card-alt rounded-full px-1.5 py-1 border border-border dark:border-border-dark shadow-lg z-20 after:content-[''] after:absolute after:inset-x-0 after:-bottom-3 after:h-3`}>
+                          {['👍', '❤️', '😂', '🎉', '🔥', '👀'].map((e) => (
+                            <button
+                              key={e}
+                              type="button"
+                              onClick={() => {
+                                const hasIt = msg.reactions?.includes(e);
+                                setMessages((prev) => prev.map((m) => {
+                                  if (m.id !== msg.id) return m;
+                                  const reactions = m.reactions ?? [];
+                                  return { ...m, reactions: hasIt ? reactions.filter(r => r !== e) : [...reactions, e] };
+                                }));
+                                if (hasIt) { channel.removeReaction(msg.id, e, runtimeConnId); } else { channel.addReaction(msg.id, e, runtimeConnId); }
+                              }}
+                              className={`w-7 h-7 text-[15px] flex items-center justify-center rounded-full transition-all ${
+                                msg.reactions?.includes(e) ? 'bg-primary/20 scale-110' : 'hover:bg-border dark:hover:bg-border-dark hover:scale-110'
+                              }`}
+                            >
+                              {e}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => openReactionPicker(msg.id)}
+                            className="w-7 h-7 flex items-center justify-center text-text/40 dark:text-text-inv/35 hover:text-primary rounded-full hover:bg-border dark:hover:bg-border-dark transition-colors"
+                          >
+                            <SmilePlus size={13} />
+                          </button>
+                        </div>
                       </div>
-                    </div>
                     )}
-
-                    {/* Reply */}
-                    <button
-                      type="button"
-                      onClick={() => startReply(msg)}
-                      className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-info rounded transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-                    >
-                      <CornerDownLeft size={12} />
+                    <button type="button" onClick={() => startReply(msg)} className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-info rounded transition-colors">
+                      <CornerDownLeft size={13} />
                     </button>
-
-                    {/* Edit & Delete (user messages only) */}
                     {isUser && (
                       <>
-                        <button
-                          type="button"
-                          onClick={() => handleEditMessage(msg)}
-                          className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-amber-500 rounded transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-                        >
-                          <Pencil size={12} />
+                        <button type="button" onClick={() => handleEditMessage(msg)} className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-amber-500 rounded transition-colors">
+                          <Pencil size={13} />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteMessage(msg.id)}
-                          className="w-5 h-5 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-red-500 rounded transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-                        >
-                          <Trash2 size={12} />
+                        <button type="button" onClick={() => handleDeleteMessage(msg.id)} className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-red-500 rounded transition-colors">
+                          <Trash2 size={13} />
                         </button>
                       </>
                     )}
                   </div>
-                  )}
-
-                {/* Mobile: actions via long-press only (timestamp now inside bubble) */}
-
-                {/* Action Card for AI messages (hide for streaming) */}
-                {!isUser && !isStreaming && <ActionCard text={msg.text} onSend={quickSend} />}
-
-                {/* Reactions Display — pinned to bubble bottom-right (WhatsApp style) */}
-
-                {/* Message time — shown in mobile action bar now, hide standalone */}
-              </div>
-            </motion.div>
+                )}
+              </motion.div>
             </div>
           );
         })}
@@ -1719,12 +1644,12 @@ export default function ChatRoom({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -5 }}
-              className="flex justify-start"
+              className="flex gap-3 px-2 py-0.5 mt-3"
             >
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 mr-3 flex items-center justify-center text-white shadow-sm text-lg">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 flex items-center justify-center text-white shadow-sm text-sm">
                 {agentInfo?.identityEmoji || '🤖'}
               </div>
-              <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-[24px] rounded-tl-[8px] shadow-sm px-5 py-3.5">
+              <div className="pt-2">
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
                   <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:200ms]" />
@@ -2264,29 +2189,36 @@ export default function ChatRoom({
             >
               <Send size={20} />
             </motion.button>
-          ) : (
+          ) : isRecording ? (
             <div className="flex items-center gap-2">
-              {isRecording && (
-                <motion.div
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-full"
-                >
-                  <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                  <span className="text-[13px] text-red-500 font-medium">Recording…</span>
-                </motion.div>
-              )}
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={toggleRecording}
-                aria-label={isRecording ? 'Stop recording' : 'Start voice recording'}
-                className={`p-3 rounded-full flex items-center justify-center transition-colors ${
-                  isRecording ? 'bg-red-500 text-white shadow-md shadow-red-500/30 animate-pulse' : 'bg-border dark:bg-border-dark text-text/55 dark:text-text-inv/55'
-                }`}
+              <motion.div
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-full"
               >
-                {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                <span className="text-[13px] text-red-500 font-semibold tabular-nums min-w-[36px]">
+                  {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
+                </span>
+              </motion.div>
+              <motion.button
+                whileTap={{ scale: 0.85 }}
+                onClick={toggleRecording}
+                aria-label="Stop recording and send"
+                className="p-3 rounded-full flex items-center justify-center bg-red-500 text-white shadow-lg shadow-red-500/30"
+              >
+                <Send size={20} />
               </motion.button>
             </div>
+          ) : (
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={toggleRecording}
+              aria-label="Start voice recording"
+              className="p-3 rounded-full flex items-center justify-center bg-border dark:bg-border-dark text-text/55 dark:text-text-inv/55 hover:text-primary hover:bg-primary/10 transition-colors"
+            >
+              <Mic size={20} />
+            </motion.button>
           )}
         </div>
       </div>
