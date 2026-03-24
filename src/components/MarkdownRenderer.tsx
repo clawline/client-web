@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/core';
 import type { LanguageFn } from 'highlight.js';
@@ -91,6 +92,7 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
   return (
     <div className={cn('min-w-0 text-[15px] leading-relaxed', className)}>
       <Markdown
+        remarkPlugins={[remarkGfm]}
         components={{
           p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
           code: ({ children, className: codeClassName }) => {
