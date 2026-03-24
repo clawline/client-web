@@ -483,9 +483,11 @@ export default function ChatList({
       <motion.div key={agent.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6 }} transition={{ delay: Math.min(index * 0.02, 0.12), duration: 0.18 }}>
         <button type="button" onClick={e => handleAgentClick(connection, agent, e.shiftKey)} disabled={isDisabled}
+          aria-label={`Chat with ${agent.name}`}
           className={cn(
             'relative w-full text-left flex items-center gap-3 transition-all duration-150',
             compact ? 'px-2.5 py-2' : 'px-4 py-2.5', 'rounded-lg',
+            'focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
             isDisabled && 'opacity-40 cursor-not-allowed',
             !isDisabled && 'cursor-pointer active:bg-text/[0.06] dark:active:bg-text-inv/[0.06]',
             isActive ? 'bg-primary/10 dark:bg-primary/15 border-l-2 border-l-primary'
@@ -546,9 +548,11 @@ export default function ChatList({
       <motion.div key={agent.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }} transition={{ delay: Math.min(index * 0.03, 0.15), duration: 0.2 }}>
         <button type="button" onClick={e => handleAgentClick(connection, agent, e.shiftKey)} disabled={isDisabled}
+          aria-label={`Chat with ${agent.name}`}
           className={cn(
             'relative w-full flex flex-col items-center text-center p-3 pb-2.5 rounded-2xl transition-all duration-150',
             'bg-white/60 dark:bg-card-alt/40',
+            'focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
             isDisabled && 'opacity-40 cursor-not-allowed',
             !isDisabled && 'cursor-pointer active:scale-[0.96]',
             isActive ? 'ring-2 ring-primary/30 bg-primary/5 dark:bg-primary/10'
@@ -757,6 +761,7 @@ export default function ChatList({
                 <div key={connection.id}>
                   <button type="button" onClick={() => handleToggleGroup(connection.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left group">
                     <span className={cn('inline-flex h-2 w-2 rounded-full shrink-0', getStatusClasses(status))} />
+                    <span className="sr-only">{status === 'connected' ? 'Connected' : status === 'connecting' || status === 'reconnecting' ? 'Connecting' : 'Disconnected'}</span>
                     <span className="text-[11px] font-medium uppercase tracking-wider text-text/40 dark:text-text-inv/35 truncate flex-1">
                       {getConnectionLabel(connection)}
                     </span>
