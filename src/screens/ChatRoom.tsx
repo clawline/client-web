@@ -227,7 +227,6 @@ export default function ChatRoom({
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showFileGallery, setShowFileGallery] = useState(false);
-  const [showSkills, setShowSkills] = useState(false);
   const [showContextViewer, setShowContextViewer] = useState(false);
   const [showMoreIcons, setShowMoreIcons] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -255,12 +254,10 @@ export default function ChatRoom({
       channel.getAgentContext(connId, agentId ?? undefined),
     );
     setIsContextLoading(false);
-    setShowSkills(false);
   }, [agentId, connId, runtimeConnId]);
 
   useEffect(() => {
-    if (skillCount > 0) return;
-    setShowSkills(false);
+    // no-op: skills panel removed, skills now in slash menu
   }, [skillCount]);
 
   useEffect(() => {
@@ -798,7 +795,10 @@ export default function ChatRoom({
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setInputValue(val);
-    setShowSlashMenu(val.startsWith('/') && !val.includes(' '));
+    // Show unified slash menu when typing "/" — keep open for "/use skillname" too
+    setShowSlashMenu(val.startsWith('/') && (
+      !val.includes(' ') || val.startsWith('/use ')
+    ));
 
     // Bug 2: Throttle typing indicator to prevent WS spam
     if (val.trim()) {
@@ -1799,57 +1799,85 @@ export default function ChatRoom({
             <>
               <motion.div
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-surface/40 dark:bg-surface-dark/40 backdrop-blur-md z-40"
+                className="fixed inset-0 z-40"
                 onClick={() => setShowSlashMenu(false)}
               />
               <motion.div
-                initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute bottom-full left-0 right-0 mb-2 bg-white/95 dark:bg-card-alt/95 backdrop-blur-[20px] border border-border/50 dark:border-border-dark/50 shadow-2xl rounded-[24px] p-2 overflow-hidden z-50 max-h-[60vh] overflow-y-auto"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={{ duration: 0.15 }}
+                className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-xl z-50 max-h-[50vh] overflow-y-auto overflow-x-hidden"
               >
-                {slashCommands
-                  .filter((cmd) => cmd.label.startsWith(inputValue) || inputValue === '/')
-                  .map((cmd) => (
-                  <motion.button
-                    key={cmd.id}
-                    whileTap={{ scale: 0.98, backgroundColor: 'rgba(0,0,0,0.03)' }}
-                    onClick={() => handleCommandSelect(cmd.label)}
-                    className="w-full flex items-center gap-3 p-3 rounded-[16px] text-left transition-colors"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-border dark:bg-border-dark flex items-center justify-center text-primary">
-                      <cmd.icon size={18} />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-[15px] text-text dark:text-text-inv">{cmd.label}</div>
-                      <div className="text-[13px] text-text/55 dark:text-text-inv/55">{cmd.desc}</div>
-                    </div>
-                  </motion.button>
-                ))}
+                {/* System commands section */}
+                {(() => {
+                  const filtered = slashCommands.filter(cmd =>
+                    cmd.label.startsWith(inputValue) || inputValue === '/'
+                  );
+                  if (filtered.length === 0) return null;
+                  return (
+                    <>
+                      <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-text/35 dark:text-text-inv/30 uppercase tracking-wider sticky top-0 bg-white dark:bg-card-alt">Commands</div>
+                      {filtered.map(cmd => (
+                        <button
+                          key={cmd.id}
+                          onClick={() => handleCommandSelect(cmd.label)}
+                          className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.06] flex items-center justify-center text-text/50 dark:text-text-inv/45 shrink-0">
+                            <cmd.icon size={14} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="text-[13px] font-medium text-text dark:text-text-inv">{cmd.label}</span>
+                            <span className="ml-2 text-[11px] text-text/35 dark:text-text-inv/30 truncate">{cmd.desc}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </>
+                  );
+                })()}
 
-                {/* Skills in slash menu */}
-                {skills.length > 0 && (inputValue === '/' || '/use'.startsWith(inputValue)) && (
+                {/* Skills section */}
+                {skills.length > 0 && (inputValue === '/' || '/use'.startsWith(inputValue) || inputValue.startsWith('/use ')) && (
                   <>
-                    <div className="px-3 pt-2 pb-1 text-[11px] font-semibold text-text/40 dark:text-text-inv/40 uppercase tracking-wider">技能</div>
+                    <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-text/35 dark:text-text-inv/30 uppercase tracking-wider sticky top-0 bg-white dark:bg-card-alt flex items-center gap-1.5">
+                      <Puzzle size={10} className="text-primary" />
+                      Skills ({skillCount})
+                    </div>
                     {skills
-                      .filter((s) => inputValue === '/' || inputValue === '/use' || `/use ${s}`.startsWith(inputValue))
-                      .map((skillName) => (
-                      <motion.button
-                        key={`skill-${skillName}`}
-                        whileTap={{ scale: 0.98, backgroundColor: 'rgba(0,0,0,0.03)' }}
-                        onClick={() => handleCommandSelect(`/use ${skillName}`)}
-                        className="w-full flex items-center gap-3 p-3 rounded-[16px] text-left transition-colors"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                          <Puzzle size={18} />
-                        </div>
-                        <div>
-                          <div className="font-semibold text-[15px] text-text dark:text-text-inv">/use {skillName}</div>
-                          <div className="text-[13px] text-text/55 dark:text-text-inv/55">{getSkillDescription(skillName)}</div>
-                        </div>
-                      </motion.button>
-                    ))}
+                      .filter(s => {
+                        if (inputValue === '/' || inputValue === '/use') return true;
+                        if (inputValue.startsWith('/use ')) {
+                          const q = inputValue.slice(5).toLowerCase();
+                          return s.toLowerCase().includes(q);
+                        }
+                        return `/use ${s}`.startsWith(inputValue);
+                      })
+                      .map(skillName => (
+                        <button
+                          key={`skill-${skillName}`}
+                          onClick={() => handleCommandSelect(`/use ${skillName}`)}
+                          className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-primary/8 flex items-center justify-center text-primary shrink-0">
+                            <Puzzle size={14} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="text-[13px] font-medium text-text dark:text-text-inv">{skillName}</span>
+                            <span className="ml-2 text-[11px] text-text/35 dark:text-text-inv/30 truncate">{getSkillDescription(skillName)}</span>
+                          </div>
+                        </button>
+                      ))}
                   </>
+                )}
+
+                {/* Empty state */}
+                {slashCommands.filter(cmd => cmd.label.startsWith(inputValue) || inputValue === '/').length === 0
+                  && !(skills.length > 0 && (inputValue.startsWith('/use ')))
+                  && (
+                  <div className="px-3 py-4 text-center text-[12px] text-text/35 dark:text-text-inv/30">
+                    No matching commands
+                  </div>
                 )}
               </motion.div>
             </>
@@ -1893,24 +1921,6 @@ export default function ChatRoom({
               exit={{ opacity: 0, y: 10 }}
               className="flex items-center gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
             >
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowSkills((c) => !c)}
-                className="flex-shrink-0 inline-flex items-center gap-1 w-9 h-9 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
-                title="Skills"
-              >
-                <Puzzle size={15} />
-                {skillCount > 0 && <span className="sr-only">{skillCount} skills</span>}
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center justify-center w-9 h-9 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
-                title="Context"
-              >
-                <FileText size={15} />
-              </motion.button>
-              <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
               {CONTEXT_SUGGESTIONS.map((sug) => (
                 <motion.button
                   key={sug.label}
@@ -1933,24 +1943,6 @@ export default function ChatRoom({
               exit={{ opacity: 0 }}
               className="flex items-center gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
             >
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowSkills((c) => !c)}
-                className="flex-shrink-0 inline-flex items-center gap-1 w-9 h-9 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
-                title="Skills"
-              >
-                <Puzzle size={15} />
-                {skillCount > 0 && <span className="sr-only">{skillCount} skills</span>}
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center justify-center w-9 h-9 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
-                title="Context"
-              >
-                <FileText size={15} />
-              </motion.button>
-              <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
               {QUICK_COMMANDS.map((cmd) => (
                 <motion.button
                   key={cmd.label}
@@ -2052,22 +2044,6 @@ export default function ChatRoom({
                     <Smile size={18} />
                     Emoji
                   </button>
-                  <div className="h-px bg-border dark:bg-border-dark my-0.5" />
-                  <button
-                    onClick={() => { setShowSkills((c) => !c); setShowMoreIcons(false); }}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
-                  >
-                    <Puzzle size={18} />
-                    技能{skillCount > 0 ? ` (${skillCount})` : ''}
-                  </button>
-                  <button
-                    onClick={() => { setShowContextViewer(true); setShowMoreIcons(false); }}
-                    disabled={!agentId || !runtimeConnId}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors disabled:opacity-40"
-                  >
-                    <FileText size={18} />
-                    上下文
-                  </button>
                 </motion.div>
               </>
             )}
@@ -2117,51 +2093,6 @@ export default function ChatRoom({
                     <Send size={14} />
                   </button>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Skills panel popup */}
-          <AnimatePresence>
-            {showSkills && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                className="absolute bottom-full left-0 right-0 mb-3 mx-1 rounded-[16px] bg-white/95 dark:bg-card-alt/95 p-3 border border-border/50 dark:border-border-dark/50 shadow-xl z-20 max-h-[50vh] overflow-y-auto"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[13px] font-semibold text-text dark:text-text-inv flex items-center gap-1.5">
-                    <Puzzle size={14} className="text-primary" />
-                    技能{skillCount > 0 ? ` (${skillCount})` : ''}
-                  </span>
-                  <button onClick={() => setShowSkills(false)} className="p-1 rounded-full hover:bg-surface dark:hover:bg-surface-dark text-text/50 dark:text-text-inv/50">
-                    <X size={14} />
-                  </button>
-                </div>
-                {skillCount > 0 ? (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {skills.map((skillName) => (
-                      <div
-                        key={skillName}
-                        className="rounded-[12px] border border-primary/10 bg-primary/5 px-3 py-2 dark:border-primary/15 dark:bg-primary/10"
-                      >
-                        <div className="flex items-center gap-1.5 text-[13px] font-medium text-text dark:text-text-inv">
-                          <Puzzle size={12} className="text-primary" />
-                          <span className="truncate">{skillName}</span>
-                        </div>
-                        <p className="mt-0.5 text-[11px] text-text/50 dark:text-text-inv/50">
-                          {getSkillDescription(skillName)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-4 text-center text-[12px] text-text/40 dark:text-text-inv/40">
-                    <Puzzle size={16} className="mx-auto mb-1 opacity-40" />
-                    暂无技能
-                  </div>
-                )}
               </motion.div>
             )}
           </AnimatePresence>
