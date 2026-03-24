@@ -448,10 +448,10 @@ export default function ChatList({
   }, [agentMap]);
 
   // ── Shared avatar renderer ──
-  const renderAvatar = (agent: AgentInfo, size: 'sm' | 'md' | 'lg') => {
+  const renderAvatar = (agent: AgentInfo, size: 'sm' | 'md' | 'lg' | 'xl') => {
     const palette = getAgentPalette(agent.id);
     const initials = agent.name.slice(0, 2).toUpperCase();
-    const sizeClasses = size === 'sm' ? 'w-8 h-8 text-[11px] rounded-lg' : size === 'md' ? 'w-10 h-10 text-[13px] rounded-xl' : 'w-12 h-12 text-base rounded-2xl';
+    const sizeClasses = size === 'sm' ? 'w-8 h-8 text-[11px] rounded-lg' : size === 'md' ? 'w-10 h-10 text-[13px] rounded-xl' : size === 'lg' ? 'w-12 h-12 text-base rounded-2xl' : 'w-14 h-14 text-lg rounded-2xl';
     if (customAvatars[agent.id]) {
       return <img src={customAvatars[agent.id]} alt={agent.name} className={cn('object-cover', sizeClasses)} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />;
     }
@@ -478,6 +478,7 @@ export default function ChatList({
     const isTyping = typingAgents.has(previewKey);
     const isThinking = thinkingAgents.has(previewKey);
     const showStatus = isThinking || isTyping;
+    const showOnlineDot = !showStatus && status === 'connected';
 
     return (
       <motion.div key={agent.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -486,13 +487,13 @@ export default function ChatList({
           aria-label={`Chat with ${agent.name}`}
           className={cn(
             'relative w-full text-left flex items-center gap-3 transition-all duration-150',
-            compact ? 'px-2.5 py-2' : 'px-4 py-2.5', 'rounded-lg',
+            compact ? 'px-3 py-2.5' : 'px-5 py-3', 'rounded-lg',
             'focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
             isDisabled && 'opacity-40 cursor-not-allowed',
             !isDisabled && 'cursor-pointer active:bg-text/[0.06] dark:active:bg-text-inv/[0.06]',
-            isActive ? 'bg-primary/10 dark:bg-primary/15 border-l-2 border-l-primary'
-              : isSplitActive ? 'bg-info/8 dark:bg-info/12 border-l-2 border-l-info'
-              : 'border-l-2 border-l-transparent hover:bg-text/[0.04] dark:hover:bg-text-inv/[0.04]'
+            isActive ? 'bg-primary/12 dark:bg-primary/15 shadow-[inset_2px_0_0_0_#EF5A23]'
+              : isSplitActive ? 'bg-info/8 dark:bg-info/12 shadow-[inset_2px_0_0_0_#5B8DEF]'
+              : 'hover:bg-text/[0.05] dark:hover:bg-text-inv/[0.05]'
           )}>
           {/* Avatar */}
           <div className="relative flex-shrink-0" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
@@ -503,28 +504,31 @@ export default function ChatList({
                 <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
               </span>
             )}
+            {showOnlineDot && (
+              <span className={cn('absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white dark:border-surface-dark bg-primary', compact ? 'w-2.5 h-2.5' : 'w-3 h-3')} />
+            )}
           </div>
           {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <h3 className={cn('font-semibold truncate', compact ? 'text-[13px] text-text/90 dark:text-text-inv/90' : 'text-[15px]')}>{agent.name}</h3>
-              {agent.isDefault && <span className="text-[8px] font-medium text-text/40 dark:text-text-inv/35 bg-text/[0.05] dark:bg-text-inv/[0.05] rounded px-1 py-px leading-none shrink-0">default</span>}
-              {agent.model && <span className={cn('text-[9px] truncate ml-auto shrink-0', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/30 dark:text-text-inv/30')}>{agent.model.split('/').pop()}</span>}
+              <h3 className={cn('font-bold truncate', compact ? 'text-[14px] text-text/90 dark:text-text-inv/90' : 'text-[16px]')}>{agent.name}</h3>
+              {agent.isDefault && <span className="text-[9px] font-medium text-text/45 dark:text-text-inv/40 bg-text/[0.05] dark:bg-text-inv/[0.05] rounded px-1 py-px leading-none shrink-0">default</span>}
+              {agent.model && <span className="text-[10px] truncate ml-auto shrink-0 bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px text-text/45 dark:text-text-inv/40">{agent.model.split('/').pop()}</span>}
             </div>
             {isThinking ? (
-              <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[11px]' : 'text-[13px]')}>思考中... <TypingDots /></p>
+              <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[12px]' : 'text-[14px]')}>思考中... <TypingDots /></p>
             ) : isTyping ? (
-              <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[11px]' : 'text-[13px]')}>正在输入... <TypingDots /></p>
+              <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[12px]' : 'text-[14px]')}>正在输入... <TypingDots /></p>
             ) : preview ? (
-              <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/55 dark:text-text-inv/50' : 'text-[13px] text-text/50 dark:text-text-inv/45')}>{preview}</p>
+              <p className={cn('truncate mt-0.5', compact ? 'text-[12px] text-text/45 dark:text-text-inv/40' : 'text-[14px] text-text/45 dark:text-text-inv/40')}>{preview}</p>
             ) : (
-              <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/30 dark:text-text-inv/25' : 'text-[13px] text-text/30 dark:text-text-inv/25')}>Start a conversation</p>
+              <p className={cn('truncate mt-0.5', compact ? 'text-[12px] text-text/30 dark:text-text-inv/25' : 'text-[14px] text-text/30 dark:text-text-inv/25')}>Start a conversation</p>
             )}
             {showSource && <p className="mt-0.5 text-[10px] text-text/35 dark:text-text-inv/30 truncate">{getConnectionLabel(connection)}</p>}
           </div>
           {/* Timestamp */}
           {lastMessage?.timestamp && (
-            <span className={cn('text-[10px] shrink-0 self-start mt-0.5', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/35 dark:text-text-inv/30')}>
+            <span className={cn('text-[10px] shrink-0 self-start mt-0.5', compact ? 'text-text/30 dark:text-text-inv/25' : 'text-text/30 dark:text-text-inv/25')}>
               {formatRelativeTime(lastMessage.timestamp)}
             </span>
           )}
@@ -543,6 +547,7 @@ export default function ChatList({
     const isTyping = typingAgents.has(previewKey);
     const isThinking = thinkingAgents.has(previewKey);
     const showStatus = isThinking || isTyping;
+    const showOnlineDot = !showStatus && status === 'connected';
 
     return (
       <motion.div key={agent.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
@@ -550,33 +555,34 @@ export default function ChatList({
         <button type="button" onClick={e => handleAgentClick(connection, agent, e.shiftKey)} disabled={isDisabled}
           aria-label={`Chat with ${agent.name}`}
           className={cn(
-            'relative w-full flex flex-col items-center text-center p-3 pb-2.5 rounded-2xl transition-all duration-150',
+            'relative w-full flex flex-col items-center text-center p-4 pb-3 rounded-2xl transition-all duration-150',
             'bg-white/60 dark:bg-card-alt/40',
             'focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
             isDisabled && 'opacity-40 cursor-not-allowed',
             !isDisabled && 'cursor-pointer active:scale-[0.96]',
-            isActive ? 'ring-2 ring-primary/30 bg-primary/5 dark:bg-primary/10'
+            isActive ? 'ring-2 ring-primary/30 bg-primary/12 dark:bg-primary/15'
               : isSplitActive ? 'ring-2 ring-info/25 bg-info/6 dark:bg-info/10'
-              : 'hover:bg-text/[0.02] dark:hover:bg-text-inv/[0.02]'
+              : 'hover:bg-text/[0.06] dark:hover:bg-text-inv/[0.06] hover:shadow-sm'
           )}>
           <div className="relative mb-2" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
             onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
-            {renderAvatar(agent, 'lg')}
-            {showStatus && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />}
+            {renderAvatar(agent, 'xl')}
+            {showStatus && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-primary rounded-full border-2 border-white dark:border-card-alt animate-pulse" />}
+            {showOnlineDot && <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full border-2 border-white dark:border-card-alt" />}
           </div>
-          <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{agent.name}</h3>
+          <h3 className="text-[13px] font-semibold truncate w-full leading-snug">{agent.name}</h3>
           {isThinking ? (
             <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">思考中... <TypingDots /></div>
           ) : isTyping ? (
             <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">正在输入... <TypingDots /></div>
           ) : lastMessage?.text ? (
-            <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-text/50 dark:text-text-inv/40 truncate w-full max-w-full">
-              {lastMessage.text.length > 24 ? `${lastMessage.text.slice(0, 24)}…` : lastMessage.text}
+            <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[11px] text-text/45 dark:text-text-inv/40 truncate w-full max-w-full">
+              {lastMessage.text.length > 32 ? `${lastMessage.text.slice(0, 32)}…` : lastMessage.text}
             </div>
           ) : agent.model ? (
-            <span className="text-[9px] text-text/30 dark:text-text-inv/25 truncate w-full mt-1">{agent.model.split('/').pop()}</span>
+            <span className="text-[10px] bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px text-text/40 dark:text-text-inv/35 truncate w-full mt-1 text-center">{agent.model.split('/').pop()}</span>
           ) : null}
-          {agent.isDefault && <span className="text-[7px] font-medium text-text/35 dark:text-text-inv/30 bg-text/[0.04] dark:bg-text-inv/[0.04] rounded px-1 py-px mt-1">default</span>}
+          {agent.isDefault && <span className="text-[9px] font-medium text-text/45 dark:text-text-inv/40 bg-text/[0.05] dark:bg-text-inv/[0.05] rounded px-1 py-px mt-1">default</span>}
         </button>
       </motion.div>
     );
@@ -593,7 +599,7 @@ export default function ChatList({
       <div className={cn('flex items-center gap-3 rounded-lg', compact ? 'px-2.5 py-2' : 'px-4 py-2.5', 'bg-surface dark:bg-surface-dark cursor-grab active:cursor-grabbing')}>
         <ArrowUpDown size={14} className="text-text/20 dark:text-text-inv/15 shrink-0" />
         {renderAvatar(agent, compact ? 'sm' : 'md')}
-        <h3 className={cn('font-semibold truncate flex-1', compact ? 'text-[13px]' : 'text-[15px]')}>{agent.name}</h3>
+        <h3 className={cn('font-bold truncate flex-1', compact ? 'text-[14px]' : 'text-[16px]')}>{agent.name}</h3>
       </div>
     </Reorder.Item>
   );
@@ -602,9 +608,9 @@ export default function ChatList({
     <Reorder.Item key={agent.id} value={agent.id}
       whileDrag={{ scale: 1.05, boxShadow: '0 8px 30px rgba(0,0,0,0.15)', zIndex: 50 }}
       style={{ touchAction: 'none' }}>
-      <div className="flex flex-col items-center p-3 pb-2.5 rounded-2xl bg-surface dark:bg-surface-dark cursor-grab active:cursor-grabbing">
-        {renderAvatar(agent, 'lg')}
-        <h3 className="text-[12px] font-semibold truncate w-full text-center mt-2">{agent.name}</h3>
+      <div className="flex flex-col items-center p-4 pb-3 rounded-2xl bg-surface dark:bg-surface-dark cursor-grab active:cursor-grabbing">
+        {renderAvatar(agent, 'xl')}
+        <h3 className="text-[13px] font-semibold truncate w-full text-center mt-2">{agent.name}</h3>
       </div>
     </Reorder.Item>
   );
@@ -635,8 +641,7 @@ export default function ChatList({
       return (
         <Reorder.Group axis={viewMode === 'grid' ? 'x' : 'y'} values={sortedIds}
           onReorder={newOrder => handleReorder(connectionId, newOrder)}
-          className={viewMode === 'grid' ? 'grid gap-2 px-1 pb-1' : 'space-y-0.5 pb-1'}
-          style={viewMode === 'grid' ? { gridTemplateColumns: 'repeat(auto-fill, minmax(68px, 1fr))' } : undefined}>
+          className={viewMode === 'grid' ? 'grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 px-1 pb-1' : 'space-y-0.5 pb-1'}>
           {sortedIds.map(id => {
             const a = getAgentById(connectionId, id);
             if (!a) return null;
@@ -648,8 +653,7 @@ export default function ChatList({
 
     // ── Normal mode ──
     return (
-      <div className={viewMode === 'grid' ? 'grid gap-2 px-1 pb-1' : 'space-y-0.5 pb-1'}
-        style={viewMode === 'grid' ? { gridTemplateColumns: 'repeat(auto-fill, minmax(68px, 1fr))' } : undefined}>
+      <div className={viewMode === 'grid' ? 'grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 px-1 pb-1' : 'space-y-0.5 pb-1'}>
         <AnimatePresence initial={false}>
           {sortedIds.map((id, index) => {
             const a = getAgentById(connectionId, id);
@@ -668,12 +672,12 @@ export default function ChatList({
   if (connections.length === 0) {
     return (
       <div className={cn('flex flex-col h-full', !compact && 'pb-24')}>
-        <div className={cn('px-5 pb-3', compact ? 'pt-3' : 'pt-10')}>
-          {!compact && <h1 className="text-2xl font-bold tracking-tight mb-4">Chats</h1>}
+        <div className={cn('px-5 pb-3', compact ? 'pt-3' : 'pt-6')}>
+          {!compact && <h1 className="text-xl font-bold tracking-tight mb-4">Chats</h1>}
         </div>
         <div className="flex-1 flex flex-col items-center justify-center px-8">
-          <div className="w-12 h-12 rounded-2xl bg-text/[0.04] dark:bg-text-inv/[0.04] flex items-center justify-center mb-4">
-            <Server size={20} className="text-text/25 dark:text-text-inv/20" />
+          <div className="w-16 h-16 rounded-2xl bg-text/[0.06] dark:bg-text-inv/[0.06] flex items-center justify-center mb-4">
+            <Server size={28} className="text-text/30 dark:text-text-inv/25" />
           </div>
           <p className="text-[15px] font-medium text-text/60 dark:text-text-inv/50 mb-1">No servers connected</p>
           <p className="text-[13px] text-text/30 dark:text-text-inv/25 mb-5 text-center">Add a server to start chatting with agents</p>
@@ -688,30 +692,30 @@ export default function ChatList({
   return (
     <div className={cn('flex flex-col h-full min-h-0', !compact && 'pb-24')}>
       {/* Header */}
-      <div className={cn('sticky top-0 bg-surface/90 dark:bg-surface-dark/90 backdrop-blur-lg z-10', compact ? 'px-3 pt-3 pb-2' : 'px-5 pt-10 pb-3')}>
+      <div className={cn('sticky top-0 bg-surface/90 dark:bg-surface-dark/90 backdrop-blur-lg z-10', compact ? 'px-3 pt-3 pb-2' : 'px-5 pt-6 pb-3')}>
         <div className="flex justify-between items-center mb-3 gap-3">
           <div className="min-w-0 flex-1">
-            {!compact && <h1 className="text-2xl font-bold tracking-tight">{reorderMode ? 'Reorder Agents' : 'Chats'}</h1>}
+            {!compact && <h1 className="text-xl font-bold tracking-tight">{reorderMode ? 'Reorder Agents' : 'Chats'}</h1>}
             {compact && <span className="font-semibold text-[15px] block truncate">{reorderMode ? 'Reorder' : 'Chats'}</span>}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {!reorderMode && (
               <>
                 <motion.button whileTap={{ scale: 0.9 }} onClick={toggleViewMode}
-                  className="p-1.5 text-text/35 dark:text-text-inv/30 hover:text-primary transition-colors"
+                  className="p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-text/35 dark:text-text-inv/30 hover:text-primary transition-colors"
                   title={viewMode === 'list' ? 'Grid view' : 'List view'}>
-                  {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
+                  {viewMode === 'list' ? <LayoutGrid size={16} /> : <List size={16} />}
                 </motion.button>
                 <motion.button whileTap={{ scale: 0.9 }} onClick={handleRefresh}
-                  className="p-1.5 text-text/40 dark:text-text-inv/40 hover:text-primary transition-colors">
-                  <RefreshCw size={14} className={Object.values(refreshingMap).some(Boolean) ? 'animate-spin' : ''} />
+                  className="p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-text/40 dark:text-text-inv/40 hover:text-primary transition-colors">
+                  <RefreshCw size={16} className={Object.values(refreshingMap).some(Boolean) ? 'animate-spin' : ''} />
                 </motion.button>
               </>
             )}
             <motion.button whileTap={{ scale: 0.9 }} onClick={() => setReorderMode(m => !m)}
-              className={cn('p-1.5 rounded-md transition-colors', reorderMode ? 'text-white bg-primary' : 'text-text/35 dark:text-text-inv/30 hover:text-primary')}
+              className={cn('p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-md transition-colors', reorderMode ? 'text-white bg-primary' : 'text-text/35 dark:text-text-inv/30 hover:text-primary')}
               title={reorderMode ? 'Done' : 'Reorder agents'}>
-              {reorderMode ? <Check size={14} /> : <ArrowUpDown size={14} />}
+              {reorderMode ? <Check size={16} /> : <ArrowUpDown size={16} />}
             </motion.button>
             {!reorderMode && (
               <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded-full',
@@ -728,7 +732,7 @@ export default function ChatList({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text/30 dark:text-text-inv/30" size={compact ? 14 : 16} />
             <Input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search agents…"
               className={cn('pl-9 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] border-0 placeholder:text-text/30 dark:placeholder:text-text-inv/25',
-                compact ? 'py-1.5 text-[12px] pl-8' : 'py-2 text-[13px]')} />
+                compact ? 'h-8 py-0 text-[12px] pl-8' : 'h-10 py-0 text-[14px]')} />
           </div>
         )}
       </div>
@@ -743,8 +747,7 @@ export default function ChatList({
         )}
 
         {searchQuery.trim() && !reorderMode ? (
-          <div className={viewMode === 'grid' ? 'grid gap-2 px-1' : 'space-y-0.5'}
-            style={viewMode === 'grid' ? { gridTemplateColumns: 'repeat(auto-fill, minmax(68px, 1fr))' } : undefined}>
+          <div className={viewMode === 'grid' ? 'grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 px-1' : 'space-y-0.5'}>
             {filteredResults.length > 0 ? filteredResults.map(({ agent, connection }, i) => (
               viewMode === 'grid' ? renderGridCard(connection, agent, i) : renderListCard(connection, agent, i, true)
             )) : (
@@ -762,7 +765,7 @@ export default function ChatList({
                   <button type="button" onClick={() => handleToggleGroup(connection.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left group">
                     <span className={cn('inline-flex h-2 w-2 rounded-full shrink-0', getStatusClasses(status))} />
                     <span className="sr-only">{status === 'connected' ? 'Connected' : status === 'connecting' || status === 'reconnecting' ? 'Connecting' : 'Disconnected'}</span>
-                    <span className="text-[11px] font-medium uppercase tracking-wider text-text/40 dark:text-text-inv/35 truncate flex-1">
+                    <span className="text-[12px] font-semibold uppercase tracking-wider text-text/50 dark:text-text-inv/45 truncate flex-1">
                       {getConnectionLabel(connection)}
                     </span>
                     <ChevronDown size={12} className={cn('shrink-0 text-text/25 dark:text-text-inv/20 transition-transform duration-200', isExpanded && 'rotate-180')} />
@@ -787,9 +790,9 @@ export default function ChatList({
         {!reorderMode && (
           <button onClick={onAddServer}
             className={cn('w-full mt-3 py-2.5 flex items-center justify-center gap-1.5',
-              'text-[12px] font-medium text-text/30 dark:text-text-inv/25',
+              'text-[13px] font-medium text-text/35 dark:text-text-inv/30',
               'rounded-lg border border-dashed border-text/10 dark:border-text-inv/10',
-              'hover:border-text/20 dark:hover:border-text-inv/15 hover:text-text/45 dark:hover:text-text-inv/35',
+              'hover:border-text/20 dark:hover:border-text-inv/15 hover:text-text/50 dark:hover:text-text-inv/40',
               'transition-colors')}>
             <Plus size={13} /> Add Server
           </button>

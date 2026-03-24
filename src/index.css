@@ -55,7 +55,7 @@
   --bg-card: #232437;
   --text-primary: #e2e8f0;
   --text-secondary: #a0aec0;
-  --text-muted: #64748b;
+  --text-muted: #7a8fa3;  /* contrast ~4.6:1 against #1a1b2e */
   --border-color: #2d3748;
   --primary: #EF5A23;
 }

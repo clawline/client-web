@@ -1132,9 +1132,12 @@ export default function ChatRoom({
           </motion.button>
         )}
         <div className={`flex flex-col ${isDesktop ? 'items-start ml-2' : 'items-center'}`}>
-          <h2 className="font-semibold text-[17px] text-text dark:text-text-inv">
-            {`${getConnectionDisplayName(activeConn?.name, activeConn?.displayName)} / ${agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}`}
+          <h2 className="font-semibold text-[17px] text-text dark:text-text-inv leading-tight truncate max-w-[200px] md:max-w-none">
+            {agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}
           </h2>
+          <p className="text-[11px] text-text/40 dark:text-text-inv/35 truncate max-w-[200px] md:max-w-none -mt-0.5">
+            {getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}
+          </p>
           <span className={`text-[10px] font-medium flex items-center gap-1 ${
             wsStatus === 'connected' ? 'text-primary' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'text-amber-500' : 'text-red-400'
           }`}>
@@ -1476,16 +1479,16 @@ export default function ChatRoom({
                   {/* Header row: name + timestamp (only for first in group) */}
                   {!grouped && (
                     <div className="flex items-baseline gap-2 mb-0.5">
-                      <span className={`text-[14px] font-semibold ${isUser ? 'text-info' : 'text-primary'}`}>
+                      <span className={`text-[14px] font-bold ${isUser ? 'text-info' : 'text-primary'}`}>
                         {isUser ? 'You' : (agentInfo?.name || 'Bot')}
                       </span>
                       {msg.timestamp && (
-                        <span className="text-[11px] text-text/35 dark:text-text-inv/30 tabular-nums">
+                        <span className="text-[10px] text-text/30 dark:text-text-inv/25 tabular-nums">
                           {formatTime(msg.timestamp)}
                         </span>
                       )}
                       {!isUser && agentInfo?.model && (
-                        <span className="text-[10px] text-text/30 dark:text-text-inv/25 font-medium border border-border dark:border-border-dark rounded-full px-1.5 py-px">
+                        <span className="text-[9px] text-text/35 dark:text-text-inv/30 font-medium bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px">
                           {agentInfo.model.split('/').pop()}
                         </span>
                       )}
@@ -1510,7 +1513,7 @@ export default function ChatRoom({
                     {(msg.mediaType === 'image' && msg.mediaUrl) ? (
                       <div>
                         <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover mt-1" />
-                        {msg.text && <p className="mt-1.5 text-[14px]">{msg.text}</p>}
+                        {msg.text && <p className="mt-1.5 text-[15px]">{msg.text}</p>}
                       </div>
                     ) : (msg.mediaType === 'voice' || msg.mediaType === 'audio') && msg.mediaUrl ? (
                       <div className="flex flex-col gap-1">
