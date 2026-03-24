@@ -101,7 +101,7 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
             }
 
             return (
-              <code className="rounded bg-border px-1.5 py-0.5 text-[13px] text-text dark:bg-border-dark dark:text-text-inv">
+              <code className="rounded-md border border-primary/15 bg-[#FFF5F0] px-1.5 py-0.5 font-mono text-[13px] text-text dark:border-primary/10 dark:bg-[#2d1f1a] dark:text-text-inv">
                 {children}
               </code>
             );

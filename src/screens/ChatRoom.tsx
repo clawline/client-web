@@ -98,6 +98,47 @@ function isDifferentDay(ts1?: number, ts2?: number) {
   return new Date(ts1).toDateString() !== new Date(ts2).toDateString();
 }
 
+// Bubble grouping for consecutive same-sender messages (WhatsApp/Telegram style)
+type BubbleGroupPos = 'solo' | 'first' | 'middle' | 'last';
+
+function getBubbleGroupPos(messages: Message[], index: number): BubbleGroupPos {
+  const cur = messages[index];
+  if (!cur) return 'solo';
+  const prev = index > 0 ? messages[index - 1] : null;
+  const next = index < messages.length - 1 ? messages[index + 1] : null;
+  const sameAsPrev = !!(prev && prev.sender === cur.sender && !isDifferentDay(prev.timestamp, cur.timestamp));
+  const sameAsNext = !!(next && next.sender === cur.sender && !isDifferentDay(cur.timestamp, next.timestamp));
+  if (sameAsPrev && sameAsNext) return 'middle';
+  if (sameAsPrev) return 'last';
+  if (sameAsNext) return 'first';
+  return 'solo';
+}
+
+function getBubbleRadius(pos: BubbleGroupPos, isUser: boolean): string {
+  // All corners 24px except the "speaker side" corner which shrinks for grouped messages
+  const base = 'rounded-[24px]';
+  if (pos === 'solo') return isUser ? `${base} rounded-tr-[8px]` : `${base} rounded-tl-[8px]`;
+  if (isUser) {
+    if (pos === 'first') return `${base} rounded-br-[6px]`;
+    if (pos === 'middle') return `${base} rounded-tr-[6px] rounded-br-[6px]`;
+    if (pos === 'last') return `${base} rounded-tr-[6px]`;
+  } else {
+    if (pos === 'first') return `${base} rounded-bl-[6px]`;
+    if (pos === 'middle') return `${base} rounded-tl-[6px] rounded-bl-[6px]`;
+    if (pos === 'last') return `${base} rounded-tl-[6px]`;
+  }
+  return base;
+}
+
+function getMessageGap(messages: Message[], index: number): string {
+  if (index === 0) return '';
+  const cur = messages[index];
+  const prev = messages[index - 1];
+  if (!cur || !prev) return 'mt-3';
+  if (isDifferentDay(prev.timestamp, cur.timestamp)) return '';
+  return prev.sender === cur.sender ? 'mt-[3px]' : 'mt-3';
+}
+
 // --- File to data URL ---
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -1109,7 +1150,7 @@ export default function ChatRoom({
   return (
     <div className="flex flex-col h-full bg-surface dark:bg-surface-dark relative">
       {/* Header */}
-      <div className="px-4 py-3 sticky top-0 bg-white/70 dark:bg-card-alt/70 backdrop-blur-[20px] border-b border-border dark:border-border-dark z-20 flex items-center justify-between min-h-[57px]">
+      <div className="px-4 py-2 sticky top-0 bg-white/80 dark:bg-card-alt/80 backdrop-blur-[20px] border-b border-border dark:border-border-dark z-20 flex items-center justify-between min-h-[48px]">
         {!isDesktop && (
           <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="p-2 -ml-2 text-text dark:text-text-inv" aria-label="Go back">
             <ChevronLeft size={28} />
@@ -1119,10 +1160,10 @@ export default function ChatRoom({
           <h2 className="font-semibold text-[17px] text-text dark:text-text-inv">
             {`${getConnectionDisplayName(activeConn?.name, activeConn?.displayName)} / ${agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}`}
           </h2>
-          <span className={`text-[11px] font-medium flex items-center gap-1 ${
+          <span className={`text-[10px] font-medium flex items-center gap-1 ${
             wsStatus === 'connected' ? 'text-primary' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'text-amber-500' : 'text-red-400'
           }`}>
-            {wsStatus === 'connected' && <><div className="w-1.5 h-1.5 bg-primary rounded-full" /> Connected</>}
+            {wsStatus === 'connected' && <><div className="w-1.5 h-1.5 bg-primary rounded-full" /> Online</>}
             {wsStatus === 'connecting' && <><Loader2 size={10} className="animate-spin" /> Connecting…</>}
             {wsStatus === 'reconnecting' && <><Loader2 size={10} className="animate-spin" /> Reconnecting…</>}
             {wsStatus === 'disconnected' && <><WifiOff size={10} /> Disconnected</>}
@@ -1172,7 +1213,7 @@ export default function ChatRoom({
               initial={{ opacity: 0, y: -10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -10, scale: 0.95 }}
-              className="absolute top-[57px] right-4 z-40 bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-2xl shadow-xl p-1.5 min-w-[180px]"
+              className="absolute top-[48px] right-4 z-40 bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-2xl shadow-xl p-1.5 min-w-[180px]"
             >
               <button
                 onClick={openHistoryDrawer}
@@ -1354,7 +1395,7 @@ export default function ChatRoom({
       </AnimatePresence>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-4 flex flex-col gap-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-4 flex flex-col">
         {/* Load more indicator */}
         {loadingMoreHistory && (
           <div className="flex justify-center py-3">
@@ -1390,19 +1431,24 @@ export default function ChatRoom({
             transition={{ delay: 0.2, type: 'spring', stiffness: 300, damping: 25 }}
             className="flex-1 flex flex-col items-center justify-center text-center px-6"
           >
-            <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary-deep rounded-[20px] flex items-center justify-center mb-5 shadow-lg shadow-primary/20">
-              <span className="text-2xl">{agentInfo?.identityEmoji || '🤖'}</span>
+            <div className="relative mb-5">
+              <div className="absolute inset-0 rounded-[24px] bg-[radial-gradient(circle_at_top_left,_rgba(239,90,35,0.18),_transparent_55%)] blur-xl" />
+              <div className="relative w-20 h-20 rounded-[24px] border border-primary/20 bg-gradient-to-br from-primary/12 via-white to-primary/5 dark:from-primary/18 dark:via-card-alt dark:to-primary/8 flex items-center justify-center shadow-lg shadow-primary/10 overflow-hidden">
+                <span className="relative text-3xl">{agentInfo?.identityEmoji || '🤖'}</span>
+              </div>
             </div>
-            <h3 className="text-lg font-semibold mb-1">{agentInfo?.name || 'Agent'}</h3>
-            <p className="text-text/45 dark:text-text-inv/45 text-[14px] leading-relaxed max-w-[260px]">
-              {(() => {
-                const h = new Date().getHours();
-                if (h < 6) return 'Burning the midnight oil? Type away.';
-                if (h < 12) return 'Good morning! What are we building today?';
-                if (h < 18) return 'Ready when you are. Send a message or try a /slash command.';
-                return 'Evening session? Let\'s get things done.';
-              })()}
-            </p>
+            <div className="space-y-2 max-w-[300px]">
+              <h3 className="text-lg font-semibold">{agentInfo?.name || 'Agent'}</h3>
+              <p className="text-text/50 dark:text-text-inv/50 text-[14px] leading-relaxed">
+                {agentInfo?.description || `${agentInfo?.name || 'This agent'} is ready for chat, tools, and slash commands.`}
+              </p>
+              {skillCount > 0 && (
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-white/80 dark:bg-card-alt/80 px-3 py-1.5 text-[12px] font-medium text-text/60 dark:text-text-inv/60 shadow-sm">
+                  <Puzzle size={13} className="text-primary" />
+                  {skillCount} skills available
+                </div>
+              )}
+            </div>
           </motion.div>
         )}
         {messages.map((msg, i) => {
@@ -1412,6 +1458,10 @@ export default function ChatRoom({
           const isErrorMsg = !isUser && msg.text?.startsWith('⚠️');
           const prevMsg = i > 0 ? messages[i - 1] : null;
           const showDateSep = isDifferentDay(prevMsg?.timestamp, msg.timestamp);
+          const groupPos = getBubbleGroupPos(messages, i);
+          const bubbleRadius = getBubbleRadius(groupPos, isUser);
+          const gapClass = showDateSep ? '' : getMessageGap(messages, i);
+          const showAvatar = !isUser && (groupPos === 'solo' || groupPos === 'last');
           return (
             <div key={msg.id}>
               {/* Date separator */}
@@ -1429,25 +1479,25 @@ export default function ChatRoom({
                   ? { type: 'spring', stiffness: 500, damping: 25 }
                   : { delay: Math.min(i, 10) * 0.03 }
                 }
-                className={`flex ${isUser ? 'justify-end' : 'justify-start'} relative`}
+                className={`flex ${isUser ? 'justify-end' : 'justify-start'} relative ${gapClass}`}
                 onTouchStart={() => handleTouchStart(msg.id)}
                 onTouchEnd={handleTouchEnd}
                 onTouchMove={handleTouchEnd}
               >
               {!isUser && (
-                <div className="hidden md:flex w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 mr-3 items-center justify-center text-white shadow-sm text-lg">
+                <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 mr-2 md:mr-3 items-center justify-center text-white shadow-sm text-sm md:text-lg ${showAvatar ? 'flex' : 'invisible'}`}>
                   {agentInfo?.identityEmoji || '🤖'}
                 </div>
               )}
               
               <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[85%] md:max-w-[75%]`}>
                 <div
-                    className={`px-5 py-3.5 rounded-[24px] text-[15px] leading-relaxed relative ${msg.reactions && msg.reactions.length > 0 ? 'mb-4' : ''} ${
+                    className={`px-5 py-3.5 ${bubbleRadius} text-[15px] leading-relaxed relative ${msg.reactions && msg.reactions.length > 0 ? 'mb-4' : ''} ${
                       isUser
-                        ? 'bg-primary text-white rounded-tr-[8px] shadow-md shadow-primary/20'
+                        ? 'bg-primary text-white shadow-md shadow-primary/20'
                         : isErrorMsg
-                          ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/40 rounded-tl-[8px]'
-                          : `bg-white dark:bg-card-alt text-text dark:text-text-inv border border-border dark:border-border-dark rounded-tl-[8px] shadow-sm${hasCodeBlock ? ' border-l-[3px] border-l-primary/60' : ''}`
+                          ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/40'
+                          : `bg-white dark:bg-card-alt text-text dark:text-text-inv border border-border dark:border-border-dark shadow-sm${hasCodeBlock ? ' border-l-[3px] border-l-primary/60' : ''}`
                     }`}
                   >
                     {/* Model badge removed — now shown inline with timestamp below bubble */}
@@ -1913,30 +1963,32 @@ export default function ChatRoom({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="flex gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
+              className="flex items-center gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
             >
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowSkills((c) => !c)}
-                className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 bg-primary/12 border border-primary/25 rounded-full text-[12.5px] font-semibold text-primary shadow-sm shadow-primary/5 transition-colors"
               >
-                <Puzzle size={12} />
-                {skillCount > 0 && <span className="text-[10px] bg-primary/20 rounded-full px-1 min-w-[16px] text-center">{skillCount}</span>}
+                <Puzzle size={13} />
+                Skills
+                {skillCount > 0 && <span className="text-[10px] bg-primary/20 rounded-full px-1.5 min-w-[18px] text-center">{skillCount}</span>}
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 bg-primary/12 border border-primary/25 rounded-full text-[12.5px] font-semibold text-primary shadow-sm shadow-primary/5 transition-colors"
               >
-                <FileText size={12} />
-
+                <FileText size={13} />
+                Context
               </motion.button>
+              <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
               {CONTEXT_SUGGESTIONS.map((sug) => (
                 <motion.button
                   key={sug.label}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setInputValue(sug.label)}
-                  className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-border dark:bg-border-dark/50 border border-border dark:border-border-dark rounded-full text-[12px] font-medium text-text/60 dark:text-text-inv/60 hover:bg-border/70 dark:hover:bg-border-dark transition-colors"
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 bg-white/80 dark:bg-card-alt/80 border border-border/60 dark:border-border-dark/60 rounded-full text-[11px] font-medium text-text/55 dark:text-text-inv/55 hover:border-primary/25 hover:text-primary transition-colors"
                 >
                   <span>{sug.emoji}</span>
                   {sug.label}
@@ -1951,30 +2003,32 @@ export default function ChatRoom({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
+              className="flex items-center gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
             >
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowSkills((c) => !c)}
-                className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 bg-primary/12 border border-primary/25 rounded-full text-[12.5px] font-semibold text-primary shadow-sm shadow-primary/5 transition-colors"
               >
-                <Puzzle size={12} />
-                {skillCount > 0 && <span className="text-[10px] bg-primary/20 rounded-full px-1 min-w-[16px] text-center">{skillCount}</span>}
+                <Puzzle size={13} />
+                Skills
+                {skillCount > 0 && <span className="text-[10px] bg-primary/20 rounded-full px-1.5 min-w-[18px] text-center">{skillCount}</span>}
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-full text-[12px] font-medium text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 bg-primary/12 border border-primary/25 rounded-full text-[12.5px] font-semibold text-primary shadow-sm shadow-primary/5 transition-colors"
               >
-                <FileText size={12} />
-
+                <FileText size={13} />
+                Context
               </motion.button>
+              <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
               {QUICK_COMMANDS.map((cmd) => (
                 <motion.button
                   key={cmd.label}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => quickSend(cmd.label)}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full text-[12px] font-medium text-text/60 dark:text-text-inv/60 hover:border-primary hover:text-primary transition-colors"
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 bg-white/90 dark:bg-card-alt/90 border border-border/70 dark:border-border-dark/70 rounded-full text-[11px] font-medium text-text/55 dark:text-text-inv/55 hover:border-primary/35 hover:text-primary transition-colors"
                 >
                   <span>{cmd.emoji}</span>
                   {cmd.label}
