@@ -2002,15 +2002,15 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
-        <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full p-2 flex items-center gap-1 shadow-lg shadow-black/5 relative">
+        <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full p-1.5 flex items-center gap-0.5 shadow-lg shadow-black/5 relative">
           {/* Action menu toggle (+ button) */}
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowMoreIcons(!showMoreIcons)}
-            className={`p-2 rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/55 dark:text-text-inv/55 hover:text-text dark:hover:text-text-inv'}`}
+            className={`p-1.5 rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/55 dark:text-text-inv/55 hover:text-text dark:hover:text-text-inv'}`}
             aria-label="Attach"
           >
-            <Plus size={22} />
+            <Plus size={20} />
           </motion.button>
 
           {/* Action menu popover */}
@@ -2172,7 +2172,7 @@ export default function ChatRoom({
             placeholder={agentReady ? "Message..." : "Switching agent..."}
             disabled={!agentReady}
             aria-label="Type a message"
-            className="flex-1 bg-transparent border-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-md text-[15px] py-2 px-2 text-text dark:text-text-inv placeholder:text-text/45 dark:placeholder:text-text-inv/45 disabled:opacity-50"
+            className="flex-1 bg-transparent border-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-md text-[14px] py-1.5 px-2 text-text dark:text-text-inv placeholder:text-text/45 dark:placeholder:text-text-inv/45 disabled:opacity-50"
           />
 
           {/* Voice button when no text, Send button when has text */}
@@ -2185,9 +2185,9 @@ export default function ChatRoom({
               onClick={handleSend}
               disabled={!agentReady}
               aria-label="Send message"
-              className="p-3 rounded-full flex items-center justify-center bg-primary text-white shadow-md shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2.5 rounded-full flex items-center justify-center bg-primary text-white shadow-md shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Send size={20} />
+              <Send size={18} />
             </motion.button>
           ) : isRecording ? (
             <div className="flex items-center gap-2">
@@ -2205,9 +2205,9 @@ export default function ChatRoom({
                 whileTap={{ scale: 0.85 }}
                 onClick={toggleRecording}
                 aria-label="Stop recording and send"
-                className="p-3 rounded-full flex items-center justify-center bg-red-500 text-white shadow-lg shadow-red-500/30"
+                className="p-2.5 rounded-full flex items-center justify-center bg-red-500 text-white shadow-lg shadow-red-500/30"
               >
-                <Send size={20} />
+                <Send size={18} />
               </motion.button>
             </div>
           ) : (
@@ -2215,9 +2215,9 @@ export default function ChatRoom({
               whileTap={{ scale: 0.9 }}
               onClick={toggleRecording}
               aria-label="Start voice recording"
-              className="p-3 rounded-full flex items-center justify-center bg-border dark:bg-border-dark text-text/55 dark:text-text-inv/55 hover:text-primary hover:bg-primary/10 transition-colors"
+              className="p-2.5 rounded-full flex items-center justify-center bg-border dark:bg-border-dark text-text/55 dark:text-text-inv/55 hover:text-primary hover:bg-primary/10 transition-colors"
             >
-              <Mic size={20} />
+              <Mic size={18} />
             </motion.button>
           )}
         </div>
