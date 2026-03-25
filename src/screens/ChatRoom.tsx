@@ -16,6 +16,16 @@ import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages
 import * as outbox from '../services/outbox';
 
 /** Map technical error codes/messages to human-friendly text */
+/** Format "last seen" relative time (WhatsApp-style) */
+function formatLastSeen(ts?: number): string {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return 'last seen just now';
+  if (diff < 3600_000) return `last seen ${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86400_000) return `last seen ${Math.floor(diff / 3600_000)}h ago`;
+  return `last seen ${new Date(ts).toLocaleDateString()}`;
+}
+
 function humanizeError(error: { code: string; message: string }): { title: string; body: string } {
   const msg = error.message.toLowerCase();
   const code = error.code;
@@ -267,6 +277,7 @@ export default function ChatRoom({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactingToMsgId, setReactingToMsgId] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<string>(channel.getStatus(runtimeConnId));
+  const [agentPresence, setAgentPresence] = useState<{ status: string; lastSeen?: number } | null>(null);
   const prevWsStatusRef = useRef<string>(channel.getStatus(runtimeConnId));
   const [showReconnected, setShowReconnected] = useState(false);
   const [errorToast, setErrorToast] = useState<{ code: string; message: string } | null>(null);
@@ -695,6 +706,18 @@ export default function ChatRoom({
           : [];
         channel.saveCachedAgents(connId, nextAgents);
         setAgentInfo(nextAgents.find((agent) => agent.id === agentId) ?? null);
+      } else if (packet.type === 'user.status') {
+        // Agent presence update
+        const d = packet.data as { userId?: string; status?: string; lastSeen?: number };
+        if (d.userId === agentId || !d.userId) {
+          setAgentPresence({ status: d.status || 'online', lastSeen: d.lastSeen });
+        }
+      } else if (packet.type === 'relay.backend.disconnected') {
+        // Gateway grace period — backend temporarily down
+        setAgentPresence({ status: 'offline', lastSeen: Date.now() });
+      } else if (packet.type === 'relay.backend.reconnected') {
+        // Backend recovered during grace period
+        setAgentPresence({ status: 'online' });
       } else if (packet.type === 'stream.resume') {
         // Stream resume after reconnection — restore accumulated streaming text
         const resumeData = packet.data as { chatId?: string; agentId?: string; text?: string; isComplete?: boolean; startTime?: number };
@@ -1269,7 +1292,7 @@ export default function ChatRoom({
           <span className={`text-[11px] font-medium flex items-center gap-1 ${
             wsStatus === 'connected' ? 'text-primary' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'text-amber-500' : 'text-red-400'
           }`}>
-            {wsStatus === 'connected' && <><div className="w-1.5 h-1.5 bg-primary rounded-full" /> Connected</>}
+            {wsStatus === 'connected' && <><div className={`w-1.5 h-1.5 rounded-full ${agentPresence?.status === 'offline' ? 'bg-gray-400' : 'bg-primary'}`} /> {agentPresence?.status === 'offline' ? formatLastSeen(agentPresence.lastSeen) || 'offline' : 'online'}</>}
             {wsStatus === 'connecting' && <><Loader2 size={10} className="animate-spin" /> Connecting…</>}
             {wsStatus === 'reconnecting' && <><Loader2 size={10} className="animate-spin" /> Reconnecting…</>}
             {wsStatus === 'disconnected' && (
