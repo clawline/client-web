@@ -13,6 +13,7 @@ import MarkdownRenderer from '../components/MarkdownRenderer';
 import MemorySheet from '../components/MemorySheet';
 import FileGallery from '../components/FileGallery';
 import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
+import * as outbox from '../services/outbox';
 
 type DeliveryStatus = 'pending' | 'sent' | 'delivered' | 'read';
 
@@ -737,6 +738,27 @@ export default function ChatRoom({
       if (status === 'connected' && prevWsStatusRef.current !== 'connected' && prevWsStatusRef.current !== 'connecting') {
         setShowReconnected(true);
         setTimeout(() => setShowReconnected(false), 2500);
+
+        // Flush offline outbox — send pending messages
+        outbox.getByConnection(runtimeConnId).then((entries) => {
+          for (const entry of entries) {
+            try {
+              if (entry.type === 'text') {
+                entry.replyTo
+                  ? channel.sendTextWithParent(entry.content, entry.replyTo, entry.agentId || undefined, runtimeConnId)
+                  : channel.sendText(entry.content, entry.agentId || undefined, runtimeConnId);
+              }
+              // Update UI: pending → sent
+              setMessages((prev) => prev.map((m) =>
+                m.id === entry.id ? { ...m, deliveryStatus: 'sent' as DeliveryStatus } : m
+              ));
+              outbox.dequeue(entry.id).catch(() => {});
+            } catch {
+              // Still offline or send failed — keep in outbox
+              break;
+            }
+          }
+        }).catch(() => {});
       }
       prevWsStatusRef.current = status;
       setWsStatus(status);
@@ -975,10 +997,26 @@ export default function ChatRoom({
       };
       setMessages((prev) => [...prev, userMsg]);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { id: `err-${Date.now()}`, sender: 'ai', text: '⚠️ Failed to send — WebSocket not connected.' },
-      ]);
+      // Offline: queue message in outbox with 'pending' status
+      const msgId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const userMsg: Message = {
+        id: msgId,
+        sender: 'user',
+        text: capturedInput,
+        replyTo: replyId,
+        timestamp: Date.now(),
+        deliveryStatus: 'pending',
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      outbox.enqueue({
+        id: msgId,
+        connectionId: runtimeConnId,
+        agentId: agentId || '',
+        content: capturedInput,
+        type: 'text',
+        replyTo: replyId,
+        timestamp: Date.now(),
+      }).catch(() => { /* ignore outbox write failure */ });
     }
   };
 
@@ -994,10 +1032,9 @@ export default function ChatRoom({
       const userMsg: Message = { id: payload.messageId || Date.now().toString(), sender: 'user', text, timestamp: payload.timestamp || Date.now(), deliveryStatus: 'sent' };
       setMessages((prev) => [...prev, userMsg]);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { id: `err-${Date.now()}`, sender: 'ai', text: '⚠️ Failed to send — WebSocket not connected.' },
-      ]);
+      const msgId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setMessages((prev) => [...prev, { id: msgId, sender: 'user', text, timestamp: Date.now(), deliveryStatus: 'pending' as DeliveryStatus }]);
+      outbox.enqueue({ id: msgId, connectionId: runtimeConnId, agentId: agentId || '', content: text, type: 'text', timestamp: Date.now() }).catch(() => {});
     }
   };
 
@@ -1378,6 +1415,36 @@ export default function ChatRoom({
       />
 
       {/* Reconnect celebration toast */}
+      {/* WhatsApp-style persistent disconnection banner */}
+      <AnimatePresence>
+        {(wsStatus === 'disconnected' || wsStatus === 'reconnecting') && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className={`w-full z-20 px-4 py-2 flex items-center justify-center gap-2 text-[13px] font-medium ${
+              wsStatus === 'reconnecting'
+                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-b border-amber-200 dark:border-amber-800/40'
+                : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 border-b border-red-200 dark:border-red-800/40'
+            }`}
+          >
+            {wsStatus === 'reconnecting' ? (
+              <><Loader2 size={14} className="animate-spin" /> Reconnecting… Check your network.</>
+            ) : (
+              <>
+                <WifiOff size={14} /> Connection lost.
+                <button
+                  onClick={() => channel.reconnect(runtimeConnId)}
+                  className="underline font-semibold hover:opacity-80"
+                >
+                  Reconnect
+                </button>
+              </>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showReconnected && (
           <motion.div
