@@ -16,6 +16,17 @@ import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages
 import * as outbox from '../services/outbox';
 
 /** Map technical error codes/messages to human-friendly text */
+/** Map tool names to human-friendly labels */
+function formatToolName(name: string): string {
+  const map: Record<string, string> = {
+    read: 'Reading file', write: 'Writing file', edit: 'Editing file',
+    exec: 'Running command', web_fetch: 'Fetching page', browser: 'Using browser',
+    memory_recall: 'Searching memory', memory_store: 'Saving memory',
+    sessions_spawn: 'Spawning agent', image: 'Analyzing image',
+  };
+  return map[name] || name.replace(/_/g, ' ');
+}
+
 /** Format "last seen" relative time (WhatsApp-style) */
 function formatLastSeen(ts?: number): string {
   if (!ts) return '';
@@ -285,6 +296,7 @@ export default function ChatRoom({
   const [thinkingPhase, setThinkingPhase] = useState<string>('');
   const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const thinkingStartRef = useRef<number>(0);
+  const [activeToolCalls, setActiveToolCalls] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number }[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -469,6 +481,7 @@ export default function ChatRoom({
     };
 
     setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+    setActiveToolCalls([]);
     setShowHeaderMenu(false);
     setShowHistoryDrawer(false);
     setConversations([]);
@@ -613,6 +626,19 @@ export default function ChatRoom({
           }
           return { ...m, reactions: reactions.filter((r) => r !== emoji) };
         }));
+      } else if (packet.type === 'tool.start') {
+        const d = packet.data as { toolCallId?: string; toolName?: string; args?: Record<string, unknown>; agentId?: string };
+        if (!d.agentId || !agentId || d.agentId === agentId) {
+          const tc = { toolCallId: d.toolCallId || `tc-${Date.now()}`, toolName: d.toolName || 'tool', args: d.args, startTime: Date.now() };
+          setActiveToolCalls((prev) => [...prev, tc]);
+          setThinkingPhase(formatToolName(d.toolName || 'tool'));
+          setIsThinking(true);
+        }
+      } else if (packet.type === 'tool.end') {
+        const d = packet.data as { toolCallId?: string; agentId?: string };
+        if (!d.agentId || !agentId || d.agentId === agentId) {
+          setActiveToolCalls((prev) => prev.filter((tc) => tc.toolCallId !== d.toolCallId));
+        }
       } else if (packet.type === 'thinking.start') {
         // Only accept thinking for current agent (ignore events without agentId or from other agents)
         const thinkAgentId = (packet.data as { agentId?: string }).agentId;
@@ -1943,6 +1969,21 @@ export default function ChatRoom({
                     </span>
                   )}
                 </div>
+                {activeToolCalls.length > 0 && (
+                  <div className="mt-2 flex flex-col gap-1">
+                    {activeToolCalls.map((tc) => (
+                      <div key={tc.toolCallId} className="flex items-center gap-1.5 text-[11px] text-text/45 dark:text-text-inv/45">
+                        <Loader2 size={10} className="animate-spin text-primary flex-shrink-0" />
+                        <span className="truncate">{formatToolName(tc.toolName)}</span>
+                        {tc.args && (tc.args as Record<string, unknown>).path && (
+                          <span className="text-text/30 dark:text-text-inv/30 truncate max-w-[180px]">
+                            {String((tc.args as Record<string, unknown>).path || (tc.args as Record<string, unknown>).file_path || (tc.args as Record<string, unknown>).command || (tc.args as Record<string, unknown>).url || '').slice(0, 50)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
