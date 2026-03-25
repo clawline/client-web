@@ -237,6 +237,9 @@ export default function ChatRoom({
   const [showReconnected, setShowReconnected] = useState(false);
   const [errorToast, setErrorToast] = useState<{ code: string; message: string } | null>(null);
   const [isThinking, setIsThinking] = useState(false);
+  const [thinkingPhase, setThinkingPhase] = useState<string>('');
+  const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const thinkingStartRef = useRef<number>(0);
   const [isRecording, setIsRecording] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -420,7 +423,7 @@ export default function ChatRoom({
       try { channel.requestHistory(effectiveId, agentId || undefined, runtimeConnId, { limit: 20 }); } catch { /* ignore */ }
     };
 
-    setIsThinking(false);
+    setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
     setShowHeaderMenu(false);
     setShowHistoryDrawer(false);
     setConversations([]);
@@ -570,14 +573,29 @@ export default function ChatRoom({
         const thinkAgentId = (packet.data as { agentId?: string }).agentId;
         if (!thinkAgentId || !agentId || thinkAgentId === agentId) {
           setIsThinking(true);
+          setThinkingPhase('Thinking');
+          thinkingStartRef.current = Date.now();
+          // Progressive phase labels (ChatGPT-style)
+          if (thinkingTimerRef.current) clearInterval(thinkingTimerRef.current);
+          thinkingTimerRef.current = setInterval(() => {
+            const elapsed = Date.now() - thinkingStartRef.current;
+            if (elapsed > 15000) setThinkingPhase('Working on it…');
+            else if (elapsed > 8000) setThinkingPhase('Putting it together');
+            else if (elapsed > 4000) setThinkingPhase('Analyzing');
+          }, 1000);
         }
       } else if (packet.type === 'thinking.update') {
-        const thinkAgentId = (packet.data as { agentId?: string }).agentId;
-        if (!thinkAgentId || !agentId || thinkAgentId === agentId) {
+        const d = packet.data as { agentId?: string; content?: string };
+        if (!d.agentId || !agentId || d.agentId === agentId) {
           setIsThinking(true);
+          // If update carries content (e.g. tool name), show it
+          if (d.content) {
+            setThinkingPhase(d.content);
+          }
         }
       } else if (packet.type === 'thinking.end') {
         // keep thinking visible until message.send arrives
+        if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
       } else if (packet.type === 'status.delivered' || packet.type === 'status.read') {
         // Channel status event: update delivery status on matching user message
         const d = packet.data as { messageId?: string; status?: string };
@@ -653,7 +671,7 @@ export default function ChatRoom({
           return;
         }
         
-        setIsThinking(false); // Hide thinking indicator
+        setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; } // Hide thinking indicator
         
         if (resumeData.isComplete) {
           // Stream already completed on server — history.sync will deliver the final message.
@@ -704,7 +722,7 @@ export default function ChatRoom({
           if (localStorage.getItem('openclaw.streaming.enabled') === 'false') return;
 
           // Streaming text output from backend
-          setIsThinking(false); // Hide thinking indicator when streaming starts
+          setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; } // Hide thinking indicator when streaming starts
 
           if (typeof deltaData.text === 'string') {
             // Update or create streaming bubble with accumulated text
@@ -1625,6 +1643,23 @@ export default function ChatRoom({
                             {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
                           </span>
                         )}
+                        {msg.deliveryStatus === 'pending' && (
+                          <div className="md:hidden flex items-center gap-1 mt-1">
+                            <button
+                              onClick={() => {
+                                channel.reconnect(runtimeConnId);
+                                try {
+                                  const payload = channel.sendText(msg.text, agentId || undefined, runtimeConnId);
+                                  setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, id: payload.messageId || m.id, deliveryStatus: 'sent' as DeliveryStatus } : m));
+                                  outbox.dequeue(msg.id).catch(() => {});
+                                } catch { /* still offline */ }
+                              }}
+                              className="text-[11px] text-red-200 underline"
+                            >
+                              ⟳ Retry
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="relative">
@@ -1685,6 +1720,23 @@ export default function ChatRoom({
                       <span className="text-[10px] text-text/40 dark:text-text-inv/35 mr-1.5 tabular-nums">
                         {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
                       </span>
+                    )}
+
+                    {/* Retry button for pending (offline) messages */}
+                    {isUser && msg.deliveryStatus === 'pending' && (
+                      <button
+                        onClick={() => {
+                          channel.reconnect(runtimeConnId);
+                          try {
+                            const payload = channel.sendText(msg.text, agentId || undefined, runtimeConnId);
+                            setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, id: payload.messageId || m.id, deliveryStatus: 'sent' as DeliveryStatus } : m));
+                            outbox.dequeue(msg.id).catch(() => {});
+                          } catch { /* still offline */ }
+                        }}
+                        className="text-[10px] text-red-400 hover:text-red-500 underline"
+                      >
+                        ⟳ Retry
+                      </button>
                     )}
 
                     {/* Model badge — inline outlined tag for bot messages */}
@@ -1801,10 +1853,17 @@ export default function ChatRoom({
                 {agentInfo?.identityEmoji || '🤖'}
               </div>
               <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-[24px] rounded-tl-[8px] shadow-sm px-5 py-3.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:200ms]" />
-                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:400ms]" />
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                    <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:200ms]" />
+                    <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:400ms]" />
+                  </div>
+                  {thinkingPhase && (
+                    <span className="text-[12px] text-text/50 dark:text-text-inv/50 font-medium">
+                      {thinkingPhase}
+                    </span>
+                  )}
                 </div>
               </div>
             </motion.div>
