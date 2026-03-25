@@ -23,8 +23,14 @@ function swBuildHashPlugin() {
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  const pkg = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'));
+  const buildHash = createHash('md5').update(Date.now().toString()).digest('hex').slice(0, 8);
   return {
     plugins: [react(), tailwindcss(), swBuildHashPlugin()],
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+      __BUILD_HASH__: JSON.stringify(buildHash),
+    },
     
     resolve: {
       alias: {

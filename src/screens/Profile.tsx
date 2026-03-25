@@ -205,6 +205,10 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
           <LogOut size={20} />
           Log Out
         </Button>
+
+        <p className="text-center text-[11px] text-text/30 dark:text-text-inv/25 mt-4">
+          Clawline v{__APP_VERSION__} ({__BUILD_HASH__})
+        </p>
       </div>
 
       {/* Edit Server Modal */}
