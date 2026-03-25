@@ -31,6 +31,7 @@ function formatToolName(name: string): string {
 function formatLastSeen(ts?: number): string {
   if (!ts) return '';
   const diff = Date.now() - ts;
+  if (diff < 0) return 'online'; // clock skew guard
   if (diff < 60_000) return 'last seen just now';
   if (diff < 3600_000) return `last seen ${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86400_000) return `last seen ${Math.floor(diff / 3600_000)}h ago`;
@@ -50,6 +51,16 @@ function humanizeError(error: { code: string; message: string }): { title: strin
     return { title: 'Session Expired', body: 'Your session has expired. Please reconnect.' };
 
   // Connection errors
+  if (msg.includes('failed to fetch') || msg.includes('err_network') || msg.includes('econnrefused') || msg.includes('networkerror'))
+    return { title: 'Network Error', body: 'Can\'t reach the server. Check your internet connection.' };
+  if (msg.includes('enotfound') || msg.includes('getaddrinfo') || msg.includes('dns'))
+    return { title: 'Server Not Found', body: 'The server address couldn\'t be resolved. Check the URL.' };
+  if (msg.includes('500') || msg.includes('internal server error'))
+    return { title: 'Server Error', body: 'The server encountered an error. Try again in a moment.' };
+  if (msg.includes('502') || msg.includes('bad gateway') || msg.includes('503') || msg.includes('service unavailable'))
+    return { title: 'Server Unavailable', body: 'The server is temporarily down. Try again shortly.' };
+  if (msg.includes('413') || msg.includes('payload too large') || msg.includes('too large'))
+    return { title: 'File Too Large', body: 'The content exceeds the size limit. Try a smaller file.' };
   if (msg.includes('channel not found') || msg.includes('not found'))
     return { title: 'Channel Not Found', body: 'The connection endpoint couldn\'t be reached. Check your setup.' };
   if (msg.includes('cors') || msg.includes('cross-origin'))
@@ -67,7 +78,7 @@ function humanizeError(error: { code: string; message: string }): { title: strin
   if (msg.includes('websocket') || msg.includes('ws'))
     return { title: 'Connection Issue', body: 'WebSocket connection problem. Check your network.' };
 
-  return { title: 'Something went wrong', body: error.message };
+  return { title: 'Something went wrong', body: 'An unexpected error occurred. Try again or reconnect.' };
 }
 
 type DeliveryStatus = 'pending' | 'sent' | 'delivered' | 'read';
@@ -361,6 +372,7 @@ export default function ChatRoom({
     );
     setIsContextLoading(false);
     setShowSkills(false);
+    setAgentPresence(null); // S4: Reset presence on agent switch
     // Mark agent as read when entering chat
     if (connId && agentId) {
       markAgentAsRead(connId, agentId);
