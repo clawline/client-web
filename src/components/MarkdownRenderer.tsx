@@ -76,7 +76,7 @@ function LazyCodeBlock({ lang, children }: { lang: string; children: string }) {
   }, [lang, children]);
 
   return (
-    <pre className="my-2 overflow-x-auto rounded-lg border border-[#313244] bg-[#1e1e2e] p-3 text-[13px]">
+    <pre className="my-2 overflow-x-auto overflow-y-hidden rounded-lg border border-[#313244] bg-[#1e1e2e] p-3 text-[13px] max-w-full [overscroll-behavior-x:contain]">
       {lang && <span className="float-right text-[10px] uppercase text-[#6c7086]">{lang}</span>}
       <code className="text-[#cdd6f4]" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
     </pre>
@@ -90,7 +90,7 @@ type MarkdownRendererProps = {
 
 export default function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   return (
-    <div className={cn('min-w-0 text-[15px] leading-relaxed', className)}>
+    <div className={cn('min-w-0 max-w-full overflow-hidden text-[15px] leading-relaxed [overflow-wrap:break-word] [word-break:break-word]', className)}>
       <Markdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -115,7 +115,7 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
           h2: ({ children }) => <h2 className="mb-1.5 text-base font-bold">{children}</h2>,
           h3: ({ children }) => <h3 className="mb-1 text-sm font-bold">{children}</h3>,
           a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer" className="text-info underline">
+            <a href={href} target="_blank" rel="noopener noreferrer" className="text-info underline break-all">
               {children}
             </a>
           ),

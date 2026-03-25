@@ -1373,7 +1373,7 @@ export default function ChatRoom({
       </AnimatePresence>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-4 flex flex-col">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 pb-4 flex flex-col overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
         {/* Load more indicator */}
         {loadingMoreHistory && (
           <div className="flex justify-center py-3">
@@ -1452,7 +1452,7 @@ export default function ChatRoom({
                 initial={isUser ? { opacity: 0, y: 6 } : { opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.15 }}
-                className={`group/msg flex gap-3 px-2 py-0.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors relative ${grouped ? '' : 'mt-3'}`}
+                className={`group/msg flex gap-3 px-2 py-0.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors relative overflow-hidden ${grouped ? '' : 'mt-3'}`}
                 onTouchStart={() => handleTouchStart(msg.id)}
                 onTouchEnd={handleTouchEnd}
                 onTouchMove={handleTouchEnd}
@@ -1475,7 +1475,7 @@ export default function ChatRoom({
                 </div>
 
                 {/* Content column */}
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 overflow-hidden">
                   {/* Header row: name + timestamp (only for first in group) */}
                   {!grouped && (
                     <div className="flex items-baseline gap-2 mb-0.5">
@@ -1496,7 +1496,7 @@ export default function ChatRoom({
                   )}
 
                   {/* Message content */}
-                  <div className={`text-[15px] leading-relaxed relative ${
+                  <div className={`text-[15px] leading-relaxed relative overflow-hidden ${
                     isErrorMsg ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-inv'
                   } ${hasCodeBlock ? 'border-l-[3px] border-l-primary/50 pl-3' : ''}`}>
                     {/* Quote reference */}
@@ -2031,12 +2031,12 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
-        <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full p-1.5 flex items-center gap-0.5 shadow-lg shadow-black/5 relative">
+        <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full p-1 flex items-center gap-0.5 shadow-lg shadow-black/5 relative">
           {/* Action menu toggle (+ button) */}
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowMoreIcons(!showMoreIcons)}
-            className={`p-1.5 rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/55 dark:text-text-inv/55 hover:text-text dark:hover:text-text-inv'}`}
+            className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/55 dark:text-text-inv/55 hover:text-text dark:hover:text-text-inv'}`}
             aria-label="Attach"
           >
             <Plus size={20} />
@@ -2153,7 +2153,7 @@ export default function ChatRoom({
               onClick={handleSend}
               disabled={!agentReady}
               aria-label="Send message"
-              className="p-2.5 rounded-full flex items-center justify-center bg-primary text-white shadow-md shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-10 h-10 rounded-full flex items-center justify-center bg-primary text-white shadow-md shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send size={18} />
             </motion.button>
@@ -2173,7 +2173,7 @@ export default function ChatRoom({
                 whileTap={{ scale: 0.85 }}
                 onClick={toggleRecording}
                 aria-label="Stop recording and send"
-                className="p-2.5 rounded-full flex items-center justify-center bg-red-500 text-white shadow-lg shadow-red-500/30"
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-red-500 text-white shadow-lg shadow-red-500/30"
               >
                 <Send size={18} />
               </motion.button>
@@ -2183,7 +2183,7 @@ export default function ChatRoom({
               whileTap={{ scale: 0.9 }}
               onClick={toggleRecording}
               aria-label="Start voice recording"
-              className="p-2.5 rounded-full flex items-center justify-center bg-border dark:bg-border-dark text-text/55 dark:text-text-inv/55 hover:text-primary hover:bg-primary/10 transition-colors"
+              className="w-10 h-10 rounded-full flex items-center justify-center bg-border dark:bg-border-dark text-text/55 dark:text-text-inv/55 hover:text-primary hover:bg-primary/10 transition-colors"
             >
               <Mic size={18} />
             </motion.button>
