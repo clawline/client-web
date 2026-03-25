@@ -671,7 +671,14 @@ export default function ChatRoom({
           return;
         }
         
-        setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; } // Hide thinking indicator
+        setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+        
+        // Show "Restoring…" phase briefly
+        if (!resumeData.isComplete && resumeData.text) {
+          setThinkingPhase('Restoring stream…');
+          setIsThinking(true);
+          setTimeout(() => setIsThinking(false), 800);
+        }
         
         if (resumeData.isComplete) {
           // Stream already completed on server — history.sync will deliver the final message.
@@ -1259,6 +1266,17 @@ export default function ChatRoom({
               <span>Split</span>
             </motion.button>
           )}
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={() => {
+              const newChatId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+              onOpenConversation(newChatId);
+            }}
+            className="p-2 text-text dark:text-text-inv"
+            aria-label="New conversation"
+          >
+            <Plus size={20} />
+          </motion.button>
           <motion.button whileTap={{ scale: 0.9 }} onClick={openHistoryDrawer} className="p-2 text-text dark:text-text-inv" aria-label="Open history drawer">
             <MessageSquare size={20} />
           </motion.button>
