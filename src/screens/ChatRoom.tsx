@@ -1793,7 +1793,7 @@ export default function ChatRoom({
       </div>
 
       {/* Input Area */}
-      <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-surface via-surface dark:from-surface-dark dark:via-surface-dark to-transparent z-30 flex-shrink-0 relative">
+      <div className="px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-surface via-surface dark:from-surface-dark dark:via-surface-dark to-transparent z-30 flex-shrink-0 relative">
         <AnimatePresence>
           {showSlashMenu && (
             <>
