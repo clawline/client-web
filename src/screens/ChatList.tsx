@@ -85,8 +85,10 @@ function getStoredPreview(agentId: string, connectionId: string): { text: string
 
 const LAST_READ_PREFIX = 'openclaw.lastRead.';
 function getLastReadKey(connectionId: string, agentId: string) { return `${LAST_READ_PREFIX}${connectionId}.${agentId}`; }
-export function markAgentAsRead(connectionId: string, agentId: string) {
-  try { localStorage.setItem(getLastReadKey(connectionId, agentId), Date.now().toString()); } catch {}
+export function markAgentAsRead(connectionId: string, agentId: string, messageTs?: number) {
+  // S8: Use server message timestamp when available to avoid clock skew
+  const ts = messageTs || Date.now();
+  try { localStorage.setItem(getLastReadKey(connectionId, agentId), ts.toString()); } catch {}
 }
 function getLastReadTimestamp(connectionId: string, agentId: string): number {
   try { const v = localStorage.getItem(getLastReadKey(connectionId, agentId)); return v ? parseInt(v, 10) : 0; } catch { return 0; }

@@ -337,14 +337,14 @@ export default function ChatRoom({
       await new Promise((r) => setTimeout(r, 300));
       try {
         const payload = msg.replyTo
-          ? channel.sendTextWithParent(msg.text, msg.replyTo.id, agentId || undefined, runtimeConnId)
+          ? channel.sendTextWithParent(msg.text, msg.replyTo, agentId || undefined, runtimeConnId)
           : channel.sendText(msg.text, agentId || undefined, runtimeConnId);
         setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, id: payload.messageId || m.id, deliveryStatus: 'sent' as DeliveryStatus } : m));
       } catch {
         // Send failed — re-enqueue for next reconnect
         await outbox.enqueue({
           id: msg.id, connectionId: runtimeConnId, agentId: agentId || '',
-          content: msg.text, type: 'text', replyTo: msg.replyTo?.id, timestamp: msg.timestamp,
+          content: msg.text, type: 'text', replyTo: msg.replyTo, timestamp: msg.timestamp,
         }).catch(() => {});
       }
     } finally {
@@ -638,6 +638,7 @@ export default function ChatRoom({
         }
 
         // S1: Mark ALL pending/sent user messages as delivered (bot responded = all prior msgs received)
+        setActiveToolCalls([]); // S3: Clear stale tool calls on final message
         setMessages((prev) => {
           let changed = false;
           const next = prev.map((m) => {
@@ -889,7 +890,13 @@ export default function ChatRoom({
                   ? channel.sendTextWithParent(entry.content, entry.replyTo, entry.agentId || undefined, runtimeConnId)
                   : channel.sendText(entry.content, entry.agentId || undefined, runtimeConnId);
               } else if (entry.type === 'media' && entry.mediaUrl) {
-                channel.sendMedia(entry.mediaUrl, entry.mimeType || 'application/octet-stream', entry.agentId || undefined, runtimeConnId);
+                channel.sendMedia({
+                  messageType: 'image',
+                  content: entry.content || '',
+                  mediaUrl: entry.mediaUrl,
+                  mimeType: entry.mimeType || 'application/octet-stream',
+                  agentId: entry.agentId || undefined,
+                }, runtimeConnId);
               }
               // B2: Update UI: pending → sent + dequeue
               setMessages((prev) => prev.map((m) =>
