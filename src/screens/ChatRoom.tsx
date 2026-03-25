@@ -15,6 +15,40 @@ import FileGallery from '../components/FileGallery';
 import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
 import * as outbox from '../services/outbox';
 
+/** Map technical error codes/messages to human-friendly text */
+function humanizeError(error: { code: string; message: string }): { title: string; body: string } {
+  const msg = error.message.toLowerCase();
+  const code = error.code;
+
+  // Auth errors
+  if (msg.includes('forbidden') || msg.includes('unauthorized') || code === 'AUTH_FAILED')
+    return { title: 'Access Denied', body: 'Please check your connection credentials and try again.' };
+  if (msg.includes('agentid not allowed') || msg.includes('agent not found'))
+    return { title: 'Agent Unavailable', body: 'This agent isn\'t available. It may have been removed or renamed.' };
+  if (msg.includes('token') && (msg.includes('invalid') || msg.includes('expired')))
+    return { title: 'Session Expired', body: 'Your session has expired. Please reconnect.' };
+
+  // Connection errors
+  if (msg.includes('channel not found') || msg.includes('not found'))
+    return { title: 'Channel Not Found', body: 'The connection endpoint couldn\'t be reached. Check your setup.' };
+  if (msg.includes('cors') || msg.includes('cross-origin'))
+    return { title: 'Connection Blocked', body: 'A security policy is preventing the connection. Check CORS settings.' };
+  if (msg.includes('timeout') || code === 'TIMEOUT')
+    return { title: 'Request Timed Out', body: 'The server took too long to respond. Try again.' };
+  if (msg.includes('rate limit') || msg.includes('429') || code === 'RATE_LIMITED')
+    return { title: 'Too Many Requests', body: 'Please wait a moment before trying again.' };
+
+  // Send errors
+  if (code === 'SEND_FAILED')
+    return { title: 'Send Failed', body: error.message.includes('not connected') ? 'You\'re offline. Message has been queued and will send when reconnected.' : error.message };
+
+  // Generic
+  if (msg.includes('websocket') || msg.includes('ws'))
+    return { title: 'Connection Issue', body: 'WebSocket connection problem. Check your network.' };
+
+  return { title: 'Something went wrong', body: error.message };
+}
+
 type DeliveryStatus = 'pending' | 'sent' | 'delivered' | 'read';
 
 type Message = {
@@ -1496,7 +1530,9 @@ export default function ChatRoom({
 
       {/* Error toast */}
       <AnimatePresence>
-        {errorToast && (
+        {errorToast && (() => {
+          const friendly = humanizeError(errorToast);
+          return (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1505,14 +1541,15 @@ export default function ChatRoom({
           >
             <WifiOff size={16} className="flex-shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="font-semibold">Connection Error</p>
-              <p className="text-white/80 text-[12px] mt-0.5 break-words">{errorToast.message}</p>
+              <p className="font-semibold">{friendly.title}</p>
+              <p className="text-white/80 text-[12px] mt-0.5 break-words">{friendly.body}</p>
             </div>
             <button onClick={() => setErrorToast(null)} className="flex-shrink-0 text-white/70 hover:text-white">
               <X size={16} />
             </button>
           </motion.div>
-        )}
+          );
+        })()}
       </AnimatePresence>
 
       {/* Messages */}

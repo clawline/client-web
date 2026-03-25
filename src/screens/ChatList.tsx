@@ -646,7 +646,15 @@ export default function ChatList({
       );
     }
     if (agents.length === 0) {
-      return <div className={cn('text-center text-text/25 dark:text-text-inv/20 py-6 text-[12px]', viewMode === 'grid' && 'col-span-full')}>No agents</div>;
+      return (
+        <div className={cn('text-center py-10', viewMode === 'grid' && 'col-span-full')}>
+          <div className="text-3xl mb-2">🤖</div>
+          <p className="text-text/50 dark:text-text-inv/45 text-[14px] font-medium">No agents yet</p>
+          <p className="text-text/30 dark:text-text-inv/25 text-[12px] mt-1 max-w-[240px] mx-auto">
+            Connect to an OpenClaw gateway to start chatting with your AI agents.
+          </p>
+        </div>
+      );
     }
 
     // ── Reorder mode ──
@@ -767,7 +775,7 @@ export default function ChatList({
             {filteredResults.length > 0 ? filteredResults.map(({ agent, connection }, i) => (
               viewMode === 'grid' ? renderGridCard(connection, agent, i) : renderListCard(connection, agent, i, true)
             )) : (
-              <div className={cn('text-center text-text/30 dark:text-text-inv/30 text-[13px]', viewMode === 'grid' ? 'col-span-full mt-10' : 'mt-10')}>No agents found</div>
+              <div className={cn('text-center text-text/30 dark:text-text-inv/30 text-[13px]', viewMode === 'grid' ? 'col-span-full mt-10' : 'mt-10')}>No matching agents found</div>
             )}
           </div>
         ) : showGroupedView ? (
