@@ -1452,7 +1452,7 @@ export default function ChatRoom({
                 initial={isUser ? { opacity: 0, y: 6 } : { opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.15 }}
-                className={`group/msg flex gap-3 px-2 py-0.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors relative overflow-hidden ${grouped ? '' : 'mt-3'}`}
+                className={`group/msg flex gap-3 px-2 py-0.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors relative ${grouped ? '' : 'mt-3'}`}
                 onTouchStart={() => handleTouchStart(msg.id)}
                 onTouchEnd={handleTouchEnd}
                 onTouchMove={handleTouchEnd}
@@ -1793,7 +1793,7 @@ export default function ChatRoom({
       </div>
 
       {/* Input Area */}
-      <div className="px-3 pt-1.5 pb-[env(safe-area-inset-bottom)] bg-surface dark:bg-surface-dark border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative">
+      <div className="px-3 pt-1.5 pb-1 bg-surface dark:bg-surface-dark border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative">
         <AnimatePresence>
           {showSlashMenu && (
             <>
@@ -2190,6 +2190,9 @@ export default function ChatRoom({
           )}
         </div>
       </div>
+
+      {/* Safe area spacer for PWA home indicator — pure cosmetic, no extra padding */}
+      <div className="flex-shrink-0 bg-surface dark:bg-surface-dark" style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
 
       <AnimatePresence>
         {showMemory && (
