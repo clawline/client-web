@@ -157,6 +157,42 @@ class ChannelManager {
   private agentContextListeners = new Set<AgentContextListener>();
   private errorListeners = new Set<ErrorListener>();
 
+  private handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      // Page came back to foreground — reconnect all disconnected instances
+      this.reconnectAll();
+    } else {
+      // Page going to background — pause idle timers so we don't disconnect while user is away
+      for (const instance of this.instances.values()) {
+        this.clearIdleTimer(instance);
+      }
+    }
+  };
+
+  private handleOnline = () => {
+    // Network restored — reconnect all disconnected instances
+    this.reconnectAll();
+  };
+
+  constructor() {
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this.handleOnline);
+    }
+  }
+
+  destroy() {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleOnline);
+    }
+    this.closeAll(true);
+  }
+
   // ── File upload ──
   async uploadFile(file: File, connectionId?: string): Promise<string> {
     const connId = connectionId || getActiveConnectionId();
@@ -553,6 +589,38 @@ class ChannelManager {
     this.instances.forEach((instance) => {
       this.closeInstance(instance, manual);
     });
+  }
+
+  /** Manually trigger reconnect for a specific connection */
+  reconnect(connectionId?: string) {
+    const instance = this.get(connectionId);
+    if (!instance) return;
+    if (instance.ws && instance.ws.readyState === WebSocket.OPEN) return; // already connected
+
+    instance.reconnectAttempts = 0;
+    instance.manualClose = false;
+    this.clearReconnectTimer(instance);
+
+    if (instance.currentServerUrl && instance.currentSenderId) {
+      this.connect({
+        connectionId: instance.connectionId,
+        chatId: instance.currentChatId,
+        senderId: instance.currentSenderId,
+        senderName: instance.currentSenderName,
+        serverUrl: instance.currentServerUrl,
+        agentId: instance.currentAgentId,
+        token: instance.currentAuthToken,
+      });
+    }
+  }
+
+  /** Reconnect all disconnected instances (used by visibility/online handlers) */
+  reconnectAll() {
+    for (const instance of this.instances.values()) {
+      if (instance.currentStatus === 'disconnected' || instance.currentStatus === 'reconnecting') {
+        this.reconnect(instance.connectionId);
+      }
+    }
   }
 
   private closeInstance(instance: ChannelInstance, manual = true) {
@@ -992,6 +1060,14 @@ export function connect(opts: ConnectOptions) {
 
 export function close(manual = true, connectionId?: string) {
   manager.close(connectionId, manual);
+}
+
+export function reconnect(connectionId?: string) {
+  manager.reconnect(connectionId);
+}
+
+export function reconnectAll() {
+  manager.reconnectAll();
 }
 
 export function sendRaw(packet: { type: string; data: Record<string, unknown> }, connectionId?: string) {

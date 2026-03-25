@@ -6,6 +6,7 @@ import * as channel from '../services/clawChannel';
 import type { AgentContext, AgentInfo, ConversationSummary } from '../services/clawChannel';
 import { getUserId } from '../App';
 import { getActiveConnection, getConnectionById } from '../services/connectionStore';
+import { markAgentAsRead } from './ChatList';
 import ActionCard from '../components/ActionCard';
 import AgentContextViewer from '../components/AgentContextViewer';
 import MarkdownRenderer from '../components/MarkdownRenderer';
@@ -245,6 +246,10 @@ export default function ChatRoom({
     );
     setIsContextLoading(false);
     setShowSkills(false);
+    // Mark agent as read when entering chat
+    if (connId && agentId) {
+      markAgentAsRead(connId, agentId);
+    }
   }, [agentId, connId, runtimeConnId]);
 
   useEffect(() => {
@@ -1125,7 +1130,15 @@ export default function ChatRoom({
             {wsStatus === 'connected' && <><div className="w-1.5 h-1.5 bg-primary rounded-full" /> Connected</>}
             {wsStatus === 'connecting' && <><Loader2 size={10} className="animate-spin" /> Connecting…</>}
             {wsStatus === 'reconnecting' && <><Loader2 size={10} className="animate-spin" /> Reconnecting…</>}
-            {wsStatus === 'disconnected' && <><WifiOff size={10} /> Disconnected</>}
+            {wsStatus === 'disconnected' && (
+              <button
+                onClick={() => channel.reconnect(runtimeConnId)}
+                className="flex items-center gap-1 hover:opacity-80 transition-opacity"
+                aria-label="Tap to reconnect"
+              >
+                <RefreshCw size={10} /> Tap to reconnect
+              </button>
+            )}
           </span>
         </div>
         <div className="flex items-center gap-1">

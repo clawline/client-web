@@ -82,6 +82,19 @@ function getStoredPreview(agentId: string, connectionId: string): { text: string
   try { const c = localStorage.getItem(getPreviewKey(connectionId, agentId)); if (c) return JSON.parse(c); } catch {}
   return null;
 }
+
+const LAST_READ_PREFIX = 'openclaw.lastRead.';
+function getLastReadKey(connectionId: string, agentId: string) { return `${LAST_READ_PREFIX}${connectionId}.${agentId}`; }
+export function markAgentAsRead(connectionId: string, agentId: string) {
+  try { localStorage.setItem(getLastReadKey(connectionId, agentId), Date.now().toString()); } catch {}
+}
+function getLastReadTimestamp(connectionId: string, agentId: string): number {
+  try { const v = localStorage.getItem(getLastReadKey(connectionId, agentId)); return v ? parseInt(v, 10) : 0; } catch { return 0; }
+}
+function hasUnread(connectionId: string, agentId: string, lastMessageTs?: number): boolean {
+  if (!lastMessageTs) return false;
+  return lastMessageTs > getLastReadTimestamp(connectionId, agentId);
+}
 function getConnectionLabel(c: ServerConnection) { return c.name || c.displayName || 'Server'; }
 function getStatusClasses(status: ChannelStatus) {
   if (status === 'connected') return 'bg-primary';
@@ -478,6 +491,7 @@ export default function ChatList({
     const isTyping = typingAgents.has(previewKey);
     const isThinking = thinkingAgents.has(previewKey);
     const showStatus = isThinking || isTyping;
+    const unread = !isActive && hasUnread(connection.id, agent.id, lastMessage?.timestamp);
 
     return (
       <motion.div key={agent.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -522,12 +536,17 @@ export default function ChatList({
             )}
             {showSource && <p className="mt-0.5 text-[10px] text-text/35 dark:text-text-inv/30 truncate">{getConnectionLabel(connection)}</p>}
           </div>
-          {/* Timestamp */}
-          {lastMessage?.timestamp && (
-            <span className={cn('text-[10px] shrink-0 self-start mt-0.5', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/35 dark:text-text-inv/30')}>
-              {formatRelativeTime(lastMessage.timestamp)}
-            </span>
-          )}
+          {/* Timestamp + Unread */}
+          <div className="flex flex-col items-end gap-1 shrink-0 self-start mt-0.5">
+            {lastMessage?.timestamp && (
+              <span className={cn('text-[10px]', unread ? 'text-primary font-medium' : compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/35 dark:text-text-inv/30')}>
+                {formatRelativeTime(lastMessage.timestamp)}
+              </span>
+            )}
+            {unread && (
+              <span className="w-2.5 h-2.5 bg-primary rounded-full" />
+            )}
+          </div>
         </button>
       </motion.div>
     );
