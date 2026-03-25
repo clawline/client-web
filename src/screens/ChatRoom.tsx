@@ -14,6 +14,8 @@ import MemorySheet from '../components/MemorySheet';
 import FileGallery from '../components/FileGallery';
 import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
 
+type DeliveryStatus = 'pending' | 'sent' | 'delivered' | 'read';
+
 type Message = {
   id: string;
   sender: 'user' | 'ai';
@@ -24,6 +26,7 @@ type Message = {
   replyTo?: string;
   timestamp?: number;
   isStreaming?: boolean; // Temporary streaming message indicator
+  deliveryStatus?: DeliveryStatus; // WhatsApp-style delivery ticks
 };
 
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
@@ -97,6 +100,29 @@ function formatRelativeTime(ts?: number) {
 function isDifferentDay(ts1?: number, ts2?: number) {
   if (!ts1 || !ts2) return true;
   return new Date(ts1).toDateString() !== new Date(ts2).toDateString();
+}
+
+/** WhatsApp-style delivery status ticks */
+function DeliveryTicks({ status, isUser }: { status?: DeliveryStatus; isUser: boolean }) {
+  if (!isUser || !status) return null;
+  const base = 'inline-block ml-1 align-middle';
+  if (status === 'pending') {
+    // Clock icon — message queued
+    return <svg className={`${base} opacity-55`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+  }
+  if (status === 'sent') {
+    // Single grey tick
+    return <svg className={`${base} opacity-55`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>;
+  }
+  if (status === 'delivered') {
+    // Double grey tick
+    return <svg className={`${base} opacity-55`} width="16" height="14" viewBox="0 0 28 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/><polyline points="26 6 15 17 12 14"/></svg>;
+  }
+  if (status === 'read') {
+    // Double blue tick
+    return <svg className={`${base} text-sky-400`} width="16" height="14" viewBox="0 0 28 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/><polyline points="26 6 15 17 12 14"/></svg>;
+  }
+  return null;
 }
 
 // --- File to data URL ---
@@ -520,6 +546,14 @@ export default function ChatRoom({
             icon: '/icon-192.svg',
           });
         }
+
+        // Mark latest user message as delivered (bot responded = delivery confirmed)
+        setMessages((prev) => {
+          const lastUserIdx = [...prev].reverse().findIndex((m) => m.sender === 'user' && m.deliveryStatus !== 'delivered' && m.deliveryStatus !== 'read');
+          if (lastUserIdx === -1) return prev;
+          const idx = prev.length - 1 - lastUserIdx;
+          return prev.map((m, i) => i === idx ? { ...m, deliveryStatus: 'delivered' as DeliveryStatus } : m);
+        });
       } else if (packet.type === 'reaction.add' || packet.type === 'reaction.remove') {
         const { messageId, emoji } = packet.data as { messageId: string; emoji: string };
         setMessages((prev) => prev.map((m) => {
@@ -543,6 +577,15 @@ export default function ChatRoom({
         }
       } else if (packet.type === 'thinking.end') {
         // keep thinking visible until message.send arrives
+      } else if (packet.type === 'status.delivered' || packet.type === 'status.read') {
+        // Channel status event: update delivery status on matching user message
+        const d = packet.data as { messageId?: string; status?: string };
+        if (d.messageId) {
+          const newStatus: DeliveryStatus = packet.type === 'status.read' ? 'read' : 'delivered';
+          setMessages((prev) => prev.map((m) =>
+            m.id === d.messageId && m.sender === 'user' ? { ...m, deliveryStatus: newStatus } : m
+          ));
+        }
       } else if (packet.type === 'message.edit') {
         const d = packet.data as { messageId: string; content: string };
         setMessages((prev) => prev.map((m) => m.id === d.messageId ? { ...m, text: d.content } : m));
@@ -859,6 +902,7 @@ export default function ChatRoom({
       mediaType: isImage ? 'image' : 'file',
       mediaUrl: dataUrl,
       timestamp: Date.now(),
+      deliveryStatus: 'sent',
     };
     setMessages((prev) => [...prev, userMsg]);
     setPendingFile(null);
@@ -927,6 +971,7 @@ export default function ChatRoom({
         text: capturedInput,
         replyTo: replyId,
         timestamp: payload.timestamp || Date.now(),
+        deliveryStatus: 'sent',
       };
       setMessages((prev) => [...prev, userMsg]);
     } catch {
@@ -946,7 +991,7 @@ export default function ChatRoom({
     }
     try {
       const payload = channel.sendText(text, agentId || undefined, runtimeConnId);
-      const userMsg: Message = { id: payload.messageId || Date.now().toString(), sender: 'user', text, timestamp: payload.timestamp || Date.now() };
+      const userMsg: Message = { id: payload.messageId || Date.now().toString(), sender: 'user', text, timestamp: payload.timestamp || Date.now(), deliveryStatus: 'sent' };
       setMessages((prev) => [...prev, userMsg]);
     } catch {
       setMessages((prev) => [
@@ -996,6 +1041,7 @@ export default function ChatRoom({
             sender: 'user',
             text: '[Voice]',
             mediaType: 'voice',
+            deliveryStatus: 'sent',
           };
           setMessages((prev) => [...prev, userMsg]);
 
@@ -1062,7 +1108,7 @@ export default function ChatRoom({
       } catch { /* ignore */ }
     } else {
       // send emoji as a message directly
-      const emojiMsg: Message = { id: Date.now().toString(), sender: 'user', text: emoji, timestamp: Date.now() };
+      const emojiMsg: Message = { id: Date.now().toString(), sender: 'user', text: emoji, timestamp: Date.now(), deliveryStatus: 'sent' };
       setMessages((prev) => [...prev, emojiMsg]);
       try {
         channel.sendText(emoji, undefined, runtimeConnId);
@@ -1483,7 +1529,7 @@ export default function ChatRoom({
                         {msg.text && <p className="mt-2 text-[14px]">{msg.text}</p>}
                         {msg.timestamp && (
                           <span className={`md:hidden text-[10px] float-right mt-1 ml-3 tabular-nums ${isUser ? 'text-white/55' : 'text-text/35 dark:text-text-inv/30'}`}>
-                            {formatTime(msg.timestamp)}
+                            {formatTime(msg.timestamp)}{isUser && <DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />}
                           </span>
                         )}
                       </div>
@@ -1509,7 +1555,7 @@ export default function ChatRoom({
                         <span className="whitespace-pre-wrap break-words">{msg.text}</span>
                         {msg.timestamp && (
                           <span className="md:hidden text-[10px] text-white/55 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
-                            {formatTime(msg.timestamp)}
+                            {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
                           </span>
                         )}
                       </div>
@@ -1567,10 +1613,10 @@ export default function ChatRoom({
                 {/* Inline message actions — always visible next to timestamp on desktop */}
                   {!isStreaming && (
                   <div className={`hidden md:flex items-center gap-0.5 mt-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                    {/* Timestamp */}
+                    {/* Timestamp + Delivery status */}
                     {msg.timestamp && (
                       <span className="text-[10px] text-text/40 dark:text-text-inv/35 mr-1.5 tabular-nums">
-                        {formatTime(msg.timestamp)}
+                        {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
                       </span>
                     )}
 
