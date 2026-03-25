@@ -1921,6 +1921,23 @@ export default function ChatRoom({
               exit={{ opacity: 0, y: 10 }}
               className="flex items-center gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
             >
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => { setInputValue('/'); setShowSlashMenu(true); }}
+                className="flex-shrink-0 inline-flex items-center gap-1 w-8 h-8 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                title={`Skills (${skillCount})`}
+              >
+                <Puzzle size={14} />
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowContextViewer(true)}
+                className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                title="Context"
+              >
+                <FileText size={14} />
+              </motion.button>
+              <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
               {CONTEXT_SUGGESTIONS.map((sug) => (
                 <motion.button
                   key={sug.label}
@@ -1943,6 +1960,23 @@ export default function ChatRoom({
               exit={{ opacity: 0 }}
               className="flex items-center gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
             >
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => { setInputValue('/'); setShowSlashMenu(true); }}
+                className="flex-shrink-0 inline-flex items-center gap-1 w-8 h-8 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                title={`Skills (${skillCount})`}
+              >
+                <Puzzle size={14} />
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowContextViewer(true)}
+                className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                title="Context"
+              >
+                <FileText size={14} />
+              </motion.button>
+              <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
               {QUICK_COMMANDS.map((cmd) => (
                 <motion.button
                   key={cmd.label}
