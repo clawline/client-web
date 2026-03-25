@@ -523,7 +523,7 @@ export default function ChatList({
             <div className="flex items-center gap-1.5">
               <h3 className={cn('font-semibold truncate', compact ? 'text-[13px] text-text/90 dark:text-text-inv/90' : 'text-[15px]')}>{agent.name}</h3>
               {agent.isDefault && <span className="text-[8px] font-medium text-text/40 dark:text-text-inv/35 bg-text/[0.05] dark:bg-text-inv/[0.05] rounded px-1 py-px leading-none shrink-0">default</span>}
-              {agent.model && <span className={cn('text-[9px] truncate ml-auto shrink-0', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/30 dark:text-text-inv/30')}>{agent.model.split('/').pop()}</span>}
+              {agent.model && <span className={cn('text-[9px] truncate ml-auto shrink-0', compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/50 dark:text-text-inv/45')}>{agent.model.split('/').pop()}</span>}
             </div>
             {isThinking ? (
               <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[11px]' : 'text-[13px]')}>思考中... <TypingDots /></p>
@@ -532,14 +532,14 @@ export default function ChatList({
             ) : preview ? (
               <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/55 dark:text-text-inv/50' : 'text-[13px] text-text/50 dark:text-text-inv/45')}>{preview}</p>
             ) : (
-              <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/30 dark:text-text-inv/25' : 'text-[13px] text-text/30 dark:text-text-inv/25')}>Start a conversation</p>
+              <p className={cn('truncate mt-0.5', compact ? 'text-[11px] text-text/50 dark:text-text-inv/40' : 'text-[13px] text-text/50 dark:text-text-inv/40')}>Start a conversation</p>
             )}
-            {showSource && <p className="mt-0.5 text-[10px] text-text/35 dark:text-text-inv/30 truncate">{getConnectionLabel(connection)}</p>}
+            {showSource && <p className="mt-0.5 text-[10px] text-text/50 dark:text-text-inv/45 truncate">{getConnectionLabel(connection)}</p>}
           </div>
           {/* Timestamp + Unread */}
           <div className="flex flex-col items-end gap-1 shrink-0 self-start mt-0.5">
             {lastMessage?.timestamp && (
-              <span className={cn('text-[10px]', unread ? 'text-primary font-medium' : compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/35 dark:text-text-inv/30')}>
+              <span className={cn('text-[10px]', unread ? 'text-primary font-medium' : compact ? 'text-text/40 dark:text-text-inv/35' : 'text-text/50 dark:text-text-inv/45')}>
                 {formatRelativeTime(lastMessage.timestamp)}
               </span>
             )}
@@ -593,9 +593,9 @@ export default function ChatList({
               {lastMessage.text.length > 24 ? `${lastMessage.text.slice(0, 24)}…` : lastMessage.text}
             </div>
           ) : agent.model ? (
-            <span className="text-[9px] text-text/30 dark:text-text-inv/25 truncate w-full mt-1">{agent.model.split('/').pop()}</span>
+            <span className="text-[9px] text-text/50 dark:text-text-inv/40 truncate w-full mt-1">{agent.model.split('/').pop()}</span>
           ) : null}
-          {agent.isDefault && <span className="text-[7px] font-medium text-text/35 dark:text-text-inv/30 bg-text/[0.04] dark:bg-text-inv/[0.04] rounded px-1 py-px mt-1">default</span>}
+          {agent.isDefault && <span className="text-[7px] font-medium text-text/50 dark:text-text-inv/45 bg-text/[0.04] dark:bg-text-inv/[0.04] rounded px-1 py-px mt-1">default</span>}
         </button>
       </motion.div>
     );
@@ -640,8 +640,8 @@ export default function ChatList({
     if (isLoading) {
       return (
         <div className={cn('flex items-center justify-center gap-2 py-6', viewMode === 'grid' && 'col-span-full')}>
-          <Loader2 size={16} className="text-text/30 animate-spin" />
-          <span className="text-text/30 dark:text-text-inv/25 text-[12px]">Loading…</span>
+          <Loader2 size={16} className="text-text/50 animate-spin" />
+          <span className="text-text/50 dark:text-text-inv/40 text-[12px]">Loading…</span>
         </div>
       );
     }
@@ -650,7 +650,7 @@ export default function ChatList({
         <div className={cn('text-center py-10', viewMode === 'grid' && 'col-span-full')}>
           <div className="text-3xl mb-2">🤖</div>
           <p className="text-text/50 dark:text-text-inv/45 text-[14px] font-medium">No agents yet</p>
-          <p className="text-text/30 dark:text-text-inv/25 text-[12px] mt-1 max-w-[240px] mx-auto">
+          <p className="text-text/50 dark:text-text-inv/40 text-[12px] mt-1 max-w-[240px] mx-auto">
             Connect to an OpenClaw gateway to start chatting with your AI agents.
           </p>
         </div>
@@ -700,10 +700,10 @@ export default function ChatList({
         </div>
         <div className="flex-1 flex flex-col items-center justify-center px-8">
           <div className="w-12 h-12 rounded-2xl bg-text/[0.04] dark:bg-text-inv/[0.04] flex items-center justify-center mb-4">
-            <Server size={20} className="text-text/25 dark:text-text-inv/20" />
+            <Server size={20} className="text-text/25 dark:text-text-inv/35" />
           </div>
           <p className="text-[15px] font-medium text-text/60 dark:text-text-inv/50 mb-1">No servers connected</p>
-          <p className="text-[13px] text-text/30 dark:text-text-inv/25 mb-5 text-center">Add a server to start chatting with agents</p>
+          <p className="text-[13px] text-text/50 dark:text-text-inv/40 mb-5 text-center">Add a server to start chatting with agents</p>
           <button onClick={onAddServer} className="px-5 py-2 rounded-lg bg-primary text-white text-[13px] font-medium hover:bg-primary-deep transition-colors">
             Add Server
           </button>
@@ -725,7 +725,7 @@ export default function ChatList({
             {!reorderMode && (
               <>
                 <motion.button whileTap={{ scale: 0.9 }} onClick={toggleViewMode}
-                  className="p-1.5 text-text/35 dark:text-text-inv/30 hover:text-primary transition-colors"
+                  className="p-1.5 text-text/50 dark:text-text-inv/45 hover:text-primary transition-colors"
                   title={viewMode === 'list' ? 'Grid view' : 'List view'}>
                   {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
                 </motion.button>
@@ -736,13 +736,13 @@ export default function ChatList({
               </>
             )}
             <motion.button whileTap={{ scale: 0.9 }} onClick={() => setReorderMode(m => !m)}
-              className={cn('p-1.5 rounded-md transition-colors', reorderMode ? 'text-white bg-primary' : 'text-text/35 dark:text-text-inv/30 hover:text-primary')}
+              className={cn('p-1.5 rounded-md transition-colors', reorderMode ? 'text-white bg-primary' : 'text-text/50 dark:text-text-inv/45 hover:text-primary')}
               title={reorderMode ? 'Done' : 'Reorder agents'}>
               {reorderMode ? <Check size={14} /> : <ArrowUpDown size={14} />}
             </motion.button>
             {!reorderMode && (
               <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded-full',
-                connectedCount > 0 ? 'text-primary/70 bg-primary/8' : 'text-text/30 dark:text-text-inv/25 bg-text/5 dark:bg-text-inv/5')}>
+                connectedCount > 0 ? 'text-primary/70 bg-primary/8' : 'text-text/50 dark:text-text-inv/40 bg-text/5 dark:bg-text-inv/5')}>
                 {connectedCount}/{connections.length}
               </span>
             )}
@@ -752,9 +752,9 @@ export default function ChatList({
         {/* Search — hidden in reorder mode */}
         {!reorderMode && (
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text/30 dark:text-text-inv/30" size={compact ? 14 : 16} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text/50 dark:text-text-inv/45" size={compact ? 14 : 16} />
             <Input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search agents…"
-              className={cn('pl-9 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] border-0 placeholder:text-text/30 dark:placeholder:text-text-inv/25',
+              className={cn('pl-9 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] border-0 placeholder:text-text/50 dark:placeholder:text-text-inv/40',
                 compact ? 'py-1.5 text-[12px] pl-8' : 'py-2 text-[13px]')} />
           </div>
         )}
@@ -775,7 +775,7 @@ export default function ChatList({
             {filteredResults.length > 0 ? filteredResults.map(({ agent, connection }, i) => (
               viewMode === 'grid' ? renderGridCard(connection, agent, i) : renderListCard(connection, agent, i, true)
             )) : (
-              <div className={cn('text-center text-text/30 dark:text-text-inv/30 text-[13px]', viewMode === 'grid' ? 'col-span-full mt-10' : 'mt-10')}>No matching agents found</div>
+              <div className={cn('text-center text-text/50 dark:text-text-inv/45 text-[13px]', viewMode === 'grid' ? 'col-span-full mt-10' : 'mt-10')}>No matching agents found</div>
             )}
           </div>
         ) : showGroupedView ? (
@@ -792,7 +792,7 @@ export default function ChatList({
                     <span className="text-[11px] font-medium uppercase tracking-wider text-text/40 dark:text-text-inv/35 truncate flex-1">
                       {getConnectionLabel(connection)}
                     </span>
-                    <ChevronDown size={12} className={cn('shrink-0 text-text/25 dark:text-text-inv/20 transition-transform duration-200', isExpanded && 'rotate-180')} />
+                    <ChevronDown size={12} className={cn('shrink-0 text-text/25 dark:text-text-inv/35 transition-transform duration-200', isExpanded && 'rotate-180')} />
                   </button>
                   <AnimatePresence initial={false}>
                     {isExpanded && (
@@ -814,7 +814,7 @@ export default function ChatList({
         {!reorderMode && (
           <button onClick={onAddServer}
             className={cn('w-full mt-3 py-2.5 flex items-center justify-center gap-1.5',
-              'text-[12px] font-medium text-text/30 dark:text-text-inv/25',
+              'text-[12px] font-medium text-text/50 dark:text-text-inv/40',
               'rounded-lg border border-dashed border-text/10 dark:border-text-inv/10',
               'hover:border-text/20 dark:hover:border-text-inv/15 hover:text-text/45 dark:hover:text-text-inv/35',
               'transition-colors')}>

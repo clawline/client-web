@@ -1668,7 +1668,7 @@ export default function ChatRoom({
                         <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover" />
                         {msg.text && <p className="mt-2 text-[14px]">{msg.text}</p>}
                         {msg.timestamp && (
-                          <span className={`md:hidden text-[10px] float-right mt-1 ml-3 tabular-nums ${isUser ? 'text-white/55' : 'text-text/35 dark:text-text-inv/30'}`}>
+                          <span className={`md:hidden text-[10px] float-right mt-1 ml-3 tabular-nums ${isUser ? 'text-white/55' : 'text-text/50 dark:text-text-inv/45'}`}>
                             {formatTime(msg.timestamp)}{isUser && <DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />}
                           </span>
                         )}
@@ -1725,7 +1725,7 @@ export default function ChatRoom({
                         )}
                         {/* WhatsApp-style inline timestamp + model (mobile only) */}
                         {!isStreaming && msg.timestamp && (
-                          <span className="md:hidden text-[10px] text-text/35 dark:text-text-inv/30 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
+                          <span className="md:hidden text-[10px] text-text/50 dark:text-text-inv/45 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
                             {formatTime(msg.timestamp)}{agentInfo?.model && (
                               <span className="ml-1.5 border border-border dark:border-border-dark rounded-full px-1.5 py-px text-text/40 dark:text-text-inv/35 font-medium">
                                 {agentInfo.model.split('/').pop()}
@@ -2364,7 +2364,7 @@ export default function ChatRoom({
                       onChange={(e) => setFileCaption(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSendPendingFile()}
                       placeholder="Add a caption..."
-                      className="w-full bg-transparent text-[12px] outline-none text-text/70 dark:text-text-inv/70 placeholder:text-text/30 dark:placeholder:text-text-inv/30"
+                      className="w-full bg-transparent text-[12px] outline-none text-text/70 dark:text-text-inv/70 placeholder:text-text/45 dark:placeholder:text-text-inv/40"
                       autoFocus
                     />
                   </div>
