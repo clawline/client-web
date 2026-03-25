@@ -1793,7 +1793,7 @@ export default function ChatRoom({
       </div>
 
       {/* Input Area */}
-      <div className="px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-surface via-surface dark:from-surface-dark dark:via-surface-dark to-transparent z-30 flex-shrink-0 relative">
+      <div className="px-3 pt-1.5 pb-[env(safe-area-inset-bottom)] bg-surface dark:bg-surface-dark border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative">
         <AnimatePresence>
           {showSlashMenu && (
             <>
@@ -1919,7 +1919,7 @@ export default function ChatRoom({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="flex items-center gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
+              className="flex items-center gap-1.5 overflow-x-auto pb-1 px-0.5 scrollbar-hide"
             >
               <motion.button
                 whileTap={{ scale: 0.95 }}
@@ -1958,7 +1958,7 @@ export default function ChatRoom({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex items-center gap-1.5 overflow-x-auto pb-2 px-1 scrollbar-hide"
+              className="flex items-center gap-1.5 overflow-x-auto pb-1 px-0.5 scrollbar-hide"
             >
               <motion.button
                 whileTap={{ scale: 0.95 }}
