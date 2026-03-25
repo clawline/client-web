@@ -297,6 +297,7 @@ export default function ChatRoom({
   const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const thinkingStartRef = useRef<number>(0);
   const [activeToolCalls, setActiveToolCalls] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number }[]>([]);
+  const retryingRef = useRef<Set<string>>(new Set()); // B1: prevent double-tap retry
   const [isRecording, setIsRecording] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -323,6 +324,33 @@ export default function ChatRoom({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const skills = agentInfo?.skills ?? [];
+
+  // B1: Retry pending message — dequeue first, send, re-enqueue on failure
+  const retryMessage = async (msg: Message) => {
+    if (retryingRef.current.has(msg.id)) return; // prevent double-tap
+    retryingRef.current.add(msg.id);
+    try {
+      // Dequeue from outbox BEFORE sending to prevent outbox flush duplicate
+      await outbox.dequeue(msg.id).catch(() => {});
+      channel.reconnect(runtimeConnId);
+      // Give reconnect a moment to establish
+      await new Promise((r) => setTimeout(r, 300));
+      try {
+        const payload = msg.replyTo
+          ? channel.sendTextWithParent(msg.text, msg.replyTo.id, agentId || undefined, runtimeConnId)
+          : channel.sendText(msg.text, agentId || undefined, runtimeConnId);
+        setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, id: payload.messageId || m.id, deliveryStatus: 'sent' as DeliveryStatus } : m));
+      } catch {
+        // Send failed — re-enqueue for next reconnect
+        await outbox.enqueue({
+          id: msg.id, connectionId: runtimeConnId, agentId: agentId || '',
+          content: msg.text, type: 'text', replyTo: msg.replyTo?.id, timestamp: msg.timestamp,
+        }).catch(() => {});
+      }
+    } finally {
+      retryingRef.current.delete(msg.id);
+    }
+  };
   const skillCount = skills.length;
 
   useEffect(() => {
@@ -609,12 +637,17 @@ export default function ChatRoom({
           });
         }
 
-        // Mark latest user message as delivered (bot responded = delivery confirmed)
+        // S1: Mark ALL pending/sent user messages as delivered (bot responded = all prior msgs received)
         setMessages((prev) => {
-          const lastUserIdx = [...prev].reverse().findIndex((m) => m.sender === 'user' && m.deliveryStatus !== 'delivered' && m.deliveryStatus !== 'read');
-          if (lastUserIdx === -1) return prev;
-          const idx = prev.length - 1 - lastUserIdx;
-          return prev.map((m, i) => i === idx ? { ...m, deliveryStatus: 'delivered' as DeliveryStatus } : m);
+          let changed = false;
+          const next = prev.map((m) => {
+            if (m.sender === 'user' && m.deliveryStatus && m.deliveryStatus !== 'delivered' && m.deliveryStatus !== 'read') {
+              changed = true;
+              return { ...m, deliveryStatus: 'delivered' as DeliveryStatus };
+            }
+            return m;
+          });
+          return changed ? next : prev;
         });
       } else if (packet.type === 'reaction.add' || packet.type === 'reaction.remove') {
         const { messageId, emoji } = packet.data as { messageId: string; emoji: string };
@@ -848,22 +881,27 @@ export default function ChatRoom({
         setTimeout(() => setShowReconnected(false), 2500);
 
         // Flush offline outbox — send pending messages
-        outbox.getByConnection(runtimeConnId).then((entries) => {
+        outbox.getByConnection(runtimeConnId).then(async (entries) => {
           for (const entry of entries) {
             try {
               if (entry.type === 'text') {
                 entry.replyTo
                   ? channel.sendTextWithParent(entry.content, entry.replyTo, entry.agentId || undefined, runtimeConnId)
                   : channel.sendText(entry.content, entry.agentId || undefined, runtimeConnId);
+              } else if (entry.type === 'media' && entry.mediaUrl) {
+                channel.sendMedia(entry.mediaUrl, entry.mimeType || 'application/octet-stream', entry.agentId || undefined, runtimeConnId);
               }
-              // Update UI: pending → sent
+              // B2: Update UI: pending → sent + dequeue
               setMessages((prev) => prev.map((m) =>
                 m.id === entry.id ? { ...m, deliveryStatus: 'sent' as DeliveryStatus } : m
               ));
-              outbox.dequeue(entry.id).catch(() => {});
-            } catch {
-              // Still offline or send failed — keep in outbox
-              break;
+              await outbox.dequeue(entry.id);
+            } catch (err) {
+              // B2: continue to next entry instead of blocking all — only break on connection errors
+              const isConnectionError = !navigator.onLine || (err instanceof Error && /closed|not open|CLOSING/i.test(err.message));
+              if (isConnectionError) break; // connection-level: stop trying
+              // else: per-message error, skip this one and continue
+              continue;
             }
           }
         }).catch(() => {});
@@ -887,6 +925,11 @@ export default function ChatRoom({
       if (agentReadyTimeoutRef.current) {
         clearTimeout(agentReadyTimeoutRef.current);
         agentReadyTimeoutRef.current = null;
+      }
+      // S2: Clean up thinking timer on unmount
+      if (thinkingTimerRef.current) {
+        clearInterval(thinkingTimerRef.current);
+        thinkingTimerRef.current = null;
       }
       // Don't close channel here — next connect() will replace it,
       // and StrictMode double-invoke would kill the connection prematurely
@@ -1750,14 +1793,7 @@ export default function ChatRoom({
                         {msg.deliveryStatus === 'pending' && (
                           <div className="md:hidden flex items-center gap-1 mt-1">
                             <button
-                              onClick={() => {
-                                channel.reconnect(runtimeConnId);
-                                try {
-                                  const payload = channel.sendText(msg.text, agentId || undefined, runtimeConnId);
-                                  setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, id: payload.messageId || m.id, deliveryStatus: 'sent' as DeliveryStatus } : m));
-                                  outbox.dequeue(msg.id).catch(() => {});
-                                } catch { /* still offline */ }
-                              }}
+                              onClick={() => retryMessage(msg)}
                               className="text-[11px] text-red-200 underline"
                             >
                               ⟳ Retry
@@ -1829,14 +1865,7 @@ export default function ChatRoom({
                     {/* Retry button for pending (offline) messages */}
                     {isUser && msg.deliveryStatus === 'pending' && (
                       <button
-                        onClick={() => {
-                          channel.reconnect(runtimeConnId);
-                          try {
-                            const payload = channel.sendText(msg.text, agentId || undefined, runtimeConnId);
-                            setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, id: payload.messageId || m.id, deliveryStatus: 'sent' as DeliveryStatus } : m));
-                            outbox.dequeue(msg.id).catch(() => {});
-                          } catch { /* still offline */ }
-                        }}
+                        onClick={() => retryMessage(msg)}
                         className="text-[10px] text-red-400 hover:text-red-500 underline"
                       >
                         ⟳ Retry
