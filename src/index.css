@@ -157,6 +157,12 @@ input, select, textarea {
   font-size: 16px !important;
 }
 
+/* Safe area bottom padding for PWA — fallback 4px for non-PWA browsers */
+.safe-area-bottom {
+  padding-bottom: 4px;
+  padding-bottom: env(safe-area-inset-bottom, 4px);
+}
+
 /* Prevent images/media from causing horizontal overflow */
 img, video, canvas, svg {
   max-width: 100%;

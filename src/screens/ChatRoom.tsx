@@ -1475,7 +1475,7 @@ export default function ChatRoom({
                 </div>
 
                 {/* Content column */}
-                <div className="flex-1 min-w-0 overflow-hidden">
+                <div className="flex-1 min-w-0 overflow-x-hidden">
                   {/* Header row: name + timestamp (only for first in group) */}
                   {!grouped && (
                     <div className="flex items-baseline gap-2 mb-0.5">
@@ -1496,7 +1496,7 @@ export default function ChatRoom({
                   )}
 
                   {/* Message content */}
-                  <div className={`text-[15px] leading-relaxed relative overflow-hidden ${
+                  <div className={`text-[15px] leading-relaxed relative overflow-x-hidden ${
                     isErrorMsg ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-inv'
                   } ${hasCodeBlock ? 'border-l-[3px] border-l-primary/50 pl-3' : ''}`}>
                     {/* Quote reference */}
@@ -1793,7 +1793,7 @@ export default function ChatRoom({
       </div>
 
       {/* Input Area */}
-      <div className="px-3 pt-1.5 pb-1 bg-surface dark:bg-surface-dark border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative">
+      <div className="px-3 pt-1.5 bg-white/60 dark:bg-card-alt/60 backdrop-blur-md border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative safe-area-bottom">
         <AnimatePresence>
           {showSlashMenu && (
             <>
@@ -1924,7 +1924,7 @@ export default function ChatRoom({
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => { setInputValue('/'); setShowSlashMenu(true); }}
-                className="flex-shrink-0 inline-flex items-center gap-1 w-8 h-8 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center gap-1 w-7 h-7 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
                 title={`Skills (${skillCount})`}
               >
                 <Puzzle size={14} />
@@ -1932,7 +1932,7 @@ export default function ChatRoom({
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
                 title="Context"
               >
                 <FileText size={14} />
@@ -1943,7 +1943,7 @@ export default function ChatRoom({
                   key={sug.label}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setInputValue(sug.label)}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 bg-white/80 dark:bg-card-alt/80 border border-border/60 dark:border-border-dark/60 rounded-full text-[11px] font-medium text-text/55 dark:text-text-inv/55 hover:border-primary/25 hover:text-primary transition-colors"
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 bg-white/80 dark:bg-card-alt/80 border border-border/60 dark:border-border-dark/60 rounded-full text-[11px] font-medium text-text/55 dark:text-text-inv/55 hover:border-primary/25 hover:text-primary transition-colors"
                 >
                   <span>{sug.emoji}</span>
                   {sug.label}
@@ -1963,7 +1963,7 @@ export default function ChatRoom({
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => { setInputValue('/'); setShowSlashMenu(true); }}
-                className="flex-shrink-0 inline-flex items-center gap-1 w-8 h-8 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center gap-1 w-7 h-7 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
                 title={`Skills (${skillCount})`}
               >
                 <Puzzle size={14} />
@@ -1971,7 +1971,7 @@ export default function ChatRoom({
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
                 title="Context"
               >
                 <FileText size={14} />
@@ -1982,7 +1982,7 @@ export default function ChatRoom({
                   key={cmd.label}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => quickSend(cmd.label)}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 bg-white/90 dark:bg-card-alt/90 border border-border/70 dark:border-border-dark/70 rounded-full text-[11px] font-medium text-text/55 dark:text-text-inv/55 hover:border-primary/35 hover:text-primary transition-colors"
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 bg-white/90 dark:bg-card-alt/90 border border-border/70 dark:border-border-dark/70 rounded-full text-[11px] font-medium text-text/55 dark:text-text-inv/55 hover:border-primary/35 hover:text-primary transition-colors"
                 >
                   <span>{cmd.emoji}</span>
                   {cmd.label}
@@ -2190,9 +2190,6 @@ export default function ChatRoom({
           )}
         </div>
       </div>
-
-      {/* Safe area spacer for PWA home indicator — pure cosmetic, no extra padding */}
-      <div className="flex-shrink-0 bg-surface dark:bg-surface-dark" style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
 
       <AnimatePresence>
         {showMemory && (
