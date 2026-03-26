@@ -90,6 +90,7 @@ type ChannelInstance = {
   ws: WebSocket | null;
   connectionToken: number;
   reconnectAttempts: number;
+  lastReconnectAt: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   idleTimer: ReturnType<typeof setTimeout> | null;
   manualClose: boolean;
@@ -130,6 +131,7 @@ function createInstance(connectionId: string): ChannelInstance {
     ws: null,
     connectionToken: 0,
     reconnectAttempts: 0,
+    lastReconnectAt: 0,
     reconnectTimer: null,
     idleTimer: null,
     manualClose: false,
@@ -156,6 +158,68 @@ class ChannelManager {
   private agentContexts = new Map<string, Map<string, AgentContext>>();
   private agentContextListeners = new Set<AgentContextListener>();
   private errorListeners = new Set<ErrorListener>();
+
+  private handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      // Page came back to foreground — reconnect all disconnected instances (debounced)
+      this.reconnectAllDebounced();
+    } else {
+      // Page going to background — pause idle timers so we don't disconnect while user is away
+      for (const instance of this.instances.values()) {
+        this.clearIdleTimer(instance);
+      }
+    }
+  };
+
+  private handleOnline = () => {
+    // Network restored — reconnect all disconnected instances (debounced)
+    this.reconnectAllDebounced();
+  };
+
+  private handleOffline = () => {
+    // Network lost — proactively mark all as disconnected for faster UI feedback
+    for (const instance of this.instances.values()) {
+      if (instance.currentStatus === 'connected') {
+        this.updateStatus(instance, 'disconnected');
+      }
+    }
+  };
+
+  private reconnectAllTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Debounced reconnectAll — prevents reconnect storms from rapid online/visibility events */
+  private reconnectAllDebounced = () => {
+    if (this.reconnectAllTimer) return; // already scheduled
+    this.reconnectAllTimer = setTimeout(() => {
+      this.reconnectAllTimer = null;
+      this.reconnectAll();
+    }, 1500);
+  };
+
+  constructor() {
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this.handleOnline);
+      window.addEventListener('offline', this.handleOffline);
+    }
+  }
+
+  destroy() {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleOnline);
+      window.removeEventListener('offline', this.handleOffline);
+    }
+    if (this.reconnectAllTimer) {
+      clearTimeout(this.reconnectAllTimer);
+      this.reconnectAllTimer = null;
+    }
+    this.closeAll(true);
+  }
 
   // ── File upload ──
   async uploadFile(file: File, connectionId?: string): Promise<string> {
@@ -553,6 +617,46 @@ class ChannelManager {
     this.instances.forEach((instance) => {
       this.closeInstance(instance, manual);
     });
+  }
+
+  /** Manually trigger reconnect for a specific connection */
+  reconnect(connectionId?: string) {
+    const instance = this.get(connectionId);
+    if (!instance) return;
+    if (instance.ws && instance.ws.readyState === WebSocket.OPEN) return; // already connected
+
+    // Only reset attempts if this is a manual reconnect or enough time has passed
+    // This prevents visibility/online events from bypassing MAX_RECONNECT_ATTEMPTS
+    const timeSinceLastAttempt = Date.now() - (instance.lastReconnectAt || 0);
+    if (instance.manualClose || timeSinceLastAttempt > 30_000) {
+      instance.reconnectAttempts = 0;
+    }
+    instance.manualClose = false;
+    this.clearReconnectTimer(instance);
+
+    if (instance.currentServerUrl && instance.currentSenderId) {
+      instance.lastReconnectAt = Date.now();
+      this.connect({
+        connectionId: instance.connectionId,
+        chatId: instance.currentChatId,
+        senderId: instance.currentSenderId,
+        senderName: instance.currentSenderName,
+        serverUrl: instance.currentServerUrl,
+        agentId: instance.currentAgentId,
+        token: instance.currentAuthToken,
+      });
+    }
+  }
+
+  /** Reconnect all disconnected instances — staggered to avoid thundering herd */
+  reconnectAll() {
+    let delay = 0;
+    for (const instance of this.instances.values()) {
+      if (instance.currentStatus === 'disconnected' || instance.currentStatus === 'reconnecting') {
+        setTimeout(() => this.reconnect(instance.connectionId), delay);
+        delay += 500; // stagger each by 500ms
+      }
+    }
   }
 
   private closeInstance(instance: ChannelInstance, manual = true) {
@@ -994,6 +1098,14 @@ export function close(manual = true, connectionId?: string) {
   manager.close(connectionId, manual);
 }
 
+export function reconnect(connectionId?: string) {
+  manager.reconnect(connectionId);
+}
+
+export function reconnectAll() {
+  manager.reconnectAll();
+}
+
 export function sendRaw(packet: { type: string; data: Record<string, unknown> }, connectionId?: string) {
   manager.sendRaw(packet, connectionId);
 }
@@ -1109,4 +1221,11 @@ export function getAgentContext(connectionId?: string, agentId?: string) {
 
 export function onAgentContextChange(fn: AgentContextListener) {
   return manager.onAgentContextChange(fn);
+}
+
+export function destroyManager() { manager.destroy(); }
+
+// S10: Clean up event listeners on HMR
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => manager.destroy());
 }

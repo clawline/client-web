@@ -82,6 +82,21 @@ function getStoredPreview(agentId: string, connectionId: string): { text: string
   try { const c = localStorage.getItem(getPreviewKey(connectionId, agentId)); if (c) return JSON.parse(c); } catch {}
   return null;
 }
+
+const LAST_READ_PREFIX = 'openclaw.lastRead.';
+function getLastReadKey(connectionId: string, agentId: string) { return `${LAST_READ_PREFIX}${connectionId}.${agentId}`; }
+export function markAgentAsRead(connectionId: string, agentId: string, messageTs?: number) {
+  // S8: Use server message timestamp when available to avoid clock skew
+  const ts = messageTs || Date.now();
+  try { localStorage.setItem(getLastReadKey(connectionId, agentId), ts.toString()); } catch {}
+}
+function getLastReadTimestamp(connectionId: string, agentId: string): number {
+  try { const v = localStorage.getItem(getLastReadKey(connectionId, agentId)); return v ? parseInt(v, 10) : 0; } catch { return 0; }
+}
+function hasUnread(connectionId: string, agentId: string, lastMessageTs?: number): boolean {
+  if (!lastMessageTs) return false;
+  return lastMessageTs > getLastReadTimestamp(connectionId, agentId);
+}
 function getConnectionLabel(c: ServerConnection) { return c.name || c.displayName || 'Server'; }
 function getStatusClasses(status: ChannelStatus) {
   if (status === 'connected') return 'bg-primary';
@@ -479,6 +494,7 @@ export default function ChatList({
     const isThinking = thinkingAgents.has(previewKey);
     const showStatus = isThinking || isTyping;
     const showOnlineDot = !showStatus && status === 'connected';
+    const unread = !isActive && hasUnread(connection.id, agent.id, lastMessage?.timestamp);
 
     return (
       <motion.div key={agent.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -524,7 +540,6 @@ export default function ChatList({
             ) : (
               <p className={cn('truncate mt-0.5', compact ? 'text-[12px] text-text/30 dark:text-text-inv/25' : 'text-[14px] text-text/30 dark:text-text-inv/25')}>Start a conversation</p>
             )}
-            {showSource && <p className="mt-0.5 text-[10px] text-text/35 dark:text-text-inv/30 truncate">{getConnectionLabel(connection)}</p>}
           </div>
           {/* Timestamp */}
           {lastMessage?.timestamp && (
@@ -537,7 +552,7 @@ export default function ChatList({
     );
   };
 
-  const renderGridCard = (connection: ServerConnection, agent: AgentInfo, index: number) => {
+    const renderGridCard = (connection: ServerConnection, agent: AgentInfo, index: number) => {
     const status = statusMap[connection.id] || 'disconnected';
     const isDisabled = attemptedMap[connection.id] && status === 'disconnected';
     const isActive = activeConnectionId === connection.id && activeAgentId === agent.id;
@@ -547,7 +562,6 @@ export default function ChatList({
     const isTyping = typingAgents.has(previewKey);
     const isThinking = thinkingAgents.has(previewKey);
     const showStatus = isThinking || isTyping;
-    const showOnlineDot = !showStatus && status === 'connected';
 
     return (
       <motion.div key={agent.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
@@ -555,34 +569,33 @@ export default function ChatList({
         <button type="button" onClick={e => handleAgentClick(connection, agent, e.shiftKey)} disabled={isDisabled}
           aria-label={`Chat with ${agent.name}`}
           className={cn(
-            'relative w-full flex flex-col items-center text-center p-4 pb-3 rounded-2xl transition-all duration-150',
+            'relative w-full flex flex-col items-center text-center p-3 pb-2.5 rounded-2xl transition-all duration-150',
             'bg-white/60 dark:bg-card-alt/40',
             'focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
             isDisabled && 'opacity-40 cursor-not-allowed',
             !isDisabled && 'cursor-pointer active:scale-[0.96]',
-            isActive ? 'ring-2 ring-primary/30 bg-primary/12 dark:bg-primary/15'
+            isActive ? 'ring-2 ring-primary/30 bg-primary/5 dark:bg-primary/10'
               : isSplitActive ? 'ring-2 ring-info/25 bg-info/6 dark:bg-info/10'
-              : 'hover:bg-text/[0.06] dark:hover:bg-text-inv/[0.06] hover:shadow-sm'
+              : 'hover:bg-text/[0.02] dark:hover:bg-text-inv/[0.02]'
           )}>
           <div className="relative mb-2" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
             onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
-            {renderAvatar(agent, 'xl')}
-            {showStatus && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-primary rounded-full border-2 border-white dark:border-card-alt animate-pulse" />}
-            {showOnlineDot && <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full border-2 border-white dark:border-card-alt" />}
+            {renderAvatar(agent, 'lg')}
+            {showStatus && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />}
           </div>
-          <h3 className="text-[13px] font-semibold truncate w-full leading-snug">{agent.name}</h3>
+          <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{agent.name}</h3>
           {isThinking ? (
             <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">思考中... <TypingDots /></div>
           ) : isTyping ? (
             <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">正在输入... <TypingDots /></div>
           ) : lastMessage?.text ? (
-            <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[11px] text-text/45 dark:text-text-inv/40 truncate w-full max-w-full">
-              {lastMessage.text.length > 32 ? `${lastMessage.text.slice(0, 32)}…` : lastMessage.text}
+            <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-text/50 dark:text-text-inv/40 truncate w-full max-w-full">
+              {lastMessage.text.length > 24 ? `${lastMessage.text.slice(0, 24)}…` : lastMessage.text}
             </div>
           ) : agent.model ? (
-            <span className="text-[10px] bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px text-text/40 dark:text-text-inv/35 truncate w-full mt-1 text-center">{agent.model.split('/').pop()}</span>
+            <span className="text-[9px] text-text/50 dark:text-text-inv/40 truncate w-full mt-1">{agent.model.split('/').pop()}</span>
           ) : null}
-          {agent.isDefault && <span className="text-[9px] font-medium text-text/45 dark:text-text-inv/40 bg-text/[0.05] dark:bg-text-inv/[0.05] rounded px-1 py-px mt-1">default</span>}
+          {agent.isDefault && <span className="text-[7px] font-medium text-text/50 dark:text-text-inv/45 bg-text/[0.04] dark:bg-text-inv/[0.04] rounded px-1 py-px mt-1">default</span>}
         </button>
       </motion.div>
     );
@@ -627,13 +640,21 @@ export default function ChatList({
     if (isLoading) {
       return (
         <div className={cn('flex items-center justify-center gap-2 py-6', viewMode === 'grid' && 'col-span-full')}>
-          <Loader2 size={16} className="text-text/30 animate-spin" />
-          <span className="text-text/30 dark:text-text-inv/25 text-[12px]">Loading…</span>
+          <Loader2 size={16} className="text-text/50 animate-spin" />
+          <span className="text-text/50 dark:text-text-inv/40 text-[12px]">Loading…</span>
         </div>
       );
     }
     if (agents.length === 0) {
-      return <div className={cn('text-center text-text/25 dark:text-text-inv/20 py-6 text-[12px]', viewMode === 'grid' && 'col-span-full')}>No agents</div>;
+      return (
+        <div className={cn('text-center py-10', viewMode === 'grid' && 'col-span-full')}>
+          <div className="text-3xl mb-2">🤖</div>
+          <p className="text-text/50 dark:text-text-inv/45 text-[14px] font-medium">No agents yet</p>
+          <p className="text-text/50 dark:text-text-inv/40 text-[12px] mt-1 max-w-[240px] mx-auto">
+            Connect to an OpenClaw gateway to start chatting with your AI agents.
+          </p>
+        </div>
+      );
     }
 
     // ── Reorder mode ──
@@ -680,7 +701,7 @@ export default function ChatList({
             <Server size={28} className="text-text/30 dark:text-text-inv/25" />
           </div>
           <p className="text-[15px] font-medium text-text/60 dark:text-text-inv/50 mb-1">No servers connected</p>
-          <p className="text-[13px] text-text/30 dark:text-text-inv/25 mb-5 text-center">Add a server to start chatting with agents</p>
+          <p className="text-[13px] text-text/50 dark:text-text-inv/40 mb-5 text-center">Add a server to start chatting with agents</p>
           <button onClick={onAddServer} className="px-5 py-2 rounded-lg bg-primary text-white text-[13px] font-medium hover:bg-primary-deep transition-colors">
             Add Server
           </button>
@@ -719,7 +740,7 @@ export default function ChatList({
             </motion.button>
             {!reorderMode && (
               <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded-full',
-                connectedCount > 0 ? 'text-primary/70 bg-primary/8' : 'text-text/30 dark:text-text-inv/25 bg-text/5 dark:bg-text-inv/5')}>
+                connectedCount > 0 ? 'text-primary/70 bg-primary/8' : 'text-text/50 dark:text-text-inv/40 bg-text/5 dark:bg-text-inv/5')}>
                 {connectedCount}/{connections.length}
               </span>
             )}
@@ -729,7 +750,7 @@ export default function ChatList({
         {/* Search — hidden in reorder mode */}
         {!reorderMode && (
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text/30 dark:text-text-inv/30" size={compact ? 14 : 16} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text/50 dark:text-text-inv/45" size={compact ? 14 : 16} />
             <Input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search agents…"
               className={cn('pl-9 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] border-0 placeholder:text-text/30 dark:placeholder:text-text-inv/25',
                 compact ? 'h-8 py-0 text-[12px] pl-8' : 'h-10 py-0 text-[14px]')} />
@@ -751,7 +772,7 @@ export default function ChatList({
             {filteredResults.length > 0 ? filteredResults.map(({ agent, connection }, i) => (
               viewMode === 'grid' ? renderGridCard(connection, agent, i) : renderListCard(connection, agent, i, true)
             )) : (
-              <div className={cn('text-center text-text/30 dark:text-text-inv/30 text-[13px]', viewMode === 'grid' ? 'col-span-full mt-10' : 'mt-10')}>No agents found</div>
+              <div className={cn('text-center text-text/50 dark:text-text-inv/45 text-[13px]', viewMode === 'grid' ? 'col-span-full mt-10' : 'mt-10')}>No matching agents found</div>
             )}
           </div>
         ) : showGroupedView ? (
@@ -768,7 +789,7 @@ export default function ChatList({
                     <span className="text-[12px] font-semibold uppercase tracking-wider text-text/50 dark:text-text-inv/45 truncate flex-1">
                       {getConnectionLabel(connection)}
                     </span>
-                    <ChevronDown size={12} className={cn('shrink-0 text-text/25 dark:text-text-inv/20 transition-transform duration-200', isExpanded && 'rotate-180')} />
+                    <ChevronDown size={12} className={cn('shrink-0 text-text/25 dark:text-text-inv/35 transition-transform duration-200', isExpanded && 'rotate-180')} />
                   </button>
                   <AnimatePresence initial={false}>
                     {isExpanded && (

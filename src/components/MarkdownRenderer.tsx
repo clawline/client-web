@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
-import Markdown from 'react-markdown';
+import { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/core';
 import type { LanguageFn } from 'highlight.js';
 
 import { cn } from '../lib/utils';
 
+// Load commonly used languages lazily
 const langLoaders: Record<string, () => Promise<{ default: LanguageFn }>> = {
   javascript: () => import('highlight.js/lib/languages/javascript'),
   js: () => import('highlight.js/lib/languages/javascript'),
@@ -50,23 +52,29 @@ function LazyCodeBlock({ lang, children }: { lang: string; children: string }) {
   useEffect(() => {
     let cancelled = false;
 
+    // Run async highlight
     void (async () => {
-      if (lang) {
-        await ensureLang(lang);
-      }
-      if (cancelled) {
-        return;
+      // 1. Ensure language pack is loaded
+      if (lang && !hljs.getLanguage(lang)) {
+        try {
+          await ensureLang(lang);
+        } catch {
+          // ignore loader errors
+        }
       }
 
+      if (cancelled) return;
+
+      // 2. Highlight
       try {
         const result = lang && hljs.getLanguage(lang)
           ? hljs.highlight(children, { language: lang }).value
-          : children;
+          : children; // Fallback: plain text
         if (!cancelled) {
           setHtml(result);
         }
       } catch {
-        // Fall back to plain text.
+        // Fallback: plain text
       }
     })();
 
@@ -76,10 +84,19 @@ function LazyCodeBlock({ lang, children }: { lang: string; children: string }) {
   }, [lang, children]);
 
   return (
-    <pre className="my-2 overflow-x-auto overflow-y-hidden rounded-lg border border-[#313244] bg-[#1e1e2e] p-3 text-[13px] max-w-full [overscroll-behavior-x:contain]">
-      {lang && <span className="float-right text-[10px] uppercase text-[#6c7086]">{lang}</span>}
-      <code className="text-[#cdd6f4]" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
-    </pre>
+    <div className="my-3 overflow-hidden rounded-lg border border-border dark:border-border-dark bg-[#1e1e2e]">
+      {lang && (
+        <div className="flex items-center justify-between border-b border-[#313244] bg-[#181825] px-3 py-1.5">
+          <span className="text-[10px] font-medium uppercase text-[#a6adc8]">{lang}</span>
+        </div>
+      )}
+      <pre className="overflow-x-auto p-3 text-[13px] leading-normal text-[#cdd6f4]">
+        <code
+          className="font-mono"
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
+        />
+      </pre>
+    </div>
   );
 }
 
@@ -90,63 +107,78 @@ type MarkdownRendererProps = {
 
 export default function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   return (
-    <div className={cn('min-w-0 max-w-full overflow-hidden text-[15px] leading-relaxed [overflow-wrap:break-word] [word-break:break-word]', className)}>
-      <Markdown
+    <div className={cn('markdown-body min-w-0 text-[15px] leading-relaxed', className)}>
+      <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw]}
         components={{
-          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-          code: ({ children, className: codeClassName }) => {
-            const lang = codeClassName?.replace('language-', '') || '';
-            const isBlock = !!codeClassName?.includes('language-');
+          // Paragraphs
+          p: ({ children }) => <p className="mb-2 last:mb-0 break-words">{children}</p>,
+
+          // Code blocks & inline code
+          code(props) {
+            const { children, className: codeClassName, node, ...rest } = props;
+            const match = /language-(\w+)/.exec(codeClassName || '');
+            const lang = match ? match[1] : '';
+            const isBlock = match || String(children).includes('\n');
+
             if (isBlock) {
               return <LazyCodeBlock lang={lang}>{String(children).replace(/\n$/, '')}</LazyCodeBlock>;
             }
 
             return (
-              <code className="rounded-md border border-primary/15 bg-[#FFF5F0] px-1.5 py-0.5 font-mono text-[13px] text-text dark:border-primary/10 dark:bg-[#2d1f1a] dark:text-text-inv">
+              <code className="rounded bg-border px-1.5 py-0.5 text-[13px] font-mono text-text dark:bg-border-dark dark:text-text-inv break-words whitespace-pre-wrap">
                 {children}
               </code>
             );
           },
-          pre: ({ children }) => <>{children}</>,
+
+          // Lists
           ul: ({ children }) => <ul className="mb-2 list-disc space-y-1 pl-4">{children}</ul>,
           ol: ({ children }) => <ol className="mb-2 list-decimal space-y-1 pl-4">{children}</ol>,
-          h1: ({ children }) => <h1 className="mb-2 text-lg font-bold">{children}</h1>,
-          h2: ({ children }) => <h2 className="mb-1.5 text-base font-bold">{children}</h2>,
-          h3: ({ children }) => <h3 className="mb-1 text-sm font-bold">{children}</h3>,
+          li: ({ children }) => <li className="pl-1">{children}</li>,
+
+          // Headings
+          h1: ({ children }) => <h1 className="mt-4 mb-2 text-xl font-bold first:mt-0">{children}</h1>,
+          h2: ({ children }) => <h2 className="mt-3 mb-2 text-lg font-bold first:mt-0">{children}</h2>,
+          h3: ({ children }) => <h3 className="mt-3 mb-1.5 text-base font-bold first:mt-0">{children}</h3>,
+          h4: ({ children }) => <h4 className="mt-2 mb-1 text-sm font-bold first:mt-0">{children}</h4>,
+
+          // Links
           a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer" className="text-info underline break-all">
+            <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline break-all hover:text-primary/80">
               {children}
             </a>
           ),
+
+          // Blockquotes
           blockquote: ({ children }) => (
-            <blockquote className="my-2 border-l-2 border-primary pl-3 text-text/70 dark:text-text-inv/70">
+            <blockquote className="my-2 border-l-4 border-primary/30 bg-primary/5 pl-3 py-1 pr-2 italic text-text/80 dark:text-text-inv/80 rounded-r">
               {children}
             </blockquote>
           ),
+
+          // Tables (restored via remarkGfm)
           table: ({ children }) => (
-            <div className="my-2 overflow-x-auto rounded-lg border border-border dark:border-border-dark">
-              <table className="w-full text-[13px] border-collapse">{children}</table>
+            <div className="my-3 overflow-x-auto rounded border border-border dark:border-border-dark">
+              <table className="w-full text-left text-sm">{children}</table>
             </div>
           ),
-          thead: ({ children }) => (
-            <thead className="bg-surface dark:bg-surface-dark">{children}</thead>
-          ),
-          tbody: ({ children }) => <tbody>{children}</tbody>,
-          tr: ({ children }) => (
-            <tr className="border-b border-border dark:border-border-dark last:border-b-0">{children}</tr>
-          ),
-          th: ({ children }) => (
-            <th className="px-3 py-2 text-left font-semibold text-text/80 dark:text-text-inv/80 border-r border-border dark:border-border-dark last:border-r-0">{children}</th>
-          ),
-          td: ({ children }) => (
-            <td className="px-3 py-2 text-text/70 dark:text-text-inv/70 border-r border-border dark:border-border-dark last:border-r-0">{children}</td>
-          ),
-          strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+          thead: ({ children }) => <thead className="bg-muted/50 dark:bg-card-alt border-b border-border dark:border-border-dark">{children}</thead>,
+          tbody: ({ children }) => <tbody className="divide-y divide-border dark:divide-border-dark">{children}</tbody>,
+          tr: ({ children }) => <tr className="hover:bg-muted/20 transition-colors">{children}</tr>,
+          th: ({ children }) => <th className="px-3 py-2 font-semibold text-text dark:text-text-inv">{children}</th>,
+          td: ({ children }) => <td className="px-3 py-2 align-top">{children}</td>,
+
+          // Formatting
+          strong: ({ children }) => <strong className="font-bold text-text dark:text-text-inv">{children}</strong>,
+          em: ({ children }) => <em className="italic">{children}</em>,
+          del: ({ children }) => <del className="text-text/50 dark:text-text-inv/50 line-through">{children}</del>,
+          hr: () => <hr className="my-4 border-border dark:border-border-dark" />,
         }}
       >
         {content}
-      </Markdown>
+      </ReactMarkdown>
     </div>
   );
 }

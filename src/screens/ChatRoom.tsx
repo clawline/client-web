@@ -6,12 +6,82 @@ import * as channel from '../services/clawChannel';
 import type { AgentContext, AgentInfo, ConversationSummary } from '../services/clawChannel';
 import { getUserId } from '../App';
 import { getActiveConnection, getConnectionById } from '../services/connectionStore';
+import { markAgentAsRead } from './ChatList';
 import ActionCard from '../components/ActionCard';
 import AgentContextViewer from '../components/AgentContextViewer';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import MemorySheet from '../components/MemorySheet';
 import FileGallery from '../components/FileGallery';
 import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
+import * as outbox from '../services/outbox';
+
+/** Map technical error codes/messages to human-friendly text */
+/** Map tool names to human-friendly labels */
+function formatToolName(name: string): string {
+  const map: Record<string, string> = {
+    read: 'Reading file', write: 'Writing file', edit: 'Editing file',
+    exec: 'Running command', web_fetch: 'Fetching page', browser: 'Using browser',
+    memory_recall: 'Searching memory', memory_store: 'Saving memory',
+    sessions_spawn: 'Spawning agent', image: 'Analyzing image',
+  };
+  return map[name] || name.replace(/_/g, ' ');
+}
+
+/** Format "last seen" relative time (WhatsApp-style) */
+function formatLastSeen(ts?: number): string {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  if (diff < 0) return 'online'; // clock skew guard
+  if (diff < 60_000) return 'last seen just now';
+  if (diff < 3600_000) return `last seen ${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86400_000) return `last seen ${Math.floor(diff / 3600_000)}h ago`;
+  return `last seen ${new Date(ts).toLocaleDateString()}`;
+}
+
+function humanizeError(error: { code: string; message: string }): { title: string; body: string } {
+  const msg = error.message.toLowerCase();
+  const code = error.code;
+
+  // Auth errors
+  if (msg.includes('forbidden') || msg.includes('unauthorized') || code === 'AUTH_FAILED')
+    return { title: 'Access Denied', body: 'Please check your connection credentials and try again.' };
+  if (msg.includes('agentid not allowed') || msg.includes('agent not found'))
+    return { title: 'Agent Unavailable', body: 'This agent isn\'t available. It may have been removed or renamed.' };
+  if (msg.includes('token') && (msg.includes('invalid') || msg.includes('expired')))
+    return { title: 'Session Expired', body: 'Your session has expired. Please reconnect.' };
+
+  // Connection errors
+  if (msg.includes('failed to fetch') || msg.includes('err_network') || msg.includes('econnrefused') || msg.includes('networkerror'))
+    return { title: 'Network Error', body: 'Can\'t reach the server. Check your internet connection.' };
+  if (msg.includes('enotfound') || msg.includes('getaddrinfo') || msg.includes('dns'))
+    return { title: 'Server Not Found', body: 'The server address couldn\'t be resolved. Check the URL.' };
+  if (msg.includes('500') || msg.includes('internal server error'))
+    return { title: 'Server Error', body: 'The server encountered an error. Try again in a moment.' };
+  if (msg.includes('502') || msg.includes('bad gateway') || msg.includes('503') || msg.includes('service unavailable'))
+    return { title: 'Server Unavailable', body: 'The server is temporarily down. Try again shortly.' };
+  if (msg.includes('413') || msg.includes('payload too large') || msg.includes('too large'))
+    return { title: 'File Too Large', body: 'The content exceeds the size limit. Try a smaller file.' };
+  if (msg.includes('channel not found') || msg.includes('not found'))
+    return { title: 'Channel Not Found', body: 'The connection endpoint couldn\'t be reached. Check your setup.' };
+  if (msg.includes('cors') || msg.includes('cross-origin'))
+    return { title: 'Connection Blocked', body: 'A security policy is preventing the connection. Check CORS settings.' };
+  if (msg.includes('timeout') || code === 'TIMEOUT')
+    return { title: 'Request Timed Out', body: 'The server took too long to respond. Try again.' };
+  if (msg.includes('rate limit') || msg.includes('429') || code === 'RATE_LIMITED')
+    return { title: 'Too Many Requests', body: 'Please wait a moment before trying again.' };
+
+  // Send errors
+  if (code === 'SEND_FAILED')
+    return { title: 'Send Failed', body: error.message.includes('not connected') ? 'You\'re offline. Message has been queued and will send when reconnected.' : error.message };
+
+  // Generic
+  if (msg.includes('websocket') || msg.includes('ws'))
+    return { title: 'Connection Issue', body: 'WebSocket connection problem. Check your network.' };
+
+  return { title: 'Something went wrong', body: 'An unexpected error occurred. Try again or reconnect.' };
+}
+
+type DeliveryStatus = 'pending' | 'sent' | 'delivered' | 'read';
 
 type Message = {
   id: string;
@@ -23,6 +93,7 @@ type Message = {
   replyTo?: string;
   timestamp?: number;
   isStreaming?: boolean; // Temporary streaming message indicator
+  deliveryStatus?: DeliveryStatus; // WhatsApp-style delivery ticks
 };
 
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
@@ -105,6 +176,25 @@ function isGroupedWithPrev(messages: Message[], index: number): boolean {
   const prev = messages[index - 1];
   if (!cur || !prev) return false;
   return prev.sender === cur.sender && !isDifferentDay(prev.timestamp, cur.timestamp);
+}
+
+/** WhatsApp-style delivery status ticks */
+function DeliveryTicks({ status, isUser }: { status?: DeliveryStatus; isUser: boolean }) {
+  if (!isUser || !status) return null;
+  const base = 'inline-block ml-1 align-middle';
+  if (status === 'pending') {
+    return <svg className={`${base} opacity-55`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+  }
+  if (status === 'sent') {
+    return <svg className={`${base} opacity-55`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>;
+  }
+  if (status === 'delivered') {
+    return <svg className={`${base} opacity-55`} width="16" height="14" viewBox="0 0 28 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/><polyline points="26 6 15 17 12 14"/></svg>;
+  }
+  if (status === 'read') {
+    return <svg className={`${base} text-sky-400`} width="16" height="14" viewBox="0 0 28 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/><polyline points="26 6 15 17 12 14"/></svg>;
+  }
+  return null;
 }
 
 // --- File to data URL ---
@@ -214,10 +304,16 @@ export default function ChatRoom({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactingToMsgId, setReactingToMsgId] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<string>(channel.getStatus(runtimeConnId));
+  const [agentPresence, setAgentPresence] = useState<{ status: string; lastSeen?: number } | null>(null);
   const prevWsStatusRef = useRef<string>(channel.getStatus(runtimeConnId));
   const [showReconnected, setShowReconnected] = useState(false);
   const [errorToast, setErrorToast] = useState<{ code: string; message: string } | null>(null);
   const [isThinking, setIsThinking] = useState(false);
+  const [thinkingPhase, setThinkingPhase] = useState<string>('');
+  const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const thinkingStartRef = useRef<number>(0);
+  const [activeToolCalls, setActiveToolCalls] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number }[]>([]);
+  const retryingRef = useRef<Set<string>>(new Set()); // B1: prevent double-tap retry
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -245,6 +341,33 @@ export default function ChatRoom({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const skills = agentInfo?.skills ?? [];
+
+  // B1: Retry pending message — dequeue first, send, re-enqueue on failure
+  const retryMessage = async (msg: Message) => {
+    if (retryingRef.current.has(msg.id)) return; // prevent double-tap
+    retryingRef.current.add(msg.id);
+    try {
+      // Dequeue from outbox BEFORE sending to prevent outbox flush duplicate
+      await outbox.dequeue(msg.id).catch(() => {});
+      channel.reconnect(runtimeConnId);
+      // Give reconnect a moment to establish
+      await new Promise((r) => setTimeout(r, 300));
+      try {
+        const payload = msg.replyTo
+          ? channel.sendTextWithParent(msg.text, msg.replyTo, agentId || undefined, runtimeConnId)
+          : channel.sendText(msg.text, agentId || undefined, runtimeConnId);
+        setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, id: payload.messageId || m.id, deliveryStatus: 'sent' as DeliveryStatus } : m));
+      } catch {
+        // Send failed — re-enqueue for next reconnect
+        await outbox.enqueue({
+          id: msg.id, connectionId: runtimeConnId, agentId: agentId || '',
+          content: msg.text, type: 'text', replyTo: msg.replyTo, timestamp: msg.timestamp,
+        }).catch(() => {});
+      }
+    } finally {
+      retryingRef.current.delete(msg.id);
+    }
+  };
   const skillCount = skills.length;
 
   useEffect(() => {
@@ -254,6 +377,11 @@ export default function ChatRoom({
       channel.getAgentContext(connId, agentId ?? undefined),
     );
     setIsContextLoading(false);
+    setAgentPresence(null); // S4: Reset presence on agent switch
+    // Mark agent as read when entering chat
+    if (connId && agentId) {
+      markAgentAsRead(connId, agentId);
+    }
   }, [agentId, connId, runtimeConnId]);
 
   useEffect(() => {
@@ -396,7 +524,8 @@ export default function ChatRoom({
       try { channel.requestHistory(effectiveId, agentId || undefined, runtimeConnId, { limit: 20 }); } catch { /* ignore */ }
     };
 
-    setIsThinking(false);
+    setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+    setActiveToolCalls([]);
     setShowHeaderMenu(false);
     setShowHistoryDrawer(false);
     setConversations([]);
@@ -523,6 +652,20 @@ export default function ChatRoom({
             icon: '/icon-192.svg',
           });
         }
+
+        // S1: Mark ALL pending/sent user messages as delivered (bot responded = all prior msgs received)
+        setActiveToolCalls([]); // S3: Clear stale tool calls on final message
+        setMessages((prev) => {
+          let changed = false;
+          const next = prev.map((m) => {
+            if (m.sender === 'user' && m.deliveryStatus && m.deliveryStatus !== 'delivered' && m.deliveryStatus !== 'read') {
+              changed = true;
+              return { ...m, deliveryStatus: 'delivered' as DeliveryStatus };
+            }
+            return m;
+          });
+          return changed ? next : prev;
+        });
       } else if (packet.type === 'reaction.add' || packet.type === 'reaction.remove') {
         const { messageId, emoji } = packet.data as { messageId: string; emoji: string };
         setMessages((prev) => prev.map((m) => {
@@ -533,19 +676,56 @@ export default function ChatRoom({
           }
           return { ...m, reactions: reactions.filter((r) => r !== emoji) };
         }));
+      } else if (packet.type === 'tool.start') {
+        const d = packet.data as { toolCallId?: string; toolName?: string; args?: Record<string, unknown>; agentId?: string };
+        if (!d.agentId || !agentId || d.agentId === agentId) {
+          const tc = { toolCallId: d.toolCallId || `tc-${Date.now()}`, toolName: d.toolName || 'tool', args: d.args, startTime: Date.now() };
+          setActiveToolCalls((prev) => [...prev, tc]);
+          setThinkingPhase(formatToolName(d.toolName || 'tool'));
+          setIsThinking(true);
+        }
+      } else if (packet.type === 'tool.end') {
+        const d = packet.data as { toolCallId?: string; agentId?: string };
+        if (!d.agentId || !agentId || d.agentId === agentId) {
+          setActiveToolCalls((prev) => prev.filter((tc) => tc.toolCallId !== d.toolCallId));
+        }
       } else if (packet.type === 'thinking.start') {
         // Only accept thinking for current agent (ignore events without agentId or from other agents)
         const thinkAgentId = (packet.data as { agentId?: string }).agentId;
         if (!thinkAgentId || !agentId || thinkAgentId === agentId) {
           setIsThinking(true);
+          setThinkingPhase('Thinking');
+          thinkingStartRef.current = Date.now();
+          // Progressive phase labels (ChatGPT-style)
+          if (thinkingTimerRef.current) clearInterval(thinkingTimerRef.current);
+          thinkingTimerRef.current = setInterval(() => {
+            const elapsed = Date.now() - thinkingStartRef.current;
+            if (elapsed > 15000) setThinkingPhase('Working on it…');
+            else if (elapsed > 8000) setThinkingPhase('Putting it together');
+            else if (elapsed > 4000) setThinkingPhase('Analyzing');
+          }, 1000);
         }
       } else if (packet.type === 'thinking.update') {
-        const thinkAgentId = (packet.data as { agentId?: string }).agentId;
-        if (!thinkAgentId || !agentId || thinkAgentId === agentId) {
+        const d = packet.data as { agentId?: string; content?: string };
+        if (!d.agentId || !agentId || d.agentId === agentId) {
           setIsThinking(true);
+          // If update carries content (e.g. tool name), show it
+          if (d.content) {
+            setThinkingPhase(d.content);
+          }
         }
       } else if (packet.type === 'thinking.end') {
         // keep thinking visible until message.send arrives
+        if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+      } else if (packet.type === 'status.delivered' || packet.type === 'status.read') {
+        // Channel status event: update delivery status on matching user message
+        const d = packet.data as { messageId?: string; status?: string };
+        if (d.messageId) {
+          const newStatus: DeliveryStatus = packet.type === 'status.read' ? 'read' : 'delivered';
+          setMessages((prev) => prev.map((m) =>
+            m.id === d.messageId && m.sender === 'user' ? { ...m, deliveryStatus: newStatus } : m
+          ));
+        }
       } else if (packet.type === 'message.edit') {
         const d = packet.data as { messageId: string; content: string };
         setMessages((prev) => prev.map((m) => m.id === d.messageId ? { ...m, text: d.content } : m));
@@ -602,6 +782,18 @@ export default function ChatRoom({
           : [];
         channel.saveCachedAgents(connId, nextAgents);
         setAgentInfo(nextAgents.find((agent) => agent.id === agentId) ?? null);
+      } else if (packet.type === 'user.status') {
+        // Agent presence update
+        const d = packet.data as { userId?: string; status?: string; lastSeen?: number };
+        if (d.userId === agentId || !d.userId) {
+          setAgentPresence({ status: d.status || 'online', lastSeen: d.lastSeen });
+        }
+      } else if (packet.type === 'relay.backend.disconnected') {
+        // Gateway grace period — backend temporarily down
+        setAgentPresence({ status: 'offline', lastSeen: Date.now() });
+      } else if (packet.type === 'relay.backend.reconnected') {
+        // Backend recovered during grace period
+        setAgentPresence({ status: 'online' });
       } else if (packet.type === 'stream.resume') {
         // Stream resume after reconnection — restore accumulated streaming text
         const resumeData = packet.data as { chatId?: string; agentId?: string; text?: string; isComplete?: boolean; startTime?: number };
@@ -612,7 +804,14 @@ export default function ChatRoom({
           return;
         }
         
-        setIsThinking(false); // Hide thinking indicator
+        setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+        
+        // Show "Restoring…" phase briefly
+        if (!resumeData.isComplete && resumeData.text) {
+          setThinkingPhase('Restoring stream…');
+          setIsThinking(true);
+          setTimeout(() => setIsThinking(false), 800);
+        }
         
         if (resumeData.isComplete) {
           // Stream already completed on server — history.sync will deliver the final message.
@@ -663,7 +862,7 @@ export default function ChatRoom({
           if (localStorage.getItem('openclaw.streaming.enabled') === 'false') return;
 
           // Streaming text output from backend
-          setIsThinking(false); // Hide thinking indicator when streaming starts
+          setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; } // Hide thinking indicator when streaming starts
 
           if (typeof deltaData.text === 'string') {
             // Update or create streaming bubble with accumulated text
@@ -697,6 +896,38 @@ export default function ChatRoom({
       if (status === 'connected' && prevWsStatusRef.current !== 'connected' && prevWsStatusRef.current !== 'connecting') {
         setShowReconnected(true);
         setTimeout(() => setShowReconnected(false), 2500);
+
+        // Flush offline outbox — send pending messages
+        outbox.getByConnection(runtimeConnId).then(async (entries) => {
+          for (const entry of entries) {
+            try {
+              if (entry.type === 'text') {
+                entry.replyTo
+                  ? channel.sendTextWithParent(entry.content, entry.replyTo, entry.agentId || undefined, runtimeConnId)
+                  : channel.sendText(entry.content, entry.agentId || undefined, runtimeConnId);
+              } else if (entry.type === 'media' && entry.mediaUrl) {
+                channel.sendMedia({
+                  messageType: 'image',
+                  content: entry.content || '',
+                  mediaUrl: entry.mediaUrl,
+                  mimeType: entry.mimeType || 'application/octet-stream',
+                  agentId: entry.agentId || undefined,
+                }, runtimeConnId);
+              }
+              // B2: Update UI: pending → sent + dequeue
+              setMessages((prev) => prev.map((m) =>
+                m.id === entry.id ? { ...m, deliveryStatus: 'sent' as DeliveryStatus } : m
+              ));
+              await outbox.dequeue(entry.id);
+            } catch (err) {
+              // B2: continue to next entry instead of blocking all — only break on connection errors
+              const isConnectionError = !navigator.onLine || (err instanceof Error && /closed|not open|CLOSING/i.test(err.message));
+              if (isConnectionError) break; // connection-level: stop trying
+              // else: per-message error, skip this one and continue
+              continue;
+            }
+          }
+        }).catch(() => {});
       }
       prevWsStatusRef.current = status;
       setWsStatus(status);
@@ -717,6 +948,11 @@ export default function ChatRoom({
       if (agentReadyTimeoutRef.current) {
         clearTimeout(agentReadyTimeoutRef.current);
         agentReadyTimeoutRef.current = null;
+      }
+      // S2: Clean up thinking timer on unmount
+      if (thinkingTimerRef.current) {
+        clearInterval(thinkingTimerRef.current);
+        thinkingTimerRef.current = null;
       }
       // Don't close channel here — next connect() will replace it,
       // and StrictMode double-invoke would kill the connection prematurely
@@ -865,6 +1101,7 @@ export default function ChatRoom({
       mediaType: isImage ? 'image' : 'file',
       mediaUrl: dataUrl,
       timestamp: Date.now(),
+      deliveryStatus: 'sent',
     };
     setMessages((prev) => [...prev, userMsg]);
     setPendingFile(null);
@@ -933,13 +1170,30 @@ export default function ChatRoom({
         text: capturedInput,
         replyTo: replyId,
         timestamp: payload.timestamp || Date.now(),
+        deliveryStatus: 'sent',
       };
       setMessages((prev) => [...prev, userMsg]);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { id: `err-${Date.now()}`, sender: 'ai', text: '⚠️ Failed to send — WebSocket not connected.' },
-      ]);
+      // Offline: queue message in outbox with 'pending' status
+      const msgId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const userMsg: Message = {
+        id: msgId,
+        sender: 'user',
+        text: capturedInput,
+        replyTo: replyId,
+        timestamp: Date.now(),
+        deliveryStatus: 'pending',
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      outbox.enqueue({
+        id: msgId,
+        connectionId: runtimeConnId,
+        agentId: agentId || '',
+        content: capturedInput,
+        type: 'text',
+        replyTo: replyId,
+        timestamp: Date.now(),
+      }).catch(() => { /* ignore outbox write failure */ });
     }
   };
 
@@ -952,13 +1206,12 @@ export default function ChatRoom({
     }
     try {
       const payload = channel.sendText(text, agentId || undefined, runtimeConnId);
-      const userMsg: Message = { id: payload.messageId || Date.now().toString(), sender: 'user', text, timestamp: payload.timestamp || Date.now() };
+      const userMsg: Message = { id: payload.messageId || Date.now().toString(), sender: 'user', text, timestamp: payload.timestamp || Date.now(), deliveryStatus: 'sent' };
       setMessages((prev) => [...prev, userMsg]);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { id: `err-${Date.now()}`, sender: 'ai', text: '⚠️ Failed to send — WebSocket not connected.' },
-      ]);
+      const msgId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setMessages((prev) => [...prev, { id: msgId, sender: 'user', text, timestamp: Date.now(), deliveryStatus: 'pending' as DeliveryStatus }]);
+      outbox.enqueue({ id: msgId, connectionId: runtimeConnId, agentId: agentId || '', content: text, type: 'text', timestamp: Date.now() }).catch(() => {});
     }
   };
 
@@ -1005,6 +1258,7 @@ export default function ChatRoom({
             sender: 'user',
             text: '[Voice]',
             mediaType: 'voice',
+            deliveryStatus: 'sent',
           };
           setMessages((prev) => [...prev, userMsg]);
 
@@ -1073,7 +1327,7 @@ export default function ChatRoom({
       } catch { /* ignore */ }
     } else {
       // send emoji as a message directly
-      const emojiMsg: Message = { id: Date.now().toString(), sender: 'user', text: emoji, timestamp: Date.now() };
+      const emojiMsg: Message = { id: Date.now().toString(), sender: 'user', text: emoji, timestamp: Date.now(), deliveryStatus: 'sent' };
       setMessages((prev) => [...prev, emojiMsg]);
       try {
         channel.sendText(emoji, undefined, runtimeConnId);
@@ -1141,10 +1395,18 @@ export default function ChatRoom({
           <span className={`text-[10px] font-medium flex items-center gap-1 ${
             wsStatus === 'connected' ? 'text-primary' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'text-amber-500' : 'text-red-400'
           }`}>
-            {wsStatus === 'connected' && <><div className="w-1.5 h-1.5 bg-primary rounded-full" /> Online</>}
+            {wsStatus === 'connected' && <><div className={`w-1.5 h-1.5 rounded-full ${agentPresence?.status === 'offline' ? 'bg-gray-400' : 'bg-primary'}`} /> {agentPresence?.status === 'offline' ? formatLastSeen(agentPresence.lastSeen) || 'offline' : 'online'}</>}
             {wsStatus === 'connecting' && <><Loader2 size={10} className="animate-spin" /> Connecting…</>}
             {wsStatus === 'reconnecting' && <><Loader2 size={10} className="animate-spin" /> Reconnecting…</>}
-            {wsStatus === 'disconnected' && <><WifiOff size={10} /> Disconnected</>}
+            {wsStatus === 'disconnected' && (
+              <button
+                onClick={() => channel.reconnect(runtimeConnId)}
+                className="flex items-center gap-1 hover:opacity-80 transition-opacity"
+                aria-label="Tap to reconnect"
+              >
+                <RefreshCw size={10} /> Tap to reconnect
+              </button>
+            )}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -1164,6 +1426,17 @@ export default function ChatRoom({
               <span>Split</span>
             </motion.button>
           )}
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={() => {
+              const newChatId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+              onOpenConversation(newChatId);
+            }}
+            className="p-2 text-text dark:text-text-inv"
+            aria-label="New conversation"
+          >
+            <Plus size={20} />
+          </motion.button>
           <motion.button whileTap={{ scale: 0.9 }} onClick={openHistoryDrawer} className="p-2 text-text dark:text-text-inv" aria-label="Open history drawer">
             <MessageSquare size={20} />
           </motion.button>
@@ -1338,6 +1611,36 @@ export default function ChatRoom({
       />
 
       {/* Reconnect celebration toast */}
+      {/* WhatsApp-style persistent disconnection banner */}
+      <AnimatePresence>
+        {(wsStatus === 'disconnected' || wsStatus === 'reconnecting') && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className={`w-full z-20 px-4 py-2 flex items-center justify-center gap-2 text-[13px] font-medium ${
+              wsStatus === 'reconnecting'
+                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-b border-amber-200 dark:border-amber-800/40'
+                : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 border-b border-red-200 dark:border-red-800/40'
+            }`}
+          >
+            {wsStatus === 'reconnecting' ? (
+              <><Loader2 size={14} className="animate-spin" /> Reconnecting… Check your network.</>
+            ) : (
+              <>
+                <WifiOff size={14} /> Connection lost.
+                <button
+                  onClick={() => channel.reconnect(runtimeConnId)}
+                  className="underline font-semibold hover:opacity-80"
+                >
+                  Reconnect
+                </button>
+              </>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showReconnected && (
           <motion.div
@@ -1353,7 +1656,9 @@ export default function ChatRoom({
 
       {/* Error toast */}
       <AnimatePresence>
-        {errorToast && (
+        {errorToast && (() => {
+          const friendly = humanizeError(errorToast);
+          return (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1362,14 +1667,15 @@ export default function ChatRoom({
           >
             <WifiOff size={16} className="flex-shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="font-semibold">Connection Error</p>
-              <p className="text-white/80 text-[12px] mt-0.5 break-words">{errorToast.message}</p>
+              <p className="font-semibold">{friendly.title}</p>
+              <p className="text-white/80 text-[12px] mt-0.5 break-words">{friendly.body}</p>
             </div>
             <button onClick={() => setErrorToast(null)} className="flex-shrink-0 text-white/70 hover:text-white">
               <X size={16} />
             </button>
           </motion.div>
-        )}
+          );
+        })()}
       </AnimatePresence>
 
       {/* Messages */}
@@ -1514,6 +1820,11 @@ export default function ChatRoom({
                       <div>
                         <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover mt-1" />
                         {msg.text && <p className="mt-1.5 text-[15px]">{msg.text}</p>}
+                        {msg.timestamp && isUser && (
+                          <span className="md:hidden text-[10px] float-right mt-1 ml-3 tabular-nums text-text/50 dark:text-text-inv/45">
+                            {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
+                          </span>
+                        )}
                       </div>
                     ) : (msg.mediaType === 'voice' || msg.mediaType === 'audio') && msg.mediaUrl ? (
                       <div className="flex flex-col gap-1">
@@ -1533,16 +1844,67 @@ export default function ChatRoom({
                         </div>
                       </div>
                     ) : isUser ? (
-                      <span className="whitespace-pre-wrap break-words">{msg.text}</span>
+                      <div className="inline">
+                        <span className="whitespace-pre-wrap break-words">{msg.text}</span>
+                        {msg.timestamp && (
+                          <span className="md:hidden text-[10px] text-text/40 dark:text-text-inv/40 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
+                            {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
+                          </span>
+                        )}
+                        {msg.deliveryStatus === 'pending' && (
+                          <div className="md:hidden flex items-center gap-1 mt-1">
+                            <button
+                              onClick={() => retryMessage(msg)}
+                              className="text-[11px] text-red-500 dark:text-red-400 underline"
+                            >
+                              ⟳ Retry
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <div>
                         <MarkdownRenderer content={msg.text} />
                         {isStreaming && (
                           <span className="inline-block w-2 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
                         )}
+                      {/* Inline timestamp + delivery for bot messages (mobile) */}
+                        {!isUser && !isStreaming && msg.timestamp && (
+                          <span className="md:hidden text-[10px] text-text/40 dark:text-text-inv/35 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
+                            {formatTime(msg.timestamp)}{agentInfo?.model && (
+                              <span className="ml-1.5 border border-border dark:border-border-dark rounded-full px-1.5 py-px text-text/35 dark:text-text-inv/30 font-medium">
+                                {agentInfo.model.split('/').pop()}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
+
+                  {/* Inline message actions — timestamp + delivery + retry (flat layout) */}
+                  {!isStreaming && (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {msg.timestamp && (
+                        <span className="hidden md:inline text-[10px] text-text/35 dark:text-text-inv/30 tabular-nums">
+                          {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
+                        </span>
+                      )}
+                      {isUser && msg.deliveryStatus === 'pending' && (
+                        <button
+                          onClick={() => retryMessage(msg)}
+                          className="text-[10px] text-red-400 hover:text-red-500 underline"
+                        >
+                          ⟳ Retry
+                        </button>
+                      )}
+                      {!isUser && agentInfo?.model && (
+                        <span className="hidden md:inline text-[10px] text-text/40 dark:text-text-inv/35 font-medium border border-border dark:border-border-dark rounded-full px-2 py-0.5">
+                          {agentInfo.model.split('/').pop()}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {/* Reactions */}
                   {msg.reactions && msg.reactions.length > 0 && (
@@ -1653,11 +2015,33 @@ export default function ChatRoom({
                 {agentInfo?.identityEmoji || '🤖'}
               </div>
               <div className="pt-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:200ms]" />
-                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:400ms]" />
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                    <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:200ms]" />
+                    <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:400ms]" />
+                  </div>
+                  {thinkingPhase && (
+                    <span className="text-[12px] text-text/50 dark:text-text-inv/50 font-medium">
+                      {thinkingPhase}
+                    </span>
+                  )}
                 </div>
+                {activeToolCalls.length > 0 && (
+                  <div className="mt-2 flex flex-col gap-1">
+                    {activeToolCalls.map((tc) => (
+                      <div key={tc.toolCallId} className="flex items-center gap-1.5 text-[11px] text-text/45 dark:text-text-inv/45">
+                        <Loader2 size={10} className="animate-spin text-primary flex-shrink-0" />
+                        <span className="truncate">{formatToolName(tc.toolName)}</span>
+                        {tc.args && (tc.args as Record<string, unknown>).path && (
+                          <span className="text-text/30 dark:text-text-inv/30 truncate max-w-[180px]">
+                            {String((tc.args as Record<string, unknown>).path || (tc.args as Record<string, unknown>).file_path || (tc.args as Record<string, unknown>).command || (tc.args as Record<string, unknown>).url || '').slice(0, 50)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -2116,7 +2500,7 @@ export default function ChatRoom({
                       onChange={(e) => setFileCaption(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSendPendingFile()}
                       placeholder="Add a caption..."
-                      className="w-full bg-transparent text-[12px] outline-none text-text/70 dark:text-text-inv/70 placeholder:text-text/30 dark:placeholder:text-text-inv/30"
+                      className="w-full bg-transparent text-[12px] outline-none text-text/70 dark:text-text-inv/70 placeholder:text-text/45 dark:placeholder:text-text-inv/40"
                       autoFocus
                     />
                   </div>
