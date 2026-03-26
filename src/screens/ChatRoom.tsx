@@ -292,6 +292,12 @@ export default function ChatRoom({
   const connId = activeConn?.id || '';
   const runtimeConnId = channelConnectionId || connId;
   const [messages, setMessages] = useState<Message[]>([]);
+  // Tick every 30s so "follow up" pill can appear after 2min without re-render trigger
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(timer);
+  }, []);
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(() => getAgentInfo(agentId, connId));
   const [agentContext, setAgentContext] = useState<AgentContext | null>(() => (
     channel.getAgentContext(runtimeConnId, agentId ?? undefined) ??
@@ -1782,9 +1788,9 @@ export default function ChatRoom({
 
                 {/* Content column */}
                 <div className="flex-1 min-w-0 overflow-x-hidden">
-                  {/* Header row: name + timestamp (only for first in group) */}
+                  {/* Header row: name + timestamp + inline reply ref (only for first in group) */}
                   {!grouped && (
-                    <div className="flex items-baseline gap-2 mb-0.5">
+                    <div className="flex items-baseline gap-2 mb-0.5 flex-wrap">
                       <span className={`text-[14px] font-bold ${isUser ? 'text-info' : 'text-primary'}`}>
                         {isUser ? 'You' : (agentInfo?.name || 'Bot')}
                       </span>
@@ -1798,6 +1804,21 @@ export default function ChatRoom({
                           {agentInfo.model.split('/').pop()}
                         </span>
                       )}
+                      {/* Inline reply reference — compact, deduplicated */}
+                      {msg.replyTo && (() => {
+                        // Skip if previous message from same sender already shows the same replyTo
+                        const prevRef = i > 0 ? messages[i - 1] : null;
+                        const isDuplicateRef = prevRef && prevRef.sender === msg.sender && prevRef.replyTo === msg.replyTo;
+                        if (isDuplicateRef) return null;
+                        const quoted = messages.find((m) => m.id === msg.replyTo);
+                        if (!quoted) return null;
+                        const previewText = quoted.text.slice(0, 30) + (quoted.text.length > 30 ? '…' : '');
+                        return (
+                          <span className="text-[10px] text-text/40 dark:text-text-inv/35 truncate max-w-[200px]" title={quoted.text.slice(0, 200)}>
+                            ↩ {quoted.sender === 'user' ? 'You' : 'Bot'}: {previewText}
+                          </span>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -1805,16 +1826,6 @@ export default function ChatRoom({
                   <div className={`text-[15px] leading-relaxed relative overflow-x-hidden ${
                     isErrorMsg ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-inv'
                   } ${hasCodeBlock ? 'border-l-[3px] border-l-primary/50 pl-3' : ''}`}>
-                    {/* Quote reference */}
-                    {msg.replyTo && (() => {
-                      const quoted = messages.find((m) => m.id === msg.replyTo);
-                      return quoted ? (
-                        <div className="text-[12px] mb-1.5 px-3 py-1.5 rounded-lg border-l-2 bg-surface dark:bg-[#131420] border-primary/40 text-text/55 dark:text-text-inv/50">
-                          <span className="font-medium">{quoted.sender === 'user' ? 'You' : 'Bot'}: </span>
-                          {quoted.text.slice(0, 80)}{quoted.text.length > 80 ? '…' : ''}
-                        </div>
-                      ) : null;
-                    })()}
                     {/* Image / Voice / File / Text */}
                     {(msg.mediaType === 'image' && msg.mediaUrl) ? (
                       <div>
@@ -2015,30 +2026,21 @@ export default function ChatRoom({
                 {agentInfo?.identityEmoji || '🤖'}
               </div>
               <div className="pt-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                    <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:200ms]" />
-                    <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:400ms]" />
-                  </div>
-                  {thinkingPhase && (
-                    <span className="text-[12px] text-text/50 dark:text-text-inv/50 font-medium">
-                      {thinkingPhase}
-                    </span>
-                  )}
-                </div>
+                {/* Breathing text indicator — no dots */}
+                <span className="text-[13px] text-primary font-medium animate-pulse">
+                  {thinkingPhase || 'Thinking'}
+                </span>
                 {activeToolCalls.length > 0 && (
-                  <div className="mt-2 flex flex-col gap-1">
+                  <div className="mt-1.5 flex flex-col gap-1">
                     {activeToolCalls.map((tc) => (
-                      <div key={tc.toolCallId} className="flex items-center gap-1.5 text-[11px] text-text/45 dark:text-text-inv/45">
-                        <Loader2 size={10} className="animate-spin text-primary flex-shrink-0" />
-                        <span className="truncate">{formatToolName(tc.toolName)}</span>
+                      <span key={tc.toolCallId} className="text-[11px] text-text/45 dark:text-text-inv/45 animate-pulse">
+                        🔧 {formatToolName(tc.toolName)}
                         {tc.args && (tc.args as Record<string, unknown>).path && (
-                          <span className="text-text/30 dark:text-text-inv/30 truncate max-w-[180px]">
+                          <span className="text-text/30 dark:text-text-inv/30 ml-1">
                             {String((tc.args as Record<string, unknown>).path || (tc.args as Record<string, unknown>).file_path || (tc.args as Record<string, unknown>).command || (tc.args as Record<string, unknown>).url || '').slice(0, 50)}
                           </span>
                         )}
-                      </div>
+                      </span>
                     ))}
                   </div>
                 )}
@@ -2336,7 +2338,7 @@ export default function ChatRoom({
             </motion.div>
           )}
 
-          {/* Default quick commands when no context */}
+          {/* Default quick commands when no context — with dynamic "follow up" when waiting too long */}
           {(messages.length === 0 || messages[messages.length - 1]?.sender === 'user') && !showSlashMenu && !showEmojiPicker && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -2361,6 +2363,22 @@ export default function ChatRoom({
                 <FileText size={14} />
               </motion.button>
               <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
+              {/* Dynamic "follow up" pill — shows when last user message is > 2min old with no reply */}
+              {messages.length > 0 && messages[messages.length - 1]?.sender === 'user' && messages[messages.length - 1]?.timestamp && (Date.now() - (messages[messages.length - 1]?.timestamp || 0)) > 120000 && !isThinking && (
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    const lastMsg = messages[messages.length - 1];
+                    quickSend(`进度怎么样了？上次我说的是："${lastMsg?.text?.slice(0, 50) || ''}"`);
+                  }}
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-full text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:border-amber-300 transition-colors animate-pulse"
+                >
+                  <span>👋</span>
+                  催一下
+                </motion.button>
+              )}
               {QUICK_COMMANDS.map((cmd) => (
                 <motion.button
                   key={cmd.label}
