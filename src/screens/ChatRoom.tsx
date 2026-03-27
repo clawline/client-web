@@ -1396,7 +1396,7 @@ export default function ChatRoom({
             {agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}
           </h2>
           <p className="text-[11px] text-text/40 dark:text-text-inv/35 truncate max-w-[200px] md:max-w-none -mt-0.5">
-            {getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}
+            {getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}{agentInfo?.model ? ` · ${agentInfo.model.split('/').pop()}` : ''}
           </p>
           <span className={`text-[10px] font-medium flex items-center gap-1 ${
             wsStatus === 'connected' ? 'text-primary' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'text-amber-500' : 'text-red-400'
@@ -1701,17 +1701,22 @@ export default function ChatRoom({
             Load earlier messages…
           </button>
         )}
-        {/* Empty chat welcome */}
+        {/* Empty chat welcome — skeleton loading */}
         {!hasLoadedMessages && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
-            <div className="flex items-center gap-1.5 text-primary">
-              <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-              <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:200ms]" />
-              <span className="w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:400ms]" />
-            </div>
-            <p className="mt-3 text-[13px] text-text/40 dark:text-text-inv/40">
-              Loading cached messages…
-            </p>
+          <div className="flex-1 flex flex-col gap-4 px-4 py-6">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex gap-3 animate-pulse" style={{ opacity: 1 - i * 0.2 }}>
+                <div className="w-8 h-8 rounded-full bg-border dark:bg-border-dark flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-16 bg-border dark:bg-border-dark rounded" />
+                    <div className="h-2.5 w-10 bg-border/60 dark:bg-border-dark/60 rounded" />
+                  </div>
+                  <div className="h-3 bg-border dark:bg-border-dark rounded w-3/4" />
+                  {i === 1 && <div className="h-3 bg-border dark:bg-border-dark rounded w-1/2" />}
+                </div>
+              </div>
+            ))}
           </div>
         )}
         {hasLoadedMessages && messages.length === 0 && (
@@ -1755,16 +1760,13 @@ export default function ChatRoom({
               {showDateSep && msg.timestamp && (
                 <div className="flex items-center gap-3 my-4">
                   <div className="flex-1 h-px bg-border dark:bg-border-dark" />
-                  <span className="text-[11px] text-text/50 dark:text-text-inv/45 font-semibold tracking-wide uppercase">{formatDate(msg.timestamp)}</span>
+                  <span className="text-[11px] text-text/45 dark:text-text-inv/40 font-medium">{formatDate(msg.timestamp)}</span>
                   <div className="flex-1 h-px bg-border dark:bg-border-dark" />
                 </div>
               )}
               {/* Flat thread-style message (Slack/Discord inspired, no bubbles) */}
-              <motion.div
-                initial={isUser ? { opacity: 0, y: 6 } : { opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.15 }}
-                className={`group/msg flex gap-3 px-2 py-0.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors relative ${grouped ? '' : 'mt-3'}`}
+              <div
+                className={`group/msg flex gap-3 px-2 py-0.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors relative animate-in ${grouped ? '' : 'mt-3'}`}
                 onTouchStart={() => handleTouchStart(msg.id)}
                 onTouchEnd={handleTouchEnd}
                 onTouchMove={handleTouchEnd}
@@ -1905,11 +1907,6 @@ export default function ChatRoom({
                           ⟳ Retry
                         </button>
                       )}
-                      {!isUser && agentInfo?.model && (
-                        <span className="hidden md:inline text-[10px] text-text/40 dark:text-text-inv/35 font-medium border border-border dark:border-border-dark rounded-full px-2 py-0.5">
-                          {agentInfo.model.split('/').pop()}
-                        </span>
-                      )}
                     </div>
                   )}
 
@@ -1982,22 +1979,25 @@ export default function ChatRoom({
                         </div>
                       </div>
                     )}
-                    <button type="button" onClick={() => startReply(msg)} className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-info rounded transition-colors">
-                      <CornerDownLeft size={13} />
+                    <button type="button" onClick={() => startReply(msg)} className="w-7 h-7 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-info hover:bg-info/10 rounded-md transition-colors" title="Reply">
+                      <CornerDownLeft size={14} />
+                    </button>
+                    <button type="button" onClick={() => navigator.clipboard.writeText(msg.text).catch(() => {})} className="w-7 h-7 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-text/60 dark:hover:text-text-inv/50 hover:bg-text/5 dark:hover:bg-text-inv/5 rounded-md transition-colors" title="Copy">
+                      <Copy size={14} />
                     </button>
                     {isUser && (
                       <>
-                        <button type="button" onClick={() => handleEditMessage(msg)} className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-amber-500 rounded transition-colors">
-                          <Pencil size={13} />
+                        <button type="button" onClick={() => handleEditMessage(msg)} className="w-7 h-7 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-amber-500 hover:bg-amber-500/10 rounded-md transition-colors">
+                          <Pencil size={14} />
                         </button>
-                        <button type="button" onClick={() => handleDeleteMessage(msg.id)} className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-red-500 rounded transition-colors">
-                          <Trash2 size={13} />
+                        <button type="button" onClick={() => handleDeleteMessage(msg.id)} className="w-7 h-7 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-red-500 hover:bg-red-500/10 rounded-md transition-colors">
+                          <Trash2 size={14} />
                         </button>
                       </>
                     )}
                   </div>
                 )}
-              </motion.div>
+              </div>
             </div>
           );
         })}
