@@ -109,10 +109,13 @@ function MessageItemInner({
             </div>
           )}
 
-          {/* Message content */}
-          <div className={`text-[15px] leading-relaxed relative overflow-x-hidden ${
-            isErrorMsg ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-inv'
-          } ${hasCodeBlock ? 'border-l-[3px] border-l-primary/50 pl-3' : ''}`}>
+          {/* Message content — stops touch propagation to allow native text selection */}
+          <div
+            className={`text-[15px] leading-relaxed relative overflow-x-hidden ${
+              isErrorMsg ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-inv'
+            } ${hasCodeBlock ? 'border-l-[3px] border-l-primary/50 pl-3' : ''}`}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
             {(msg.mediaType === 'image' && msg.mediaUrl) ? (
               <div>
                 <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover mt-1" />

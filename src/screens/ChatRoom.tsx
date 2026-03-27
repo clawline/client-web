@@ -124,21 +124,28 @@ export default function ChatRoom({
       setCopiedMsgId(msgId);
       setTimeout(() => setCopiedMsgId(null), 2000);
     };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(showFeedback).catch(() => {
-        // Fallback for older browsers / insecure contexts
-        try {
-          const ta = document.createElement('textarea');
-          ta.value = text;
-          ta.style.position = 'fixed';
-          ta.style.opacity = '0';
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-          showFeedback();
-        } catch { /* silently fail */ }
-      });
+
+    // Try sync copy first (works in more contexts, especially mobile WebViews)
+    const syncCopy = (): boolean => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;opacity:0;left:-9999px;top:-9999px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch { return false; }
+    };
+
+    // Attempt sync first, then async clipboard API
+    if (syncCopy()) {
+      showFeedback();
+    } else if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(showFeedback).catch(() => {});
     }
   }, []);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -1377,6 +1384,20 @@ export default function ChatRoom({
           </motion.div>
           );
         })()}
+      </AnimatePresence>
+
+      {/* Copy success toast (mobile-friendly) */}
+      <AnimatePresence>
+        {copiedMsgId && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-emerald-600 text-white text-[13px] font-medium px-4 py-2 rounded-full shadow-lg flex items-center gap-2"
+          >
+            <Check size={14} /> Copied!
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {/* Messages */}
