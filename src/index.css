@@ -157,10 +157,10 @@ input, select, textarea {
   font-size: 16px !important;
 }
 
-/* Safe area bottom padding for PWA — compact for iPhone notch screens */
+/* Safe area bottom padding — different for browser vs PWA standalone */
 .safe-area-bottom {
   padding-bottom: 2px;
-  padding-bottom: calc(env(safe-area-inset-bottom, 2px) * 0.4 + 2px);
+  padding-bottom: env(safe-area-inset-bottom, 2px);
 }
 
 /* Prevent images/media from causing horizontal overflow */
