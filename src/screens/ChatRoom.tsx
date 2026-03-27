@@ -1532,20 +1532,20 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
         <div ref={messagesEndRef} />
-
-        {/* WhatsApp-style long-press action sheet */}
-        <ActionSheet
-          longPressedMsgId={longPressedMsgId}
-          messages={messages}
-          onClose={closeLongPress}
-          onReply={startReply}
-          onCopy={copyMessage}
-          onEdit={handleEditMessage}
-          onDelete={handleDeleteMessage}
-          onReactionToggle={handleReactionToggle}
-          onOpenReactionPicker={openReactionPicker}
-        />
       </div>
+
+      {/* WhatsApp-style long-press action sheet — MUST be outside scroll container for iOS z-index */}
+      <ActionSheet
+        longPressedMsgId={longPressedMsgId}
+        messages={messages}
+        onClose={closeLongPress}
+        onReply={startReply}
+        onCopy={copyMessage}
+        onEdit={handleEditMessage}
+        onDelete={handleDeleteMessage}
+        onReactionToggle={handleReactionToggle}
+        onOpenReactionPicker={openReactionPicker}
+      />
 
       {/* Input Area */}
       <div className="px-3 pt-1.5 bg-white/60 dark:bg-card-alt/60 backdrop-blur-md border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative safe-area-bottom">

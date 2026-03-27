@@ -5,18 +5,26 @@ import {defineConfig, loadEnv} from 'vite';
 import { createHash } from 'crypto';
 import { readFileSync, writeFileSync } from 'fs';
 
-// Plugin to inject build hash into sw.js so browsers detect new versions
+// Plugin to inject build hash into sw.js and index.html so browsers detect new versions
 function swBuildHashPlugin() {
   return {
     name: 'sw-build-hash',
     writeBundle() {
+      const hash = createHash('md5').update(Date.now().toString()).digest('hex').slice(0, 8);
+      // Replace in sw.js
       const swPath = path.resolve(__dirname, 'dist/sw.js');
       try {
         let sw = readFileSync(swPath, 'utf-8');
-        const hash = createHash('md5').update(Date.now().toString()).digest('hex').slice(0, 8);
         sw = sw.replace('%%BUILD_HASH%%', hash);
         writeFileSync(swPath, sw);
       } catch { /* sw.js not in dist yet */ }
+      // Replace in index.html (cache purge script)
+      const htmlPath = path.resolve(__dirname, 'dist/index.html');
+      try {
+        let html = readFileSync(htmlPath, 'utf-8');
+        html = html.replace('%%BUILD_HASH%%', hash);
+        writeFileSync(htmlPath, html);
+      } catch { /* index.html not in dist yet */ }
     },
   };
 }
