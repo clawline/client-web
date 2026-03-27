@@ -23,7 +23,7 @@ import {
   getConnectionDisplayName, getSkillDescription,
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
-import { DeliveryTicks, MessageItem, ActionSheet } from '../components/chat';
+import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner } from '../components/chat';
 
 function getAgentInfo(agentId: string | null | undefined, connectionId: string): AgentInfo | null {
   const list = channel.loadCachedAgents(connectionId);
@@ -1305,154 +1305,39 @@ export default function ChatRoom({
       </div>
 
       {/* Header context menu */}
-      <AnimatePresence>
-        {showHeaderMenu && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 z-30"
-              onClick={() => setShowHeaderMenu(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, y: -10, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -10, scale: 0.95 }}
-              className="absolute top-[48px] right-4 z-40 bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-2xl shadow-xl p-1.5 min-w-[180px]"
-            >
-              <button
-                onClick={openHistoryDrawer}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
-              >
-                <MessageSquare size={16} />
-                Conversation History
-              </button>
-              <button
-                onClick={openFileGallery}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
-              >
-                <Paperclip size={16} />
-                Files &amp; Media
-              </button>
-              <button
-                onClick={() => { setShowHeaderMenu(false); setShowMemory(true); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
-              >
-                <Cpu size={16} />
-                View Memory
-              </button>
-              <button
-                onClick={() => {
-                  setMessages([]);
-                  setHasLoadedMessages(true);
-                  if (connId && agentId) {
-                    void clearConversationMessages(connId, agentId, { chatId });
-                    localStorage.removeItem(getPreviewKey(connId, agentId));
-                    emitPreviewUpdated(connId, agentId);
-                  }
-                  setShowHeaderMenu(false);
-                }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[14px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-              >
-                <Trash2 size={16} />
-                Clear Chat
-              </button>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <HeaderMenu
+        isOpen={showHeaderMenu}
+        onClose={() => setShowHeaderMenu(false)}
+        onOpenHistory={openHistoryDrawer}
+        onOpenFiles={openFileGallery}
+        onOpenMemory={() => { setShowHeaderMenu(false); setShowMemory(true); }}
+        onClearChat={() => {
+          setMessages([]);
+          setHasLoadedMessages(true);
+          if (connId && agentId) {
+            void clearConversationMessages(connId, agentId, { chatId });
+            localStorage.removeItem(getPreviewKey(connId, agentId));
+            emitPreviewUpdated(connId, agentId);
+          }
+          setShowHeaderMenu(false);
+        }}
+      />
 
-      <AnimatePresence>
-        {showHistoryDrawer && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-30 bg-black/25"
-              onClick={() => setShowHistoryDrawer(false)}
-            />
-            <motion.div
-              initial={isDesktop ? { opacity: 0, x: 32 } : { opacity: 0, y: 32 }}
-              animate={isDesktop ? { opacity: 1, x: 0 } : { opacity: 1, y: 0 }}
-              exit={isDesktop ? { opacity: 0, x: 32 } : { opacity: 0, y: 32 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-              className={cn(
-                'fixed z-40 bg-white dark:bg-card-alt shadow-2xl border border-border dark:border-border-dark',
-                isDesktop
-                  ? 'top-0 right-0 h-full w-[360px] max-w-[88vw] rounded-l-[28px]'
-                  : 'left-0 right-0 bottom-0 max-h-[78vh] rounded-t-[28px]'
-              )}
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-border dark:border-border-dark">
-                <div>
-                  <h3 className="text-[15px] font-semibold">Conversation History</h3>
-                  <p className="text-[12px] text-text/45 dark:text-text-inv/45">
-                    {agentInfo?.name || agentId || 'Agent'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <motion.button
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => {
-                      const newChatId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-                      setShowHistoryDrawer(false);
-                      onOpenConversation(newChatId);
-                    }}
-                    className="p-2 text-primary hover:bg-primary/10 rounded-full"
-                    title="New conversation"
-                  >
-                    <Plus size={18} />
-                  </motion.button>
-                  <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHistoryDrawer(false)} className="p-2 text-text/55 dark:text-text-inv/55">
-                    <X size={18} />
-                  </motion.button>
-                </div>
-              </div>
-
-              <div className="overflow-y-auto p-3 space-y-2 max-h-[calc(78vh-76px)] md:max-h-[calc(100vh-76px)]">
-                {loadingConversations ? (
-                  <div className="flex flex-col items-center justify-center py-16">
-                    <Loader2 size={24} className="text-primary animate-spin mb-3" />
-                    <p className="text-[13px] text-text/40 dark:text-text-inv/40">Loading conversations…</p>
-                  </div>
-                ) : conversations.length > 0 ? conversations.map((conversation) => (
-                  <button
-                    key={conversation.chatId}
-                    type="button"
-                    onClick={() => handleConversationSwitch(conversation.chatId)}
-                    className={cn(
-                      'w-full text-left rounded-[20px] border px-4 py-3 transition-colors',
-                      chatId === conversation.chatId
-                        ? 'border-primary bg-primary/5 dark:bg-primary/10'
-                        : 'border-border/70 dark:border-border-dark/70 hover:border-primary/30'
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-3 mb-1">
-                      <p className="font-medium text-[14px] truncate">{conversation.title || conversation.lastMessage || conversation.lastContent || conversation.chatId}</p>
-                      {(conversation.timestamp || conversation.lastTimestamp) && (
-                        <span className="text-[11px] text-text/40 dark:text-text-inv/40 shrink-0">
-                          {formatRelativeTime((conversation.timestamp || conversation.lastTimestamp)!)}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[12px] text-text/45 dark:text-text-inv/45 line-clamp-2">
-                      {conversation.lastMessage || conversation.lastContent || 'No messages yet'}
-                    </p>
-                  </button>
-                )) : (
-                  <div className="flex flex-col items-center justify-center text-center py-16 px-6">
-                    <div className="w-14 h-14 rounded-full bg-primary/10 dark:bg-primary/15 flex items-center justify-center mb-4">
-                      <MessageSquare size={22} className="text-primary" />
-                    </div>
-                    <p className="text-[15px] font-medium text-text dark:text-text-inv mb-1">No saved conversations</p>
-                    <p className="text-[13px] text-text/40 dark:text-text-inv/40">This agent has no conversation history yet.</p>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <HistoryDrawer
+        isOpen={showHistoryDrawer}
+        isDesktop={isDesktop}
+        loading={loadingConversations}
+        conversations={conversations}
+        currentChatId={chatId}
+        agentName={agentInfo?.name || agentId || undefined}
+        onClose={() => setShowHistoryDrawer(false)}
+        onNewConversation={() => {
+          const newChatId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          setShowHistoryDrawer(false);
+          onOpenConversation(newChatId);
+        }}
+        onSwitchConversation={handleConversationSwitch}
+      />
 
       <FileGallery
         agentId={agentId}
@@ -1463,49 +1348,12 @@ export default function ChatRoom({
         onClose={() => setShowFileGallery(false)}
       />
 
-      {/* Reconnect celebration toast */}
-      {/* WhatsApp-style persistent disconnection banner */}
-      <AnimatePresence>
-        {(wsStatus === 'disconnected' || wsStatus === 'reconnecting') && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className={`w-full z-20 px-4 py-2 flex items-center justify-center gap-2 text-[13px] font-medium ${
-              wsStatus === 'reconnecting'
-                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-b border-amber-200 dark:border-amber-800/40'
-                : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 border-b border-red-200 dark:border-red-800/40'
-            }`}
-          >
-            {wsStatus === 'reconnecting' ? (
-              <><Loader2 size={14} className="animate-spin" /> Reconnecting… Check your network.</>
-            ) : (
-              <>
-                <WifiOff size={14} /> Connection lost.
-                <button
-                  onClick={() => channel.reconnect(runtimeConnId)}
-                  className="underline font-semibold hover:opacity-80"
-                >
-                  Reconnect
-                </button>
-              </>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showReconnected && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-primary text-white text-[13px] font-medium px-4 py-2 rounded-full shadow-lg shadow-primary/25 flex items-center gap-2"
-          >
-            <Wifi size={14} /> Back online!
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Connection status banners */}
+      <ConnectionBanner
+        wsStatus={wsStatus}
+        showReconnected={showReconnected}
+        onReconnect={() => channel.reconnect(runtimeConnId)}
+      />
 
       {/* Error toast */}
       <AnimatePresence>
@@ -1794,105 +1642,17 @@ export default function ChatRoom({
         </AnimatePresence>
 
         {/* Dynamic suggestions area */}
-        <AnimatePresence mode="popLayout">
-          {/* Context suggestions after last bot message */}
-          {messages.length > 0 && messages[messages.length - 1]?.sender === 'ai' && !showSlashMenu && !showEmojiPicker && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="flex items-center gap-1.5 overflow-x-auto pb-1 px-0.5 scrollbar-hide"
-            >
-              {/* Primary icon buttons — solid bg, larger touch target */}
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => { setInputValue('/'); setShowSlashMenu(true); }}
-                className="flex-shrink-0 inline-flex items-center gap-1 w-8 h-8 justify-center bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
-                title={`Skills (${skillCount})`}
-              >
-                <Puzzle size={15} />
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
-                title="Context"
-              >
-                <FileText size={15} />
-              </motion.button>
-              <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
-              {/* Secondary suggestion pills — ghost style, clear hierarchy */}
-              {CONTEXT_SUGGESTIONS.map((sug) => (
-                <motion.button
-                  key={sug.label}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setInputValue(sug.label)}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors"
-                >
-                  <span>{sug.emoji}</span>
-                  {sug.label}
-                </motion.button>
-              ))}
-            </motion.div>
-          )}
-
-          {/* Default quick commands when no context — with dynamic "follow up" when waiting too long */}
-          {(messages.length === 0 || messages[messages.length - 1]?.sender === 'user') && !showSlashMenu && !showEmojiPicker && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex items-center gap-1.5 overflow-x-auto pb-1 px-0.5 scrollbar-hide"
-            >
-              {/* Primary icon buttons */}
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => { setInputValue('/'); setShowSlashMenu(true); }}
-                className="flex-shrink-0 inline-flex items-center gap-1 w-8 h-8 justify-center bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
-                title={`Skills (${skillCount})`}
-              >
-                <Puzzle size={15} />
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
-                title="Context"
-              >
-                <FileText size={15} />
-              </motion.button>
-              <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
-              {/* Dynamic "follow up" pill — shows when last user message is > 2min old with no reply */}
-              {messages.length > 0 && messages[messages.length - 1]?.sender === 'user' && messages[messages.length - 1]?.timestamp && (Date.now() - (messages[messages.length - 1]?.timestamp || 0)) > 120000 && !isThinking && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    const lastMsg = messages[messages.length - 1];
-                    quickSend(`进度怎么样了？上次我说的是："${lastMsg?.text?.slice(0, 50) || ''}"`);
-                  }}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-full text-[12px] font-medium text-amber-600 dark:text-amber-400 active:bg-amber-100 transition-colors animate-pulse"
-                >
-                  <span>👋</span>
-                  催一下
-                </motion.button>
-              )}
-              {/* Tertiary quick commands — minimal styling */}
-              {QUICK_COMMANDS.map((cmd) => (
-                <motion.button
-                  key={cmd.label}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => quickSend(cmd.label)}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors"
-                >
-                  <span>{cmd.emoji}</span>
-                  {cmd.label}
-                </motion.button>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <SuggestionBar
+          messages={messages}
+          isThinking={isThinking}
+          showSlashMenu={showSlashMenu}
+          showEmojiPicker={showEmojiPicker}
+          skillCount={skillCount}
+          onOpenSlashMenu={() => { setInputValue('/'); setShowSlashMenu(true); }}
+          onOpenContextViewer={() => setShowContextViewer(true)}
+          onSetInputValue={setInputValue}
+          onQuickSend={quickSend}
+        />
 
         {/* Edit bar */}
         {editingMsg && (
