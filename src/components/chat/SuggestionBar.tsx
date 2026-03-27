@@ -35,7 +35,7 @@ function SuggestionBarInner({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
-          className="flex items-center gap-1.5 overflow-x-auto pb-1 px-0.5 scrollbar-hide"
+          className="flex items-center gap-1.5 overflow-x-auto px-0.5 scrollbar-hide"
         >
           <IconButtons skillCount={skillCount} onOpenSlashMenu={onOpenSlashMenu} onOpenContextViewer={onOpenContextViewer} />
           <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
@@ -44,7 +44,7 @@ function SuggestionBarInner({
               key={sug.label}
               whileTap={{ scale: 0.95 }}
               onClick={() => onSetInputValue(sug.label)}
-              className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors"
+              className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors"
             >
               <span>{sug.emoji}</span>
               {sug.label}
@@ -59,7 +59,7 @@ function SuggestionBarInner({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="flex items-center gap-1.5 overflow-x-auto pb-1 px-0.5 scrollbar-hide"
+          className="flex items-center gap-1.5 overflow-x-auto px-0.5 scrollbar-hide"
         >
           <IconButtons skillCount={skillCount} onOpenSlashMenu={onOpenSlashMenu} onOpenContextViewer={onOpenContextViewer} />
           <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
@@ -82,7 +82,7 @@ function SuggestionBarInner({
               key={cmd.label}
               whileTap={{ scale: 0.95 }}
               onClick={() => onQuickSend(cmd.label)}
-              className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors"
+              className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors"
             >
               <span>{cmd.emoji}</span>
               {cmd.label}
@@ -105,7 +105,7 @@ function IconButtons({ skillCount, onOpenSlashMenu, onOpenContextViewer }: {
       <motion.button
         whileTap={{ scale: 0.95 }}
         onClick={onOpenSlashMenu}
-        className="flex-shrink-0 inline-flex items-center gap-1 w-8 h-8 justify-center bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
+        className="flex-shrink-0 inline-flex items-center gap-1 w-7 h-7 justify-center bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
         title={`Skills (${skillCount})`}
       >
         <Puzzle size={15} />
@@ -113,7 +113,7 @@ function IconButtons({ skillCount, onOpenSlashMenu, onOpenContextViewer }: {
       <motion.button
         whileTap={{ scale: 0.95 }}
         onClick={onOpenContextViewer}
-        className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
+        className="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
         title="Context"
       >
         <FileText size={15} />

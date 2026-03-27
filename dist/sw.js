@@ -1,5 +1,5 @@
 // BUILD_HASH is replaced at build time by vite plugin — changing this triggers SW update detection
-const BUILD_HASH = '9fbe354f';
+const BUILD_HASH = 'dfa8b69c';
 const CACHE_NAME = `openclaw-${BUILD_HASH}`;
 const PRECACHE_URLS = [
   '/',

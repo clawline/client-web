@@ -1718,12 +1718,12 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
-        <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full p-1 flex items-center gap-0.5 shadow-lg shadow-black/5 relative">
+        <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full p-0.5 flex items-center gap-0.5 shadow-lg shadow-black/5 relative">
           {/* Action menu toggle (+ button) */}
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowMoreIcons(!showMoreIcons)}
-            className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/55 dark:text-text-inv/55 hover:text-text dark:hover:text-text-inv'}`}
+            className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/55 dark:text-text-inv/55 hover:text-text dark:hover:text-text-inv'}`}
             aria-label="Attach"
           >
             <Plus size={20} />
@@ -1840,7 +1840,7 @@ export default function ChatRoom({
               onClick={handleSend}
               disabled={!agentReady}
               aria-label="Send message"
-              className="w-10 h-10 rounded-full flex items-center justify-center bg-primary text-white shadow-md shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-primary text-white shadow-md shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send size={18} />
             </motion.button>
@@ -1860,7 +1860,7 @@ export default function ChatRoom({
                 whileTap={{ scale: 0.85 }}
                 onClick={toggleRecording}
                 aria-label="Stop recording and send"
-                className="w-10 h-10 rounded-full flex items-center justify-center bg-red-500 text-white shadow-lg shadow-red-500/30"
+                className="w-9 h-9 rounded-full flex items-center justify-center bg-red-500 text-white shadow-lg shadow-red-500/30"
               >
                 <Send size={18} />
               </motion.button>
@@ -1870,7 +1870,7 @@ export default function ChatRoom({
               whileTap={{ scale: 0.9 }}
               onClick={toggleRecording}
               aria-label="Start voice recording"
-              className="w-10 h-10 rounded-full flex items-center justify-center bg-border dark:bg-border-dark text-text/55 dark:text-text-inv/55 hover:text-primary hover:bg-primary/10 transition-colors"
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-border dark:bg-border-dark text-text/55 dark:text-text-inv/55 hover:text-primary hover:bg-primary/10 transition-colors"
             >
               <Mic size={18} />
             </motion.button>
