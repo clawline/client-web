@@ -1548,7 +1548,7 @@ export default function ChatRoom({
       />
 
       {/* Input Area */}
-      <div className="px-3 pt-1.5 bg-white/60 dark:bg-card-alt/60 backdrop-blur-md border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative safe-area-bottom">
+      <div className="px-2 pt-1 bg-white/60 dark:bg-card-alt/60 backdrop-blur-md border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative safe-area-bottom">
         <AnimatePresence>
           {showSlashMenu && (
             <>

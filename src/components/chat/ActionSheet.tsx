@@ -98,7 +98,7 @@ function ActionSheetInner({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
             transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-            className="fixed bottom-0 left-0 right-0 z-[60] md:hidden bg-[#1f2c34] dark:bg-[#1f2c34] rounded-t-2xl shadow-2xl pb-[max(1rem,env(safe-area-inset-bottom))]"
+            className="fixed bottom-0 left-0 right-0 z-[60] md:hidden bg-[#1f2c34] dark:bg-[#1f2c34] rounded-t-2xl shadow-2xl safe-area-bottom"
           >
             <div className="flex flex-col">
               <button
