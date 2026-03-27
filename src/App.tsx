@@ -8,6 +8,7 @@ import ChatList from './screens/ChatList';
 import BottomNav from './components/BottomNav';
 import UpdateBanner from './components/UpdateBanner';
 import IOSInstallPrompt from './components/IOSInstallPrompt';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const SIDEBAR_WIDTH_KEY = 'openclaw.sidebar.width';
 const MIN_SIDEBAR = 240;
@@ -570,7 +571,9 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <AppShell />
+      <ErrorBoundary>
+        <AppShell />
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

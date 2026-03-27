@@ -155,7 +155,7 @@ export default function ActionCard({ text, onSend }: ActionCardProps) {
               animate={{ opacity: 1, scale: 1 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => onSend(opt.command)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full text-[13px] font-medium text-text dark:text-text-inv shadow-sm hover:border-primary hover:text-primary transition-colors"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full text-[13px] font-medium text-text dark:text-text-inv shadow-sm hover:border-primary hover:text-primary active:bg-primary/5 transition-colors min-h-[36px]"
             >
               {opt.emoji && <span>{opt.emoji}</span>}
               {opt.label}

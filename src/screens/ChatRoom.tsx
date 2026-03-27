@@ -1438,20 +1438,20 @@ export default function ChatRoom({
               const newChatId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
               onOpenConversation(newChatId);
             }}
-            className="p-2 text-text dark:text-text-inv"
+            className="p-2.5 text-text dark:text-text-inv rounded-full active:bg-text/5 dark:active:bg-text-inv/5 transition-colors"
             aria-label="New conversation"
           >
             <Plus size={20} />
           </motion.button>
-          <motion.button whileTap={{ scale: 0.9 }} onClick={openHistoryDrawer} className="p-2 text-text dark:text-text-inv" aria-label="Open history drawer">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={openHistoryDrawer} className="p-2.5 text-text dark:text-text-inv rounded-full active:bg-text/5 dark:active:bg-text-inv/5 transition-colors" aria-label="Open history drawer">
             <MessageSquare size={20} />
           </motion.button>
           {isSplitPane && onCloseSplit && (
-            <motion.button whileTap={{ scale: 0.9 }} onClick={onCloseSplit} className="p-2 text-text dark:text-text-inv" aria-label="Close split view">
+            <motion.button whileTap={{ scale: 0.9 }} onClick={onCloseSplit} className="p-2.5 text-text dark:text-text-inv rounded-full active:bg-text/5 dark:active:bg-text-inv/5 transition-colors" aria-label="Close split view">
               <X size={20} />
             </motion.button>
           )}
-          <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2 -mr-2 text-text dark:text-text-inv" aria-label="More options">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2.5 -mr-2 text-text dark:text-text-inv rounded-full active:bg-text/5 dark:active:bg-text-inv/5 transition-colors" aria-label="More options">
             <MoreHorizontal size={24} />
           </motion.button>
         </div>
@@ -1753,9 +1753,9 @@ export default function ChatRoom({
             <div key={msg.id}>
               {/* Date separator */}
               {showDateSep && msg.timestamp && (
-                <div className="flex items-center gap-3 my-3">
+                <div className="flex items-center gap-3 my-4">
                   <div className="flex-1 h-px bg-border dark:bg-border-dark" />
-                  <span className="text-[11px] text-text/55 dark:text-text-inv/55 font-medium">{formatDate(msg.timestamp)}</span>
+                  <span className="text-[11px] text-text/50 dark:text-text-inv/45 font-semibold tracking-wide uppercase">{formatDate(msg.timestamp)}</span>
                   <div className="flex-1 h-px bg-border dark:bg-border-dark" />
                 </div>
               )}
@@ -1879,14 +1879,10 @@ export default function ChatRoom({
                         {isStreaming && (
                           <span className="inline-block w-2 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
                         )}
-                      {/* Inline timestamp + delivery for bot messages (mobile) */}
+                      {/* Inline timestamp for bot messages (mobile) — model badge only in header */}
                         {!isUser && !isStreaming && msg.timestamp && (
                           <span className="md:hidden text-[10px] text-text/40 dark:text-text-inv/35 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
-                            {formatTime(msg.timestamp)}{agentInfo?.model && (
-                              <span className="ml-1.5 border border-border dark:border-border-dark rounded-full px-1.5 py-px text-text/35 dark:text-text-inv/30 font-medium">
-                                {agentInfo.model.split('/').pop()}
-                              </span>
-                            )}
+                            {formatTime(msg.timestamp)}
                           </span>
                         )}
                       </div>
@@ -2307,29 +2303,31 @@ export default function ChatRoom({
               exit={{ opacity: 0, y: 10 }}
               className="flex items-center gap-1.5 overflow-x-auto pb-1 px-0.5 scrollbar-hide"
             >
+              {/* Primary icon buttons — solid bg, larger touch target */}
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => { setInputValue('/'); setShowSlashMenu(true); }}
-                className="flex-shrink-0 inline-flex items-center gap-1 w-7 h-7 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center gap-1 w-8 h-8 justify-center bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
                 title={`Skills (${skillCount})`}
               >
-                <Puzzle size={14} />
+                <Puzzle size={15} />
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
                 title="Context"
               >
-                <FileText size={14} />
+                <FileText size={15} />
               </motion.button>
               <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
+              {/* Secondary suggestion pills — ghost style, clear hierarchy */}
               {CONTEXT_SUGGESTIONS.map((sug) => (
                 <motion.button
                   key={sug.label}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setInputValue(sug.label)}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 bg-white/80 dark:bg-card-alt/80 border border-border/60 dark:border-border-dark/60 rounded-full text-[11px] font-medium text-text/55 dark:text-text-inv/55 hover:border-primary/25 hover:text-primary transition-colors"
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors"
                 >
                   <span>{sug.emoji}</span>
                   {sug.label}
@@ -2346,21 +2344,22 @@ export default function ChatRoom({
               exit={{ opacity: 0 }}
               className="flex items-center gap-1.5 overflow-x-auto pb-1 px-0.5 scrollbar-hide"
             >
+              {/* Primary icon buttons */}
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => { setInputValue('/'); setShowSlashMenu(true); }}
-                className="flex-shrink-0 inline-flex items-center gap-1 w-7 h-7 justify-center bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center gap-1 w-8 h-8 justify-center bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
                 title={`Skills (${skillCount})`}
               >
-                <Puzzle size={14} />
+                <Puzzle size={15} />
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowContextViewer(true)}
-                className="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 bg-primary/10 border border-primary/20 rounded-full text-primary transition-colors"
+                className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
                 title="Context"
               >
-                <FileText size={14} />
+                <FileText size={15} />
               </motion.button>
               <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
               {/* Dynamic "follow up" pill — shows when last user message is > 2min old with no reply */}
@@ -2373,18 +2372,19 @@ export default function ChatRoom({
                     const lastMsg = messages[messages.length - 1];
                     quickSend(`进度怎么样了？上次我说的是："${lastMsg?.text?.slice(0, 50) || ''}"`);
                   }}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-full text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:border-amber-300 transition-colors animate-pulse"
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-full text-[12px] font-medium text-amber-600 dark:text-amber-400 active:bg-amber-100 transition-colors animate-pulse"
                 >
                   <span>👋</span>
                   催一下
                 </motion.button>
               )}
+              {/* Tertiary quick commands — minimal styling */}
               {QUICK_COMMANDS.map((cmd) => (
                 <motion.button
                   key={cmd.label}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => quickSend(cmd.label)}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 bg-white/90 dark:bg-card-alt/90 border border-border/70 dark:border-border-dark/70 rounded-full text-[11px] font-medium text-text/55 dark:text-text-inv/55 hover:border-primary/35 hover:text-primary transition-colors"
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors"
                 >
                   <span>{cmd.emoji}</span>
                   {cmd.label}
