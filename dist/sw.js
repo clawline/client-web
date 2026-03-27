@@ -1,17 +1,18 @@
 // BUILD_HASH is replaced at build time by vite plugin — changing this triggers SW update detection
-const BUILD_HASH = '03ae7bec';
+const BUILD_HASH = '915d466a';
 const CACHE_NAME = `openclaw-${BUILD_HASH}`;
 const PRECACHE_URLS = [
   '/',
   '/index.html',
 ];
 
-// Install event - cache essential resources
-// Do NOT auto-skipWaiting — let user decide via UpdateBanner
+// Install event - cache essential resources and auto-activate
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
   );
+  // Auto-activate new SW immediately (no waiting for UpdateBanner)
+  self.skipWaiting();
 });
 
 // Activate event - clean up old caches
