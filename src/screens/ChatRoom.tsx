@@ -1196,7 +1196,11 @@ export default function ChatRoom({
   const [longPressedMsgId, setLongPressedMsgId] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleTouchStart = (msgId: string) => {
-    longPressTimer.current = setTimeout(() => setLongPressedMsgId(msgId), 400);
+    longPressTimer.current = setTimeout(() => {
+      // Clear any native text selection to avoid iOS system menu conflict
+      window.getSelection()?.removeAllRanges();
+      setLongPressedMsgId(msgId);
+    }, 400);
   };
   const handleTouchEnd = () => {
     if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }

@@ -30,10 +30,10 @@ function ActionSheetInner({
     <AnimatePresence>
       {longPressedMsgId && (
         <>
-          {/* Blurred backdrop */}
+          {/* Full-screen backdrop — z-[60] to cover everything including input bar */}
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 md:hidden"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] md:hidden"
             onClick={onClose}
           />
           {/* Floating message preview + emoji bar */}
@@ -42,7 +42,7 @@ function ActionSheetInner({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.92 }}
             transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-            className="fixed inset-x-4 top-[15vh] z-50 md:hidden flex flex-col items-center"
+            className="fixed inset-x-4 top-[15vh] z-[60] md:hidden flex flex-col items-center"
           >
             {/* Emoji reaction bar */}
             <motion.div
@@ -92,13 +92,13 @@ function ActionSheetInner({
             </div>
           </motion.div>
 
-          {/* Bottom action sheet */}
+          {/* Bottom action sheet — z-[60] above input bar */}
           <motion.div
             initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
             transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-            className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-[#1f2c34] dark:bg-[#1f2c34] rounded-t-2xl shadow-2xl pb-[max(1rem,env(safe-area-inset-bottom))]"
+            className="fixed bottom-0 left-0 right-0 z-[60] md:hidden bg-[#1f2c34] dark:bg-[#1f2c34] rounded-t-2xl shadow-2xl pb-[max(1rem,env(safe-area-inset-bottom))]"
           >
             <div className="flex flex-col">
               <button
