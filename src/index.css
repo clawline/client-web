@@ -273,3 +273,11 @@ pre {
 .animate-in {
   animation: msg-in 0.15s ease-out both;
 }
+
+/* Prevent sticky hover on touch devices */
+@media (hover: none) {
+  .hover\:bg-black\/\[0\.02\]:hover,
+  .hover\:bg-white\/\[0\.02\]:hover {
+    background-color: transparent !important;
+  }
+}
