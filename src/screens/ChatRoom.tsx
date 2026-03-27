@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Columns2, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Brain, Puzzle, RefreshCw, Copy } from 'lucide-react';
+import { ChevronLeft, Columns2, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Brain, Puzzle, RefreshCw, Copy, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import * as channel from '../services/clawChannel';
-import type { AgentContext, AgentInfo, ConversationSummary } from '../services/clawChannel';
+import type { AgentContext, ConversationSummary } from '../services/clawChannel';
 import { getUserId } from '../App';
 import { getActiveConnection, getConnectionById } from '../services/connectionStore';
 import { markAgentAsRead } from './ChatList';
@@ -14,90 +14,21 @@ import MemorySheet from '../components/MemorySheet';
 import FileGallery from '../components/FileGallery';
 import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
 import * as outbox from '../services/outbox';
+import {
+  type DeliveryStatus, type Message, type AgentInfo,
+  QUICK_COMMANDS, CONTEXT_SUGGESTIONS, EMOJI_LIST,
+  formatTime, formatDate, formatLastSeen, formatToolName, formatRelativeTime,
+  isDifferentDay, isGroupedWithPrev, humanizeError, fileToDataUrl,
+  getPreviewKey, emitPreviewUpdated, saveAgentPreview, mergeMessages,
+  getConnectionDisplayName, getSkillDescription,
+  PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
+} from '../components/chat';
+import { DeliveryTicks } from '../components/chat';
 
-/** Map technical error codes/messages to human-friendly text */
-/** Map tool names to human-friendly labels */
-function formatToolName(name: string): string {
-  const map: Record<string, string> = {
-    read: 'Reading file', write: 'Writing file', edit: 'Editing file',
-    exec: 'Running command', web_fetch: 'Fetching page', browser: 'Using browser',
-    memory_recall: 'Searching memory', memory_store: 'Saving memory',
-    sessions_spawn: 'Spawning agent', image: 'Analyzing image',
-  };
-  return map[name] || name.replace(/_/g, ' ');
+function getAgentInfo(agentId: string | null | undefined, connectionId: string): AgentInfo | null {
+  const list = channel.loadCachedAgents(connectionId);
+  return list.find((agent) => agent.id === agentId) || null;
 }
-
-/** Format "last seen" relative time (WhatsApp-style) */
-function formatLastSeen(ts?: number): string {
-  if (!ts) return '';
-  const diff = Date.now() - ts;
-  if (diff < 0) return 'online'; // clock skew guard
-  if (diff < 60_000) return 'last seen just now';
-  if (diff < 3600_000) return `last seen ${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86400_000) return `last seen ${Math.floor(diff / 3600_000)}h ago`;
-  return `last seen ${new Date(ts).toLocaleDateString()}`;
-}
-
-function humanizeError(error: { code: string; message: string }): { title: string; body: string } {
-  const msg = error.message.toLowerCase();
-  const code = error.code;
-
-  // Auth errors
-  if (msg.includes('forbidden') || msg.includes('unauthorized') || code === 'AUTH_FAILED')
-    return { title: 'Access Denied', body: 'Please check your connection credentials and try again.' };
-  if (msg.includes('agentid not allowed') || msg.includes('agent not found'))
-    return { title: 'Agent Unavailable', body: 'This agent isn\'t available. It may have been removed or renamed.' };
-  if (msg.includes('token') && (msg.includes('invalid') || msg.includes('expired')))
-    return { title: 'Session Expired', body: 'Your session has expired. Please reconnect.' };
-
-  // Connection errors
-  if (msg.includes('failed to fetch') || msg.includes('err_network') || msg.includes('econnrefused') || msg.includes('networkerror'))
-    return { title: 'Network Error', body: 'Can\'t reach the server. Check your internet connection.' };
-  if (msg.includes('enotfound') || msg.includes('getaddrinfo') || msg.includes('dns'))
-    return { title: 'Server Not Found', body: 'The server address couldn\'t be resolved. Check the URL.' };
-  if (msg.includes('500') || msg.includes('internal server error'))
-    return { title: 'Server Error', body: 'The server encountered an error. Try again in a moment.' };
-  if (msg.includes('502') || msg.includes('bad gateway') || msg.includes('503') || msg.includes('service unavailable'))
-    return { title: 'Server Unavailable', body: 'The server is temporarily down. Try again shortly.' };
-  if (msg.includes('413') || msg.includes('payload too large') || msg.includes('too large'))
-    return { title: 'File Too Large', body: 'The content exceeds the size limit. Try a smaller file.' };
-  if (msg.includes('channel not found') || msg.includes('not found'))
-    return { title: 'Channel Not Found', body: 'The connection endpoint couldn\'t be reached. Check your setup.' };
-  if (msg.includes('cors') || msg.includes('cross-origin'))
-    return { title: 'Connection Blocked', body: 'A security policy is preventing the connection. Check CORS settings.' };
-  if (msg.includes('timeout') || code === 'TIMEOUT')
-    return { title: 'Request Timed Out', body: 'The server took too long to respond. Try again.' };
-  if (msg.includes('rate limit') || msg.includes('429') || code === 'RATE_LIMITED')
-    return { title: 'Too Many Requests', body: 'Please wait a moment before trying again.' };
-
-  // Send errors
-  if (code === 'SEND_FAILED')
-    return { title: 'Send Failed', body: error.message.includes('not connected') ? 'You\'re offline. Message has been queued and will send when reconnected.' : error.message };
-
-  // Generic
-  if (msg.includes('websocket') || msg.includes('ws'))
-    return { title: 'Connection Issue', body: 'WebSocket connection problem. Check your network.' };
-
-  return { title: 'Something went wrong', body: 'An unexpected error occurred. Try again or reconnect.' };
-}
-
-type DeliveryStatus = 'pending' | 'sent' | 'delivered' | 'read';
-
-type Message = {
-  id: string;
-  sender: 'user' | 'ai';
-  text: string;
-  reactions?: string[];
-  mediaType?: string;
-  mediaUrl?: string;
-  replyTo?: string;
-  timestamp?: number;
-  isStreaming?: boolean; // Temporary streaming message indicator
-  deliveryStatus?: DeliveryStatus; // WhatsApp-style delivery ticks
-};
-
-const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
-const MESSAGE_PREVIEW_UPDATED_EVENT = 'openclaw:message-preview-updated';
 
 const slashCommands = [
   { id: 'help', icon: HelpCircle, label: '/help', desc: 'Show built-in help and command usage' },
@@ -115,151 +46,6 @@ const slashCommands = [
   { id: 'memory', icon: Brain, label: '/memory', desc: 'View agent long-term memory context' },
   { id: 'stop', icon: Square, label: '/stop', desc: 'Stop the running task in this session' },
 ];
-
-const EMOJI_LIST = ['👍', '❤️', '😂', '🔥', '✨', '👀', '💯', '🚀'];
-
-const QUICK_COMMANDS = [
-  { label: '/status', emoji: '📊', desc: 'Session status' },
-  { label: '/models', emoji: '🤖', desc: 'List models' },
-  { label: '/help', emoji: '❓', desc: 'Show help' },
-  { label: '/new', emoji: '✨', desc: 'New session' },
-  { label: '/reset', emoji: '🔄', desc: 'Reset context' },
-];
-
-// Context-aware suggestions shown after bot messages
-const CONTEXT_SUGGESTIONS = [
-  { label: 'Explain more', emoji: '💡' },
-  { label: 'Summarize', emoji: '📝' },
-  { label: 'Try again', emoji: '🔄' },
-];
-
-function formatTime(ts?: number) {
-  if (!ts) return '';
-  const d = new Date(ts);
-  const h = d.getHours().toString().padStart(2, '0');
-  const m = d.getMinutes().toString().padStart(2, '0');
-  return `${h}:${m}`;
-}
-
-function formatDate(ts: number) {
-  const d = new Date(ts);
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) return 'Today';
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
-}
-
-function formatRelativeTime(ts?: number) {
-  if (!ts) return '';
-  const diff = Date.now() - ts;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'now';
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function isDifferentDay(ts1?: number, ts2?: number) {
-  if (!ts1 || !ts2) return true;
-  return new Date(ts1).toDateString() !== new Date(ts2).toDateString();
-}
-
-// Consecutive same-sender grouping: show avatar+name only on first message
-function isGroupedWithPrev(messages: Message[], index: number): boolean {
-  if (index === 0) return false;
-  const cur = messages[index];
-  const prev = messages[index - 1];
-  if (!cur || !prev) return false;
-  return prev.sender === cur.sender && !isDifferentDay(prev.timestamp, cur.timestamp);
-}
-
-/** WhatsApp-style delivery status ticks */
-function DeliveryTicks({ status, isUser }: { status?: DeliveryStatus; isUser: boolean }) {
-  if (!isUser || !status) return null;
-  const base = 'inline-block ml-1 align-middle';
-  if (status === 'pending') {
-    return <svg className={`${base} opacity-55`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
-  }
-  if (status === 'sent') {
-    return <svg className={`${base} opacity-55`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>;
-  }
-  if (status === 'delivered') {
-    return <svg className={`${base} opacity-55`} width="16" height="14" viewBox="0 0 28 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/><polyline points="26 6 15 17 12 14"/></svg>;
-  }
-  if (status === 'read') {
-    return <svg className={`${base} text-sky-400`} width="16" height="14" viewBox="0 0 28 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/><polyline points="26 6 15 17 12 14"/></svg>;
-  }
-  return null;
-}
-
-// --- File to data URL ---
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-// --- Load agent info ---
-function getAgentInfo(agentId: string | null | undefined, connectionId: string) {
-  const list = channel.loadCachedAgents(connectionId);
-  return list.find((agent) => agent.id === agentId) || null;
-}
-
-function getPreviewKey(connectionId: string, agentId: string) {
-  return `${PREVIEW_KEY_PREFIX}${connectionId}.${agentId}`;
-}
-
-function emitPreviewUpdated(connectionId: string, agentId: string) {
-  window.dispatchEvent(new CustomEvent(MESSAGE_PREVIEW_UPDATED_EVENT, {
-    detail: { connectionId, agentId },
-  }));
-}
-
-function saveAgentPreview(agentId: string | null | undefined, connectionId: string, messages: Message[]) {
-  if (!agentId || !connectionId || messages.length === 0) return;
-  const lastMeaningfulMessage = [...messages].reverse().find((message) => !message.isStreaming);
-  if (!lastMeaningfulMessage) return;
-
-  try {
-    localStorage.setItem(getPreviewKey(connectionId, agentId), JSON.stringify({
-      text: lastMeaningfulMessage.text || lastMeaningfulMessage.mediaType || 'Attachment',
-      timestamp: lastMeaningfulMessage.timestamp,
-    }));
-    emitPreviewUpdated(connectionId, agentId);
-  } catch {
-    // ignore storage failures
-  }
-}
-
-function mergeMessages(cachedMessages: Message[], liveMessages: Message[]) {
-  const merged = new Map<string, Message>();
-
-  cachedMessages.forEach((message) => {
-    merged.set(message.id, message);
-  });
-
-  liveMessages.forEach((message) => {
-    merged.set(message.id, message);
-  });
-
-  return [...merged.values()].sort((left, right) => (left.timestamp ?? 0) - (right.timestamp ?? 0));
-}
-
-function getConnectionDisplayName(name?: string, fallbackName?: string) {
-  return name || fallbackName || 'Server';
-}
-
-function getSkillDescription(skillName: string) {
-  return `${skillName} is available in this agent.`;
-}
 
 export default function ChatRoom({
   agentId,
@@ -331,6 +117,14 @@ export default function ChatRoom({
   const [showFileGallery, setShowFileGallery] = useState(false);
   const [showContextViewer, setShowContextViewer] = useState(false);
   const [showMoreIcons, setShowMoreIcons] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+
+  const copyMessage = useCallback((msgId: string, text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedMsgId(msgId);
+      setTimeout(() => setCopiedMsgId(null), 1500);
+    }).catch(() => {});
+  }, []);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
@@ -1367,6 +1161,25 @@ export default function ChatRoom({
     if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
   };
   const closeLongPress = () => setLongPressedMsgId(null);
+
+  // Global keyboard shortcuts (Escape to dismiss modals)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showEmojiPicker) { setShowEmojiPicker(false); return; }
+        if (showSlashMenu) { setShowSlashMenu(false); return; }
+        if (showHeaderMenu) { setShowHeaderMenu(false); return; }
+        if (replyingTo) { setReplyingTo(null); return; }
+        if (editingMsg) { setEditingMsg(null); return; }
+        if (showHistoryDrawer) { setShowHistoryDrawer(false); return; }
+        if (showContextViewer) { setShowContextViewer(false); return; }
+        if (longPressedMsgId) { closeLongPress(); return; }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showEmojiPicker, showSlashMenu, showHeaderMenu, replyingTo, editingMsg, showHistoryDrawer, showContextViewer, longPressedMsgId]);
+
   const openHistoryDrawer = () => {
     setShowHeaderMenu(false);
     setShowHistoryDrawer(true);
@@ -1982,8 +1795,8 @@ export default function ChatRoom({
                     <button type="button" onClick={() => startReply(msg)} className="w-7 h-7 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-info hover:bg-info/10 rounded-md transition-colors" title="Reply">
                       <CornerDownLeft size={14} />
                     </button>
-                    <button type="button" onClick={() => navigator.clipboard.writeText(msg.text).catch(() => {})} className="w-7 h-7 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-text/60 dark:hover:text-text-inv/50 hover:bg-text/5 dark:hover:bg-text-inv/5 rounded-md transition-colors" title="Copy">
-                      <Copy size={14} />
+                    <button type="button" onClick={() => copyMessage(msg.id, msg.text)} className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${copiedMsgId === msg.id ? 'text-green-500 bg-green-500/10' : 'text-text/25 dark:text-text-inv/20 hover:text-text/60 dark:hover:text-text-inv/50 hover:bg-text/5 dark:hover:bg-text-inv/5'}`} title={copiedMsgId === msg.id ? 'Copied!' : 'Copy'}>
+                      {copiedMsgId === msg.id ? <Check size={14} /> : <Copy size={14} />}
                     </button>
                     {isUser && (
                       <>
@@ -2140,7 +1953,7 @@ export default function ChatRoom({
                     </button>
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(lMsg.text).catch(() => {});
+                        copyMessage(lMsg.id, lMsg.text);
                         closeLongPress();
                       }}
                       className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-white/90 active:bg-white/10 transition-colors"
