@@ -5,24 +5,26 @@ import {defineConfig, loadEnv} from 'vite';
 import { createHash } from 'crypto';
 import { readFileSync, writeFileSync } from 'fs';
 
+// Single build hash shared across sw.js, index.html, and JS define
+const buildHash = createHash('md5').update(Date.now().toString()).digest('hex').slice(0, 8);
+
 // Plugin to inject build hash into sw.js and index.html so browsers detect new versions
 function swBuildHashPlugin() {
   return {
     name: 'sw-build-hash',
     writeBundle() {
-      const hash = createHash('md5').update(Date.now().toString()).digest('hex').slice(0, 8);
       // Replace in sw.js
       const swPath = path.resolve(__dirname, 'dist/sw.js');
       try {
         let sw = readFileSync(swPath, 'utf-8');
-        sw = sw.replace('%%BUILD_HASH%%', hash);
+        sw = sw.replace('%%BUILD_HASH%%', buildHash);
         writeFileSync(swPath, sw);
       } catch { /* sw.js not in dist yet */ }
       // Replace in index.html (cache purge script)
       const htmlPath = path.resolve(__dirname, 'dist/index.html');
       try {
         let html = readFileSync(htmlPath, 'utf-8');
-        html = html.replace('%%BUILD_HASH%%', hash);
+        html = html.replace('%%BUILD_HASH%%', buildHash);
         writeFileSync(htmlPath, html);
       } catch { /* index.html not in dist yet */ }
     },
@@ -32,7 +34,6 @@ function swBuildHashPlugin() {
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   const pkg = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'));
-  const buildHash = createHash('md5').update(Date.now().toString()).digest('hex').slice(0, 8);
   return {
     plugins: [react(), tailwindcss(), swBuildHashPlugin()],
     define: {
