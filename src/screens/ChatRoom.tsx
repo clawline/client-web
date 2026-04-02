@@ -1283,25 +1283,12 @@ export default function ChatRoom({
           <h2 className="font-semibold text-[17px] text-text dark:text-text-inv leading-tight truncate max-w-[200px] md:max-w-none">
             {agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}
           </h2>
-          <p className="text-[11px] text-text/40 dark:text-text-inv/35 truncate max-w-[200px] md:max-w-none -mt-0.5">
+          <p className="text-[11px] text-text/40 dark:text-text-inv/35 truncate max-w-[200px] md:max-w-none flex items-center gap-1">
             {getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}{agentInfo?.model ? ` · ${agentInfo.model.split('/').pop()}` : ''}
+            {wsStatus === 'connected' && <><span className="mx-0.5">·</span><span className={`inline-flex items-center gap-0.5 ${agentPresence?.status === 'offline' ? 'text-text/30 dark:text-text-inv/25' : 'text-primary'}`}><span className={`inline-block w-1.5 h-1.5 rounded-full ${agentPresence?.status === 'offline' ? 'bg-gray-400' : 'bg-primary'}`} />{agentPresence?.status === 'offline' ? formatLastSeen(agentPresence.lastSeen) || 'offline' : 'online'}</span></>}
+            {(wsStatus === 'connecting' || wsStatus === 'reconnecting') && <><span className="mx-0.5">·</span><span className="inline-flex items-center gap-0.5 text-amber-500"><Loader2 size={9} className="animate-spin" />{wsStatus === 'connecting' ? 'connecting' : 'reconnecting'}</span></>}
+            {wsStatus === 'disconnected' && <><span className="mx-0.5">·</span><button onClick={() => channel.reconnect(runtimeConnId)} className="inline-flex items-center gap-0.5 text-red-400 hover:opacity-80 transition-opacity" aria-label="Tap to reconnect"><RefreshCw size={9} />reconnect</button></>}
           </p>
-          <span className={`text-[10px] font-medium flex items-center gap-1 ${
-            wsStatus === 'connected' ? 'text-primary' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'text-amber-500' : 'text-red-400'
-          }`}>
-            {wsStatus === 'connected' && <><div className={`w-1.5 h-1.5 rounded-full ${agentPresence?.status === 'offline' ? 'bg-gray-400' : 'bg-primary'}`} /> {agentPresence?.status === 'offline' ? formatLastSeen(agentPresence.lastSeen) || 'offline' : 'online'}</>}
-            {wsStatus === 'connecting' && <><Loader2 size={10} className="animate-spin" /> Connecting…</>}
-            {wsStatus === 'reconnecting' && <><Loader2 size={10} className="animate-spin" /> Reconnecting…</>}
-            {wsStatus === 'disconnected' && (
-              <button
-                onClick={() => channel.reconnect(runtimeConnId)}
-                className="flex items-center gap-1 hover:opacity-80 transition-opacity"
-                aria-label="Tap to reconnect"
-              >
-                <RefreshCw size={10} /> Tap to reconnect
-              </button>
-            )}
-          </span>
         </div>
         <div className="flex items-center gap-1">
           {!isSplitPane && showSplitButton && agentId && onToggleSplit && (
@@ -1612,7 +1599,7 @@ export default function ChatRoom({
       />
 
       {/* Input Area */}
-      <div className="px-2 pt-2 pb-1 bg-white/60 dark:bg-card-alt/60 backdrop-blur-md border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative safe-area-bottom flex flex-col gap-1.5">
+      <div className="px-2 pt-2 pb-1 bg-white/60 dark:bg-card-alt/60 backdrop-blur-md border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative safe-area-bottom flex flex-col gap-2.5">
         <AnimatePresence>
           {showSlashMenu && (
             <>
