@@ -1,7 +1,8 @@
-import { memo } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { FileText, Puzzle } from 'lucide-react';
-import { CONTEXT_SUGGESTIONS, QUICK_COMMANDS } from './utils';
+import { FileText, Puzzle, Sparkles } from 'lucide-react';
+import { QUICK_COMMANDS } from './utils';
+import { getSuggestions, isSuggestionServiceAvailable, clearSuggestionCache } from '../../services/suggestions';
 import type { Message } from './types';
 
 interface SuggestionBarProps {
@@ -20,6 +21,11 @@ function SuggestionBarInner({
   messages, isThinking, showSlashMenu, showEmojiPicker, skillCount,
   onOpenSlashMenu, onOpenContextViewer, onSetInputValue, onQuickSend,
 }: SuggestionBarProps) {
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const prevMsgCountRef = useRef(0);
+
   if (showSlashMenu || showEmojiPicker) return null;
 
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -27,11 +33,60 @@ function SuggestionBarInner({
   const isLastUser = !lastMsg || lastMsg.sender === 'user';
   const waitingTooLong = isLastUser && lastMsg?.timestamp && (Date.now() - (lastMsg.timestamp || 0)) > 120000 && !isThinking;
 
+  // Fetch AI suggestions when last message is from AI
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (!isLastAi || isThinking || !isSuggestionServiceAvailable()) {
+      return;
+    }
+
+    // Only refetch when message count changes (new AI reply arrived)
+    if (messages.length === prevMsgCountRef.current) return;
+    prevMsgCountRef.current = messages.length;
+
+    // Cancel previous request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setLoading(true);
+
+    // Small delay to avoid firing during rapid streaming
+    const timer = setTimeout(() => {
+      getSuggestions(messages, controller.signal)
+        .then(suggestions => {
+          if (!controller.signal.aborted) {
+            setAiSuggestions(suggestions);
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoading(false);
+          }
+        });
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [messages.length, isLastAi, isThinking]);
+
+  // Clear suggestions on conversation reset
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (messages.length === 0) {
+      setAiSuggestions([]);
+      clearSuggestionCache();
+      prevMsgCountRef.current = 0;
+    }
+  }, [messages.length]);
+
   return (
     <AnimatePresence mode="popLayout">
       {isLastAi && (
         <motion.div
-          key="ctx-suggestions"
+          key="ai-suggestions"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
@@ -39,17 +94,45 @@ function SuggestionBarInner({
         >
           <IconButtons skillCount={skillCount} onOpenSlashMenu={onOpenSlashMenu} onOpenContextViewer={onOpenContextViewer} />
           <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
-          {CONTEXT_SUGGESTIONS.map((sug) => (
+
+          {/* AI-generated suggestions */}
+          {aiSuggestions.length > 0 && aiSuggestions.map((sug, i) => (
             <motion.button
-              key={sug.label}
+              key={`ai-${i}-${sug}`}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => onSetInputValue(sug.label)}
-              className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors"
+              onClick={() => onSetInputValue(sug)}
+              className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors border border-transparent hover:border-border/30 dark:hover:border-border-dark/30"
             >
-              <span>{sug.emoji}</span>
-              {sug.label}
+              {sug}
             </motion.button>
           ))}
+
+          {/* Loading state */}
+          {loading && aiSuggestions.length === 0 && (
+            <span className="flex items-center gap-1 text-[11px] text-text/30 dark:text-text-inv/25 px-2">
+              <Sparkles size={11} className="animate-pulse" />
+            </span>
+          )}
+
+          {/* Fallback when AI suggestions not available */}
+          {!loading && aiSuggestions.length === 0 && !isSuggestionServiceAvailable() && (
+            <>
+              {FALLBACK_SUGGESTIONS.map((sug) => (
+                <motion.button
+                  key={sug.label}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => onSetInputValue(sug.label)}
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors"
+                >
+                  <span>{sug.emoji}</span>
+                  {sug.label}
+                </motion.button>
+              ))}
+            </>
+          )}
         </motion.div>
       )}
 
@@ -93,6 +176,13 @@ function SuggestionBarInner({
     </AnimatePresence>
   );
 }
+
+/** Fallback static suggestions when AI service is not configured */
+const FALLBACK_SUGGESTIONS = [
+  { label: 'Explain more', emoji: '💡' },
+  { label: 'Summarize', emoji: '📝' },
+  { label: 'Try again', emoji: '🔄' },
+];
 
 /** Shared icon buttons for Skills + Context */
 function IconButtons({ skillCount, onOpenSlashMenu, onOpenContextViewer }: {

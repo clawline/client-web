@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Columns2, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Brain, Puzzle, RefreshCw, Copy, Check } from 'lucide-react';
+import { ChevronLeft, Columns2, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, RefreshCw, Copy, Check, Shield } from 'lucide-react';
 import { cn } from '../lib/utils';
 import * as channel from '../services/clawChannel';
 import type { AgentContext, ConversationSummary } from '../services/clawChannel';
@@ -16,7 +16,7 @@ import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages
 import * as outbox from '../services/outbox';
 import {
   type DeliveryStatus, type Message, type AgentInfo,
-  QUICK_COMMANDS, CONTEXT_SUGGESTIONS, EMOJI_LIST,
+  QUICK_COMMANDS, EMOJI_LIST,
   formatTime, formatDate, formatLastSeen, formatToolName, formatToolArgSnippet, formatRelativeTime,
   isDifferentDay, isGroupedWithPrev, humanizeError, fileToDataUrl,
   getPreviewKey, emitPreviewUpdated, saveAgentPreview, mergeMessages,
@@ -31,20 +31,27 @@ function getAgentInfo(agentId: string | null | undefined, connectionId: string):
 }
 
 const slashCommands = [
-  { id: 'help', icon: HelpCircle, label: '/help', desc: 'Show built-in help and command usage' },
-  { id: 'commands', icon: Database, label: '/commands', desc: 'List available slash commands' },
-  { id: 'status', icon: Activity, label: '/status', desc: 'Show current session and model status' },
-  { id: 'whoami', icon: User, label: '/whoami', desc: 'Show the current sender identity' },
-  { id: 'new', icon: Plus, label: '/new', desc: 'Start a fresh session, optionally with a model' },
-  { id: 'reset', icon: RotateCcw, label: '/reset', desc: 'Reset the current session context' },
-  { id: 'model', icon: Cpu, label: '/model', desc: 'Inspect or switch the active model' },
-  { id: 'think', icon: Code, label: '/think', desc: 'Adjust reasoning level for the session' },
-  { id: 'fast', icon: Server, label: '/fast', desc: 'Toggle fast-mode for the session' },
-  { id: 'verbose', icon: FileText, label: '/verbose', desc: 'Control extra debug and tool output' },
-  { id: 'reasoning', icon: MessageSquare, label: '/reasoning', desc: 'Control reasoning message output' },
-  { id: 'compact', icon: LayoutDashboard, label: '/compact', desc: 'Compact the current conversation context' },
-  { id: 'memory', icon: Brain, label: '/memory', desc: 'View agent long-term memory context' },
-  { id: 'stop', icon: Square, label: '/stop', desc: 'Stop the running task in this session' },
+  { id: 'help', icon: HelpCircle, label: '/help', desc: 'Show help and command usage' },
+  { id: 'commands', icon: Database, label: '/commands', desc: 'List available commands' },
+  { id: 'status', icon: Activity, label: '/status', desc: 'Session and model status' },
+  { id: 'whoami', icon: User, label: '/whoami', desc: 'Show sender identity' },
+  { id: 'new', icon: Plus, label: '/new', desc: 'New session (optionally with model)' },
+  { id: 'reset', icon: RotateCcw, label: '/reset', desc: 'Reset session context' },
+  { id: 'model', icon: Cpu, label: '/model', desc: 'Inspect or switch model' },
+  { id: 'think', icon: Code, label: '/think', desc: 'Set reasoning level (off–xhigh)' },
+  { id: 'verbose', icon: FileText, label: '/verbose', desc: 'Toggle debug/tool output' },
+  { id: 'reasoning', icon: MessageSquare, label: '/reasoning', desc: 'Reasoning message output (on/off/stream)' },
+  { id: 'elevated', icon: Shield, label: '/elevated', desc: 'Elevated exec permissions (on/off/ask/full)' },
+  { id: 'compact', icon: LayoutDashboard, label: '/compact', desc: 'Compact conversation context' },
+  { id: 'stop', icon: Square, label: '/stop', desc: 'Stop the running task' },
+  { id: 'context', icon: FileText, label: '/context', desc: 'Show context breakdown' },
+  { id: 'usage', icon: Activity, label: '/usage', desc: 'Per-response usage footer (off/tokens/full/cost)' },
+  { id: 'export', icon: Database, label: '/export', desc: 'Export session to HTML' },
+  { id: 'skill', icon: Puzzle, label: '/skill', desc: 'Run a skill by name' },
+  { id: 'subagents', icon: Server, label: '/subagents', desc: 'Inspect/control sub-agents' },
+  { id: 'queue', icon: LayoutDashboard, label: '/queue', desc: 'Queue mode and options' },
+  { id: 'exec', icon: Code, label: '/exec', desc: 'Configure exec host/security' },
+  { id: 'tts', icon: Mic, label: '/tts', desc: 'Text-to-speech settings' },
 ];
 
 export default function ChatRoom({

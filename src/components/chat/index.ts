@@ -4,7 +4,6 @@ export {
   MESSAGE_PREVIEW_UPDATED_EVENT,
   EMOJI_LIST,
   QUICK_COMMANDS,
-  CONTEXT_SUGGESTIONS,
   formatTime,
   formatDate,
   formatRelativeTime,
