@@ -23,6 +23,9 @@ export type ToolCall = {
   toolName: string;
   args?: Record<string, unknown>;
   startTime: number;
+  completed?: boolean;
+  resultSummary?: string;
+  endTime?: number;
 };
 
 export type SlashCommand = {

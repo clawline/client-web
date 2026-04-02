@@ -70,6 +70,18 @@ export function formatToolName(name: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** Extract a short one-line arg snippet for tool status display (max ~40 chars) */
+export function formatToolArgSnippet(args?: Record<string, unknown>): string {
+  if (!args) return '';
+  // Prioritize the most meaningful arg
+  const val = args.command ?? args.path ?? args.file_path ?? args.url ?? args.query ?? args.text ?? args.message;
+  if (val == null) return '';
+  const raw = typeof val === 'string' ? val : JSON.stringify(val);
+  // Single line, truncated
+  const oneline = raw.replace(/\n/g, ' ').trim();
+  return oneline.length > 40 ? oneline.slice(0, 40) + '…' : oneline;
+}
+
 export function isDifferentDay(ts1?: number, ts2?: number) {
   if (!ts1 || !ts2) return true;
   return new Date(ts1).toDateString() !== new Date(ts2).toDateString();

@@ -17,7 +17,7 @@ import * as outbox from '../services/outbox';
 import {
   type DeliveryStatus, type Message, type AgentInfo,
   QUICK_COMMANDS, CONTEXT_SUGGESTIONS, EMOJI_LIST,
-  formatTime, formatDate, formatLastSeen, formatToolName, formatRelativeTime,
+  formatTime, formatDate, formatLastSeen, formatToolName, formatToolArgSnippet, formatRelativeTime,
   isDifferentDay, isGroupedWithPrev, humanizeError, fileToDataUrl,
   getPreviewKey, emitPreviewUpdated, saveAgentPreview, mergeMessages,
   getConnectionDisplayName, getSkillDescription,
@@ -105,6 +105,8 @@ export default function ChatRoom({
   const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const thinkingStartRef = useRef<number>(0);
   const [activeToolCalls, setActiveToolCalls] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number }[]>([]);
+  const [toolCallHistory, setToolCallHistory] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number; endTime: number; resultSummary?: string }[]>([]);
+  const [toolHistoryExpanded, setToolHistoryExpanded] = useState(false);
   const retryingRef = useRef<Set<string>>(new Set()); // B1: prevent double-tap retry
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -349,6 +351,8 @@ export default function ChatRoom({
 
     setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
     setActiveToolCalls([]);
+    setToolCallHistory([]);
+    setToolHistoryExpanded(false);
     setShowHeaderMenu(false);
     setShowHistoryDrawer(false);
     setConversations([]);
@@ -483,6 +487,8 @@ export default function ChatRoom({
 
         // S1: Mark ALL pending/sent user messages as delivered (bot responded = all prior msgs received)
         setActiveToolCalls([]); // S3: Clear stale tool calls on final message
+        setToolCallHistory([]);
+        setToolHistoryExpanded(false);
         setMessages((prev) => {
           let changed = false;
           const next = prev.map((m) => {
@@ -513,9 +519,19 @@ export default function ChatRoom({
           setIsThinking(true);
         }
       } else if (packet.type === 'tool.end') {
-        const d = packet.data as { toolCallId?: string; agentId?: string };
+        const d = packet.data as { toolCallId?: string; agentId?: string; resultSummary?: string };
         if (!d.agentId || !agentId || d.agentId === agentId) {
-          setActiveToolCalls((prev) => prev.filter((tc) => tc.toolCallId !== d.toolCallId));
+          setActiveToolCalls((prev) => {
+            const ended = prev.find((tc) => tc.toolCallId === d.toolCallId);
+            if (ended) {
+              setToolCallHistory((hist) => [...hist, {
+                ...ended,
+                endTime: Date.now(),
+                resultSummary: d.resultSummary,
+              }]);
+            }
+            return prev.filter((tc) => tc.toolCallId !== d.toolCallId);
+          });
         }
       } else if (packet.type === 'thinking.start') {
         // Only accept thinking for current agent (ignore events without agentId or from other agents)
@@ -1522,23 +1538,57 @@ export default function ChatRoom({
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 flex items-center justify-center text-white shadow-sm text-sm">
                 {agentInfo?.identityEmoji || '🤖'}
               </div>
-              <div className="pt-2">
-                {/* Breathing text indicator — no dots */}
-                <span className="text-[13px] text-primary font-medium animate-pulse">
-                  {thinkingPhase || 'Thinking'}
-                </span>
-                {activeToolCalls.length > 0 && (
-                  <div className="mt-1.5 flex flex-col gap-1">
-                    {activeToolCalls.map((tc) => (
-                      <span key={tc.toolCallId} className="text-[11px] text-text/45 dark:text-text-inv/45 animate-pulse">
-                        🔧 {formatToolName(tc.toolName)}
-                        {tc.args && (tc.args as Record<string, unknown>).path && (
-                          <span className="text-text/30 dark:text-text-inv/30 ml-1">
-                            {String((tc.args as Record<string, unknown>).path || (tc.args as Record<string, unknown>).file_path || (tc.args as Record<string, unknown>).command || (tc.args as Record<string, unknown>).url || '').slice(0, 50)}
-                          </span>
-                        )}
-                      </span>
-                    ))}
+              <div className="pt-2 min-w-0 flex-1">
+                {/* Current tool or thinking phase — single line */}
+                {(() => {
+                  const latestActive = activeToolCalls[activeToolCalls.length - 1];
+                  const argSnippet = latestActive ? formatToolArgSnippet(latestActive.args) : '';
+                  return (
+                    <span className="text-[13px] text-primary font-medium animate-pulse truncate block">
+                      {latestActive
+                        ? `🔧 ${formatToolName(latestActive.toolName)}${argSnippet ? ` · ${argSnippet}` : ''}`
+                        : (thinkingPhase || 'Thinking')}
+                    </span>
+                  );
+                })()}
+
+                {/* Expandable tool call history */}
+                {(toolCallHistory.length > 0 || activeToolCalls.length > 1) && (
+                  <div className="mt-1">
+                    <button
+                      onClick={() => setToolHistoryExpanded((v) => !v)}
+                      className="text-[11px] text-text/40 dark:text-text-inv/40 hover:text-text/60 dark:hover:text-text-inv/60 transition-colors flex items-center gap-1"
+                    >
+                      <span className="inline-block transition-transform" style={{ transform: toolHistoryExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▸</span>
+                      {toolCallHistory.length + activeToolCalls.length} tool call{toolCallHistory.length + activeToolCalls.length !== 1 ? 's' : ''}
+                    </button>
+                    {toolHistoryExpanded && (
+                      <div className="mt-1 flex flex-col gap-0.5 text-[11px] text-text/45 dark:text-text-inv/45 max-h-40 overflow-y-auto">
+                        {toolCallHistory.map((tc) => (
+                          <div key={tc.toolCallId} className="flex items-center gap-1 truncate">
+                            <span className="text-green-500/70">✓</span>
+                            <span className="font-medium">{formatToolName(tc.toolName)}</span>
+                            {tc.resultSummary && (
+                              <span className="text-text/30 dark:text-text-inv/30 truncate" title={tc.resultSummary}>
+                                — {tc.resultSummary.replace(/\n/g, ' ').slice(0, 60)}
+                              </span>
+                            )}
+                            <span className="text-text/25 dark:text-text-inv/25 flex-shrink-0">{tc.endTime - tc.startTime}ms</span>
+                          </div>
+                        ))}
+                        {activeToolCalls.map((tc) => (
+                          <div key={tc.toolCallId} className="flex items-center gap-1 truncate animate-pulse">
+                            <span className="text-primary">⟳</span>
+                            <span className="font-medium">{formatToolName(tc.toolName)}</span>
+                            {formatToolArgSnippet(tc.args) && (
+                              <span className="text-text/30 dark:text-text-inv/30 truncate">
+                                {formatToolArgSnippet(tc.args)}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
