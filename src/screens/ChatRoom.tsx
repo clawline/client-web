@@ -376,7 +376,12 @@ export default function ChatRoom({
         setAgentReady(true);
       }
       requestSelectedHistory();
-    } else if (currentStatus !== 'connecting') {
+    } else if (currentStatus === 'connecting') {
+      // Already connecting: agent selection will happen in connection.open handler below
+      // Set a safety timeout so agentReady doesn't stay false forever
+      if (agentReadyTimeoutRef.current) clearTimeout(agentReadyTimeoutRef.current);
+      agentReadyTimeoutRef.current = setTimeout(() => setAgentReady(true), 5000);
+    } else {
       // Not connected: establish connection (without agentId)
       channel.connect({
         connectionId: runtimeConnId,
@@ -715,6 +720,15 @@ export default function ChatRoom({
     }, runtimeConnId);
 
     const unsubStatus = channel.onStatus((status) => {
+      // When connected: ensure agentReady is true (safety net for missed agent.selected events)
+      if (status === 'connected') {
+        if (agentReadyTimeoutRef.current) {
+          clearTimeout(agentReadyTimeoutRef.current);
+          agentReadyTimeoutRef.current = null;
+        }
+        // Give a short grace period for agent.selected to arrive, then force-ready
+        agentReadyTimeoutRef.current = setTimeout(() => setAgentReady(true), 800);
+      }
       // Detect reconnect: was disconnected/reconnecting → now connected
       if (status === 'connected' && prevWsStatusRef.current !== 'connected' && prevWsStatusRef.current !== 'connecting') {
         setShowReconnected(true);
