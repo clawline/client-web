@@ -32,6 +32,11 @@ export function usePWAUpdate() {
     // Register service worker and listen for updates
     navigator.serviceWorker.register('/sw.js')
       .then((reg) => {
+        // If a waiting worker already exists on page load, show update banner immediately
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          setUpdateState({ updateAvailable: true, registration: reg });
+        }
+
         // Check for updates on page load
         reg.update();
 
