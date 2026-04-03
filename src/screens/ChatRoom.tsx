@@ -357,8 +357,25 @@ export default function ChatRoom({
     });
   }, [agentId, connId, runtimeConnId]);
 
+  // Auto-scroll: use instant scroll during streaming to avoid jitter, smooth scroll otherwise.
+  // Also debounce streaming scrolls to avoid excessive layout thrashing.
+  const scrollRafRef = useRef<number | null>(null);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const hasStreaming = messages.some((m) => m.isStreaming);
+    if (hasStreaming) {
+      // Streaming: throttle with rAF to avoid layout thrash & jitter
+      if (scrollRafRef.current) return;
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        const container = scrollContainerRef.current;
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+      });
+    } else {
+      // Non-streaming: smooth scroll for user comfort
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, isThinking]);
 
   // WebSocket 连接 & 消息监听
@@ -486,7 +503,7 @@ export default function ChatRoom({
               replyTo: (packet.data.replyTo as string) || m.replyTo,
             } : m);
           }
-          const withoutStreaming = prev.filter((m) => !m.isStreaming);
+          const withoutStreaming = prev.filter((m) => !m.isStreaming && !m.streamingDone);
           return [
             ...withoutStreaming,
             {
@@ -509,6 +526,9 @@ export default function ChatRoom({
           });
         }
 
+        // Clear thinking indicator on final message delivery
+        setIsThinking(false);
+        if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
         // S1: Mark ALL pending/sent user messages as delivered (bot responded = all prior msgs received)
         setActiveToolCalls([]); // S3: Clear stale tool calls on final message
         setToolCallHistory([]);
@@ -709,9 +729,14 @@ export default function ChatRoom({
         const deltaData = packet.data as { chatId?: string; text?: string; done?: boolean; timestamp?: number };
         
         if (deltaData.done) {
-          // Streaming finished - clear source tracking and remove streaming placeholder
+          // Streaming finished - clear source tracking.
+          // Don't remove streaming placeholder yet — let message.send replace it
+          // to avoid a 1-frame flash where the message disappears and reappears.
           streamingSourceAgentRef.current = null;
-          setMessages((prev) => prev.filter((m) => !m.isStreaming));
+          // Mark streaming message as done (remove cursor but keep content visible)
+          setMessages((prev) => prev.map((m) =>
+            m.isStreaming ? { ...m, isStreaming: false, streamingDone: true } : m
+          ));
         } else {
           // Determine the source agent of this stream
           // First delta without agentId — assume it belongs to current agent at time of request
@@ -1090,6 +1115,8 @@ export default function ChatRoom({
       setMessages((prev) => [...prev, { id: msgId, sender: 'user', text, timestamp: Date.now(), deliveryStatus: 'pending' as DeliveryStatus }]);
       outbox.enqueue({ id: msgId, connectionId: runtimeConnId, agentId: agentId || '', content: text, type: 'text', timestamp: Date.now() }).catch(() => {});
     }
+    setInputValue('');
+    setShowSlashMenu(false);
   };
 
   // --- Image sending — now stages for preview ---

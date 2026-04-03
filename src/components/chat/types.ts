@@ -15,6 +15,7 @@ export type Message = {
   replyTo?: string;
   timestamp?: number;
   isStreaming?: boolean;
+  streamingDone?: boolean;
   deliveryStatus?: DeliveryStatus;
 };
 

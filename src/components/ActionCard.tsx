@@ -37,7 +37,7 @@ function detectActions(text: string): DetectedAction | null {
       }
     }
   }
-  if (providers.length >= 2) {
+  if (providers.length >= 1) {
     return { type: 'providers', title: 'Providers — tap to browse models', options: providers };
   }
 
