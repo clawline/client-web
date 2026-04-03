@@ -423,7 +423,8 @@ export default function ChatRoom({
 
     const unsubMsg = channel.onMessage((packet) => {
       if (packet.type === 'connection.open') {
-        // Connection established: select agent + request history
+        // Connection established: select agent + request history + agent list
+        try { channel.requestAgentList(runtimeConnId); } catch { /* ignore */ }
         if (agentId) {
           setAgentReady(false);
           channel.selectAgent(agentId, runtimeConnId);
