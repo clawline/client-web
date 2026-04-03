@@ -26,15 +26,12 @@ function SuggestionBarInner({
   const abortRef = useRef<AbortController | null>(null);
   const prevMsgCountRef = useRef(0);
 
-  if (showSlashMenu || showEmojiPicker) return null;
-
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
   const isLastAi = lastMsg?.sender === 'ai';
   const isLastUser = !lastMsg || lastMsg.sender === 'user';
   const waitingTooLong = isLastUser && lastMsg?.timestamp && (Date.now() - (lastMsg.timestamp || 0)) > 120000 && !isThinking;
 
   // Fetch AI suggestions when last message is from AI
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (!isLastAi || isThinking || !isSuggestionServiceAvailable()) {
       return;
@@ -73,7 +70,6 @@ function SuggestionBarInner({
   }, [messages.length, isLastAi, isThinking]);
 
   // Clear suggestions on conversation reset
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (messages.length === 0) {
       setAiSuggestions([]);
@@ -81,6 +77,9 @@ function SuggestionBarInner({
       prevMsgCountRef.current = 0;
     }
   }, [messages.length]);
+
+  // Early return AFTER all hooks to comply with Rules of Hooks
+  if (showSlashMenu || showEmojiPicker) return null;
 
   return (
     <AnimatePresence mode="popLayout">
