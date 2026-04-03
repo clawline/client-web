@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Columns2, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, RefreshCw, Copy, Check, Shield } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ChevronRight, Columns2, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, RefreshCw, Copy, Check, Shield } from 'lucide-react';
 import { cn } from '../lib/utils';
 import * as channel from '../services/clawChannel';
 import type { AgentContext, ConversationSummary } from '../services/clawChannel';
@@ -114,6 +114,7 @@ export default function ChatRoom({
   const [hasLoadedMessages, setHasLoadedMessages] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [showBuiltinSkills, setShowBuiltinSkills] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactingToMsgId, setReactingToMsgId] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<string>(channel.getStatus(runtimeConnId));
@@ -187,6 +188,7 @@ export default function ChatRoom({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const skills = agentInfo?.skills ?? [];
+  const configuredSkills = agentInfo?.configuredSkills ?? [];
 
   // B1: Retry pending message — dequeue first, send, re-enqueue on failure
   const retryMessage = async (msg: Message) => {
@@ -214,7 +216,7 @@ export default function ChatRoom({
       retryingRef.current.delete(msg.id);
     }
   };
-  const skillCount = skills.length;
+  const skillCount = configuredSkills.length || skills.length;
 
   useEffect(() => {
     setAgentInfo(getAgentInfo(agentId, connId));
@@ -1675,38 +1677,81 @@ export default function ChatRoom({
                 })()}
 
                 {/* Skills section */}
-                {skills.length > 0 && (inputValue === '/' || '/use'.startsWith(inputValue) || inputValue.startsWith('/use ')) && (
-                  <>
-                    <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-text/35 dark:text-text-inv/30 uppercase tracking-wider sticky top-0 bg-white dark:bg-card-alt flex items-center gap-1.5">
-                      <Puzzle size={10} className="text-primary" />
-                      Skills ({skillCount})
-                    </div>
-                    {skills
-                      .filter(s => {
-                        if (inputValue === '/' || inputValue === '/use') return true;
-                        if (inputValue.startsWith('/use ')) {
-                          const q = inputValue.slice(5).toLowerCase();
-                          return s.toLowerCase().includes(q);
-                        }
-                        return `/use ${s}`.startsWith(inputValue);
-                      })
-                      .map(skillName => (
-                        <button
-                          key={`skill-${skillName}`}
-                          onClick={() => handleCommandSelect(`/use ${skillName}`)}
-                          className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface dark:hover:bg-surface-dark transition-colors"
-                        >
-                          <div className="w-7 h-7 rounded-lg bg-primary/8 flex items-center justify-center text-primary shrink-0">
-                            <Puzzle size={14} />
+                {skills.length > 0 && (inputValue === '/' || '/use'.startsWith(inputValue) || inputValue.startsWith('/use ')) && (() => {
+                  const configuredSet = new Set(configuredSkills);
+                  const loadedSkills = skills.filter(s => configuredSet.has(s));
+                  const builtinSkills = skills.filter(s => !configuredSet.has(s));
+
+                  const filterSkill = (s: string) => {
+                    if (inputValue === '/' || inputValue === '/use') return true;
+                    if (inputValue.startsWith('/use ')) {
+                      const q = inputValue.slice(5).toLowerCase();
+                      return s.toLowerCase().includes(q);
+                    }
+                    return `/use ${s}`.startsWith(inputValue);
+                  };
+
+                  const filteredLoaded = loadedSkills.filter(filterSkill);
+                  const filteredBuiltin = builtinSkills.filter(filterSkill);
+
+                  if (filteredLoaded.length === 0 && filteredBuiltin.length === 0) return null;
+
+                  return (
+                    <>
+                      {/* Loaded skills — always visible */}
+                      {filteredLoaded.length > 0 && (
+                        <>
+                          <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-text/35 dark:text-text-inv/30 uppercase tracking-wider sticky top-0 bg-white dark:bg-card-alt flex items-center gap-1.5">
+                            <Puzzle size={10} className="text-primary" />
+                            Skills ({filteredLoaded.length})
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <span className="text-[13px] font-medium text-text dark:text-text-inv">{skillName}</span>
-                            <span className="ml-2 text-[11px] text-text/35 dark:text-text-inv/30 truncate">{getSkillDescription(skillName)}</span>
-                          </div>
-                        </button>
-                      ))}
-                  </>
-                )}
+                          {filteredLoaded.map(skillName => (
+                            <button
+                              key={`skill-${skillName}`}
+                              onClick={() => handleCommandSelect(`/use ${skillName}`)}
+                              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                            >
+                              <div className="w-7 h-7 rounded-lg bg-primary/8 flex items-center justify-center text-primary shrink-0">
+                                <Puzzle size={14} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[13px] font-medium text-text dark:text-text-inv">{skillName}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </>
+                      )}
+
+                      {/* Built-in / unloaded skills — collapsible, greyed out */}
+                      {filteredBuiltin.length > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setShowBuiltinSkills(prev => !prev)}
+                            className="w-full px-3 pt-2 pb-1 text-[10px] font-semibold text-text/25 dark:text-text-inv/20 uppercase tracking-wider sticky top-0 bg-white dark:bg-card-alt flex items-center gap-1.5 hover:text-text/40 dark:hover:text-text-inv/35 transition-colors"
+                          >
+                            {showBuiltinSkills ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                            Built-in ({filteredBuiltin.length})
+                          </button>
+                          {showBuiltinSkills && filteredBuiltin.map(skillName => (
+                            <button
+                              key={`builtin-${skillName}`}
+                              onClick={() => handleCommandSelect(`/use ${skillName}`)}
+                              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface dark:hover:bg-surface-dark transition-colors opacity-50"
+                            >
+                              <div className="w-7 h-7 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] flex items-center justify-center text-text/30 dark:text-text-inv/25 shrink-0">
+                                <Puzzle size={14} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[13px] text-text/50 dark:text-text-inv/40">{skillName}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
 
                 {/* Empty state */}
                 {slashCommands.filter(cmd => cmd.label.startsWith(inputValue) || inputValue === '/').length === 0

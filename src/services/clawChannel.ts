@@ -41,6 +41,8 @@ export type AgentInfo = {
   model?: string;
   description?: string;
   skills?: string[];
+  /** Skills explicitly declared in agent config (subset of skills) */
+  configuredSkills?: string[];
   status?: 'online' | 'idle' | 'busy';
 };
 
