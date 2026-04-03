@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { FileText, Puzzle, Sparkles } from 'lucide-react';
 import { QUICK_COMMANDS } from './utils';
+import { requestSuggestions } from '../../services/clawChannel';
 import { getSuggestions, isSuggestionServiceAvailable, clearSuggestionCache } from '../../services/suggestions';
 import type { Message } from './types';
 
@@ -11,6 +12,7 @@ interface SuggestionBarProps {
   showSlashMenu: boolean;
   showEmojiPicker: boolean;
   skillCount: number;
+  connectionId?: string;
   onOpenSlashMenu: () => void;
   onOpenContextViewer: () => void;
   onSetInputValue: (value: string) => void;
@@ -41,6 +43,7 @@ const FALLBACK_EN = [
 
 function SuggestionBarInner({
   messages, isThinking, showSlashMenu, showEmojiPicker, skillCount,
+  connectionId,
   onOpenSlashMenu, onOpenContextViewer, onSetInputValue, onQuickSend,
 }: SuggestionBarProps) {
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
@@ -54,8 +57,9 @@ function SuggestionBarInner({
   const waitingTooLong = isLastUser && lastMsg?.timestamp && (Date.now() - (lastMsg.timestamp || 0)) > 120000 && !isThinking;
 
   // Fetch AI suggestions when last message is from AI
+  // Priority: 1) WS server-side → 2) local API key → 3) static fallback
   useEffect(() => {
-    if (!isLastAi || isThinking || !isSuggestionServiceAvailable()) {
+    if (!isLastAi || isThinking) {
       return;
     }
 
@@ -71,25 +75,60 @@ function SuggestionBarInner({
     setLoading(true);
 
     // Small delay to avoid firing during rapid streaming
-    const timer = setTimeout(() => {
-      getSuggestions(messages, controller.signal)
-        .then(suggestions => {
-          if (!controller.signal.aborted) {
-            setAiSuggestions(suggestions);
-          }
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) {
+    const timer = setTimeout(async () => {
+      if (controller.signal.aborted) return;
+
+      const conversationMsgs = messages
+        .filter(m => m.text && m.text.length > 0)
+        .slice(-6)
+        .map(m => ({
+          role: m.sender === 'user' ? 'user' : 'assistant',
+          text: m.text!,
+        }));
+
+      if (conversationMsgs.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      // Try 1: WS server-side suggestions (no API key needed on client)
+      try {
+        const wsSuggestions = await requestSuggestions(conversationMsgs, connectionId);
+        if (!controller.signal.aborted && wsSuggestions.length > 0) {
+          setAiSuggestions(wsSuggestions);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // WS not available, fall through
+      }
+
+      // Try 2: Local API key (localStorage config)
+      if (isSuggestionServiceAvailable()) {
+        try {
+          const localSuggestions = await getSuggestions(messages, controller.signal);
+          if (!controller.signal.aborted && localSuggestions.length > 0) {
+            setAiSuggestions(localSuggestions);
             setLoading(false);
+            return;
           }
-        });
+        } catch {
+          // Local API failed, fall through
+        }
+      }
+
+      // Both failed → empty (will show fallback)
+      if (!controller.signal.aborted) {
+        setAiSuggestions([]);
+        setLoading(false);
+      }
     }, 500);
 
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [messages.length, isLastAi, isThinking]);
+  }, [messages.length, isLastAi, isThinking, connectionId]);
 
   // Clear suggestions on conversation reset
   useEffect(() => {

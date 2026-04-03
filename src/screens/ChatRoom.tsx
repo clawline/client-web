@@ -1755,6 +1755,7 @@ export default function ChatRoom({
           showSlashMenu={showSlashMenu}
           showEmojiPicker={showEmojiPicker}
           skillCount={skillCount}
+          connectionId={runtimeConnId}
           onOpenSlashMenu={() => { setInputValue('/'); setShowSlashMenu(true); }}
           onOpenContextViewer={() => setShowContextViewer(true)}
           onSetInputValue={setInputValue}

@@ -158,6 +158,10 @@ class ChannelManager {
   private agentContexts = new Map<string, Map<string, AgentContext>>();
   private agentContextListeners = new Set<AgentContextListener>();
   private errorListeners = new Set<ErrorListener>();
+  private pendingSuggestionRequests = new Map<string, {
+    resolve: (suggestions: string[]) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }>();
 
   private handleVisibilityChange = () => {
     if (document.visibilityState === 'visible') {
@@ -585,6 +589,18 @@ class ChannelManager {
             this.setThinkingState(instance.connectionId, thinkingAgentId, false);
           }
         }
+        if (packet.type === 'suggestion.response') {
+          const requestId = typeof packet.data.requestId === 'string' ? packet.data.requestId : '';
+          const pending = this.pendingSuggestionRequests.get(requestId);
+          if (pending) {
+            clearTimeout(pending.timer);
+            this.pendingSuggestionRequests.delete(requestId);
+            const suggestions = Array.isArray(packet.data.suggestions)
+              ? (packet.data.suggestions as unknown[]).filter((s): s is string => typeof s === 'string')
+              : [];
+            pending.resolve(suggestions);
+          }
+        }
         instance.messageListeners.forEach((fn) => fn(packet));
       } catch {
         // ignore malformed packets
@@ -793,6 +809,38 @@ class ChannelManager {
         before: opts?.before,
       },
     }, connectionId);
+  }
+
+  requestSuggestions(
+    messages: Array<{ role: string; text: string }>,
+    connectionId?: string,
+  ): Promise<string[]> {
+    const instance = this.get(connectionId);
+    if (!instance?.ws || instance.ws.readyState !== WebSocket.OPEN) {
+      return Promise.resolve([]);
+    }
+
+    const requestId = createStableId('suggestion');
+
+    return new Promise<string[]>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingSuggestionRequests.delete(requestId);
+        resolve([]);
+      }, 10000); // 10s timeout
+
+      this.pendingSuggestionRequests.set(requestId, { resolve, timer });
+
+      this.sendRaw({
+        type: 'suggestion.get',
+        data: {
+          requestId,
+          messages: messages.slice(-6).map(m => ({
+            role: m.role,
+            text: m.text.slice(0, 300),
+          })),
+        },
+      }, connectionId);
+    });
   }
 
   selectAgent(agentId: string | null, connectionId?: string) {
@@ -1141,6 +1189,13 @@ export function requestConversationList(agentId?: string, connectionId?: string)
 
 export function requestHistory(chatId: string, agentId?: string, connectionId?: string, opts?: { limit?: number; before?: number }) {
   manager.requestHistory(chatId, agentId, connectionId, opts);
+}
+
+export function requestSuggestions(
+  messages: Array<{ role: string; text: string }>,
+  connectionId?: string,
+): Promise<string[]> {
+  return manager.requestSuggestions(messages, connectionId);
 }
 
 export function selectAgent(agentId: string | null, connectionId?: string) {
