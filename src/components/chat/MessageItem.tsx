@@ -36,6 +36,7 @@ function MessageItemInner({
   const isStreaming = msg.isStreaming;
   const hasCodeBlock = !isUser && msg.text?.includes('```');
   const isErrorMsg = !isUser && msg.text?.startsWith('⚠️');
+  const isSlashCmd = /^\/[a-z]/i.test(msg.text || '');
   const prevMsg = index > 0 ? messages[index - 1] : null;
   const showDateSep = isDifferentDay(prevMsg?.timestamp, msg.timestamp);
   const grouped = !showDateSep && isGroupedWithPrev(messages, index);
@@ -50,9 +51,9 @@ function MessageItemInner({
           <div className="flex-1 h-px bg-border dark:bg-border-dark" />
         </div>
       )}
-      {/* Flat thread-style message (Slack/Discord inspired, no bubbles) */}
+      {/* Message row — bubble style with asymmetric corners */}
       <div
-        className={`group/msg flex gap-3 px-2 py-0.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors relative animate-in ${grouped ? '' : 'mt-3'}`}
+        className={`group/msg flex gap-3 px-2 py-0.5 transition-colors relative animate-in ${isUser ? 'flex-row-reverse' : ''} ${grouped ? '' : 'mt-3'}`}
         onTouchStart={() => onTouchStart(msg.id)}
         onTouchEnd={onTouchEnd}
         onTouchMove={onTouchEnd}
@@ -74,11 +75,11 @@ function MessageItemInner({
           )}
         </div>
 
-        {/* Content column */}
-        <div className="flex-1 min-w-0 overflow-x-hidden">
+        {/* Content column — max 80% width */}
+        <div className={`min-w-0 overflow-x-hidden max-w-[80%] ${isUser ? 'items-end' : ''}`}>
           {/* Header row */}
           {!grouped && (
-            <div className="flex items-baseline gap-2 mb-0.5 flex-wrap">
+            <div className={`flex items-baseline gap-2 mb-0.5 flex-wrap ${isUser ? 'flex-row-reverse' : ''}`}>
               <span className={`text-[14px] font-bold ${isUser ? 'text-info' : 'text-primary'}`}>
                 {isUser ? 'You' : (agentInfo?.name || 'Bot')}
               </span>
@@ -109,32 +110,36 @@ function MessageItemInner({
             </div>
           )}
 
-          {/* Message content — stops touch propagation to allow native text selection */}
+          {/* Message bubble — asymmetric rounded corners */}
           <div
-            className={`text-[15px] leading-relaxed relative overflow-x-hidden ${
-              isErrorMsg ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-inv'
-            } ${hasCodeBlock ? 'border-l-[3px] border-l-primary/50 pl-3' : ''}`}
+            className={`text-[15px] leading-relaxed relative overflow-x-hidden px-3.5 py-2.5 ${
+              isUser
+                ? `bg-[#1a1a2e] dark:bg-[#2a2a4a] text-white rounded-2xl ${grouped ? 'rounded-tr-lg' : 'rounded-br-lg'}`
+                : isSlashCmd
+                  ? `bg-transparent border border-dashed border-text/15 dark:border-text-inv/15 rounded-xl font-mono text-[13px] text-text/50 dark:text-text-inv/40 italic`
+                  : `bg-[#f4f4f5] dark:bg-[#1e1e2e] text-text dark:text-text-inv rounded-2xl ${grouped ? 'rounded-tl-lg' : 'rounded-bl-lg'}`
+            } ${isErrorMsg ? 'text-red-600 dark:text-red-400' : ''} ${hasCodeBlock && !isUser ? 'border-l-[3px] border-l-primary/50' : ''}`}
             onTouchStart={(e) => e.stopPropagation()}
           >
             {(msg.mediaType === 'image' && msg.mediaUrl) ? (
               <div>
-                <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover mt-1" />
+                <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover" />
                 {msg.text && <p className="mt-1.5 text-[15px]">{msg.text}</p>}
                 {msg.timestamp && isUser && (
-                  <span className="md:hidden text-[10px] float-right mt-1 ml-3 tabular-nums text-text/50 dark:text-text-inv/45">
+                  <span className="md:hidden text-[10px] float-right mt-1 ml-3 tabular-nums text-white/60">
                     {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
                   </span>
                 )}
               </div>
             ) : (msg.mediaType === 'voice' || msg.mediaType === 'audio') && msg.mediaUrl ? (
               <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2 bg-surface/60 dark:bg-[#131420]/60 p-2 rounded-lg max-w-[280px]">
+                <div className="flex items-center gap-2 bg-black/5 dark:bg-white/5 p-2 rounded-lg max-w-[280px]">
                   <audio src={msg.mediaUrl} controls className="h-8 w-full max-w-[240px]" />
                 </div>
                 {msg.text && <p className="text-[13px] opacity-80">{msg.text}</p>}
               </div>
             ) : msg.mediaType === 'file' && msg.mediaUrl ? (
-              <div className="flex items-center gap-3 bg-surface dark:bg-[#131420] p-3 rounded-xl border border-border dark:border-border-dark max-w-[300px] mt-1">
+              <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-3 rounded-xl max-w-[300px]">
                 <div className="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center text-info shrink-0">
                   <FileText size={20} />
                 </div>
@@ -147,7 +152,7 @@ function MessageItemInner({
               <div className="inline">
                 <span className="whitespace-pre-wrap break-words">{msg.text}</span>
                 {msg.timestamp && (
-                  <span className="md:hidden text-[10px] text-text/40 dark:text-text-inv/40 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
+                  <span className="md:hidden text-[10px] text-white/50 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
                     {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
                   </span>
                 )}
@@ -155,7 +160,7 @@ function MessageItemInner({
                   <div className="md:hidden flex items-center gap-1 mt-1">
                     <button
                       onClick={() => onRetry(msg)}
-                      className="text-[11px] text-red-500 dark:text-red-400 underline"
+                      className="text-[11px] text-red-300 underline"
                     >
                       ⟳ Retry
                     </button>
@@ -166,7 +171,7 @@ function MessageItemInner({
               <div>
                 <MarkdownRenderer content={msg.text} />
                 {isStreaming && (
-                  <span className="inline-block w-2 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
+                  <span className="inline-block w-[3px] h-[1.1em] bg-primary ml-0.5 align-middle rounded-full animate-[blink_1.2s_ease-in-out_infinite]" />
                 )}
                 {!isUser && !isStreaming && msg.timestamp && (
                   <span className="md:hidden text-[10px] text-text/40 dark:text-text-inv/35 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
@@ -179,7 +184,7 @@ function MessageItemInner({
 
           {/* Inline message actions */}
           {!isStreaming && (
-            <div className="flex items-center gap-1.5 mt-0.5">
+            <div className={`flex items-center gap-1.5 mt-0.5 ${isUser ? 'justify-end' : ''}`}>
               {msg.timestamp && (
                 <span className="hidden md:inline text-[10px] text-text/35 dark:text-text-inv/30 tabular-nums">
                   {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />

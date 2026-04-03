@@ -274,6 +274,12 @@ pre {
   animation: msg-in 0.15s ease-out both;
 }
 
+/* Streaming cursor blink — breathing effect */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
 /* Prevent sticky hover on touch devices */
 @media (hover: none) {
   .hover\:bg-black\/\[0\.02\]:hover,
