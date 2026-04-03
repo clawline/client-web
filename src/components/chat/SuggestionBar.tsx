@@ -17,6 +17,28 @@ interface SuggestionBarProps {
   onQuickSend: (text: string) => void;
 }
 
+/** Detect language from recent messages — if majority are CJK, use Chinese fallback */
+function detectLanguage(messages: Message[]): 'zh' | 'en' {
+  const recent = messages.slice(-4);
+  const text = recent.map(m => m.text || '').join('');
+  const cjkCount = (text.match(/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g) || []).length;
+  return cjkCount > text.length * 0.15 ? 'zh' : 'en';
+}
+
+const FALLBACK_ZH = [
+  { label: '详细说说', emoji: '💡' },
+  { label: '总结一下', emoji: '📝' },
+  { label: '换个说法', emoji: '🔄' },
+  { label: '举个例子', emoji: '✨' },
+];
+
+const FALLBACK_EN = [
+  { label: 'Explain more', emoji: '💡' },
+  { label: 'Summarize', emoji: '📝' },
+  { label: 'Try again', emoji: '🔄' },
+  { label: 'Give an example', emoji: '✨' },
+];
+
 function SuggestionBarInner({
   messages, isThinking, showSlashMenu, showEmojiPicker, skillCount,
   onOpenSlashMenu, onOpenContextViewer, onSetInputValue, onQuickSend,
@@ -81,6 +103,11 @@ function SuggestionBarInner({
   // Early return AFTER all hooks to comply with Rules of Hooks
   if (showSlashMenu || showEmojiPicker) return null;
 
+  const lang = detectLanguage(messages);
+  const fallbackSuggestions = lang === 'zh' ? FALLBACK_ZH : FALLBACK_EN;
+  // Show fallback when: no AI suggestions AND (service unavailable OR service available but fetch done with nothing)
+  const showFallback = !loading && aiSuggestions.length === 0;
+
   return (
     <AnimatePresence mode="popLayout">
       {isLastAi && (
@@ -116,10 +143,10 @@ function SuggestionBarInner({
             </span>
           )}
 
-          {/* Fallback when AI suggestions not available */}
-          {!loading && aiSuggestions.length === 0 && !isSuggestionServiceAvailable() && (
+          {/* Fallback when AI suggestions empty (service not configured or API failed) */}
+          {showFallback && (
             <>
-              {FALLBACK_SUGGESTIONS.map((sug) => (
+              {fallbackSuggestions.map((sug) => (
                 <motion.button
                   key={sug.label}
                   whileTap={{ scale: 0.95 }}
@@ -175,13 +202,6 @@ function SuggestionBarInner({
     </AnimatePresence>
   );
 }
-
-/** Fallback static suggestions when AI service is not configured */
-const FALLBACK_SUGGESTIONS = [
-  { label: 'Explain more', emoji: '💡' },
-  { label: 'Summarize', emoji: '📝' },
-  { label: 'Try again', emoji: '🔄' },
-];
 
 /** Shared icon buttons for Skills + Context */
 function IconButtons({ skillCount, onOpenSlashMenu, onOpenContextViewer }: {
