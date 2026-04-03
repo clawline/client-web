@@ -36,7 +36,6 @@ function MessageItemInner({
   const isStreaming = msg.isStreaming;
   const hasCodeBlock = !isUser && msg.text?.includes('```');
   const isErrorMsg = !isUser && msg.text?.startsWith('⚠️');
-  const isSlashCmd = /^\/[a-z]/i.test(msg.text || '');
   const prevMsg = index > 0 ? messages[index - 1] : null;
   const showDateSep = isDifferentDay(prevMsg?.timestamp, msg.timestamp);
   const grouped = !showDateSep && isGroupedWithPrev(messages, index);
@@ -51,9 +50,9 @@ function MessageItemInner({
           <div className="flex-1 h-px bg-border dark:bg-border-dark" />
         </div>
       )}
-      {/* Flat thread-style message (Discord style, no bubbles) */}
+      {/* Flat thread-style message (Slack/Discord inspired, no bubbles) */}
       <div
-        className={`group/msg flex gap-3 px-2 py-0.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors relative animate-in ${grouped ? 'mt-0.5' : 'mt-4'}`}
+        className={`group/msg flex gap-3 px-2 py-0.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors relative animate-in ${grouped ? '' : 'mt-3'}`}
         onTouchStart={() => onTouchStart(msg.id)}
         onTouchEnd={onTouchEnd}
         onTouchMove={onTouchEnd}
@@ -89,37 +88,31 @@ function MessageItemInner({
                 </span>
               )}
               {!isUser && agentInfo?.model && (
-                <span className="text-[9px] text-text/25 dark:text-text-inv/20 font-medium">
+                <span className="text-[9px] text-text/35 dark:text-text-inv/30 font-medium bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px">
                   {agentInfo.model.split('/').pop()}
                 </span>
               )}
+              {/* Inline reply reference — compact, deduplicated */}
+              {msg.replyTo && (() => {
+                const prevRef = index > 0 ? messages[index - 1] : null;
+                const isDuplicateRef = prevRef && prevRef.sender === msg.sender && prevRef.replyTo === msg.replyTo;
+                if (isDuplicateRef) return null;
+                const quoted = messages.find((m) => m.id === msg.replyTo);
+                if (!quoted) return null;
+                const previewText = quoted.text.slice(0, 30) + (quoted.text.length > 30 ? '…' : '');
+                return (
+                  <span className="text-[10px] text-text/40 dark:text-text-inv/35 truncate max-w-[200px]" title={quoted.text.slice(0, 200)}>
+                    ↩ {quoted.sender === 'user' ? 'You' : 'Bot'}: {previewText}
+                  </span>
+                );
+              })()}
             </div>
           )}
 
-          {/* Inline reply reference — accent line style */}
-          {msg.replyTo && (() => {
-            const prevRef = index > 0 ? messages[index - 1] : null;
-            const isDuplicateRef = prevRef && prevRef.sender === msg.sender && prevRef.replyTo === msg.replyTo;
-            if (isDuplicateRef) return null;
-            const quoted = messages.find((m) => m.id === msg.replyTo);
-            if (!quoted) return null;
-            const previewText = quoted.text.slice(0, 40) + (quoted.text.length > 40 ? '…' : '');
-            return (
-              <div className="flex items-center gap-2 mb-1 px-2.5 py-1.5 rounded-md bg-text/[0.03] dark:bg-text-inv/[0.04] border-l-[3px] border-l-primary/50">
-                <span className="text-[11px] text-text/40 dark:text-text-inv/35 truncate" title={quoted.text.slice(0, 200)}>
-                  <span className="font-medium text-text/50 dark:text-text-inv/45">{quoted.sender === 'user' ? 'You' : agentInfo?.name || 'Bot'}</span>
-                  <span className="mx-1">·</span>{previewText}
-                </span>
-              </div>
-            );
-          })()}
-
-          {/* Message content — flat, no bubble */}
+          {/* Message content — stops touch propagation to allow native text selection */}
           <div
             className={`text-[15px] leading-relaxed relative overflow-x-hidden ${
-              isSlashCmd
-                ? 'font-mono text-[13px] text-text/45 dark:text-text-inv/35 italic'
-                : isErrorMsg ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-inv'
+              isErrorMsg ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-inv'
             } ${hasCodeBlock ? 'border-l-[3px] border-l-primary/50 pl-3' : ''}`}
             onTouchStart={(e) => e.stopPropagation()}
           >
@@ -173,7 +166,7 @@ function MessageItemInner({
               <div>
                 <MarkdownRenderer content={msg.text} />
                 {isStreaming && (
-                  <span className="inline-block w-[3px] h-[1.1em] bg-primary ml-0.5 align-middle rounded-full animate-[blink_1.2s_ease-in-out_infinite]" />
+                  <span className="inline-block w-2 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
                 )}
                 {!isUser && !isStreaming && msg.timestamp && (
                   <span className="md:hidden text-[10px] text-text/40 dark:text-text-inv/35 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">

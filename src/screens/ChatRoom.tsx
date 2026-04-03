@@ -902,18 +902,13 @@ export default function ChatRoom({
 
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setInputValue(val);
     // Show unified slash menu when typing "/" — keep open for "/use skillname" too
     setShowSlashMenu(val.startsWith('/') && (
       !val.includes(' ') || val.startsWith('/use ')
     ));
-
-    // Auto-resize textarea
-    const ta = e.target;
-    ta.style.height = 'auto';
-    ta.style.height = Math.min(ta.scrollHeight, 144) + 'px'; // max ~6 lines
 
     // Bug 2: Throttle typing indicator to prevent WS spam
     if (val.trim()) {
@@ -1305,30 +1300,13 @@ export default function ChatRoom({
             <ChevronLeft size={28} />
           </motion.button>
         )}
-        {/* Header avatar with status dot */}
-        <div className="relative flex-shrink-0 mr-2.5">
-          <div className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm text-base bg-gradient-to-br from-primary to-primary-deep">
-            {agentInfo?.identityEmoji || '🤖'}
-          </div>
-          {wsStatus === 'connected' && agentPresence?.status !== 'offline' && (
-            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt" />
-          )}
-          {wsStatus === 'connected' && agentPresence?.status === 'offline' && (
-            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-gray-400 rounded-full border-2 border-white dark:border-card-alt" />
-          )}
-          {(wsStatus === 'connecting' || wsStatus === 'reconnecting') && (
-            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-amber-400 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />
-          )}
-        </div>
-        <div className={`flex-1 min-w-0 flex flex-col ${isDesktop ? 'items-start' : ''}`}>
-          <h2 className="font-semibold text-[16px] text-text dark:text-text-inv leading-tight truncate">
-            {agentInfo?.name || agentId || 'OpenClaw Bot'}
+        <div className={`flex flex-col ${isDesktop ? 'items-start ml-2' : 'items-center'}`}>
+          <h2 className="font-semibold text-[17px] text-text dark:text-text-inv leading-tight truncate max-w-[200px] md:max-w-none">
+            {agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}
           </h2>
-          <p className="text-[11px] text-text/35 dark:text-text-inv/30 truncate flex items-center gap-1">
-            {getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}
-            {agentInfo?.model && <><span className="mx-0.5">·</span><span className="text-text/25 dark:text-text-inv/20">{agentInfo.model.split('/').pop()}</span></>}
-            {wsStatus === 'connected' && agentPresence?.status === 'offline' && <><span className="mx-0.5">·</span><span className="text-text/25 dark:text-text-inv/20">{formatLastSeen(agentPresence.lastSeen) || 'offline'}</span></>}
-            {wsStatus === 'connected' && agentPresence?.status !== 'offline' && <><span className="mx-0.5">·</span><span className="text-primary/60">online</span></>}
+          <p className="text-[11px] text-text/40 dark:text-text-inv/35 truncate max-w-[200px] md:max-w-none flex items-center gap-1">
+            {getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}{agentInfo?.model ? ` · ${agentInfo.model.split('/').pop()}` : ''}
+            {wsStatus === 'connected' && <><span className="mx-0.5">·</span><span className={`inline-flex items-center gap-0.5 ${agentPresence?.status === 'offline' ? 'text-text/30 dark:text-text-inv/25' : 'text-primary'}`}><span className={`inline-block w-1.5 h-1.5 rounded-full ${agentPresence?.status === 'offline' ? 'bg-gray-400' : 'bg-primary'}`} />{agentPresence?.status === 'offline' ? formatLastSeen(agentPresence.lastSeen) || 'offline' : 'online'}</span></>}
             {(wsStatus === 'connecting' || wsStatus === 'reconnecting') && <><span className="mx-0.5">·</span><span className="inline-flex items-center gap-0.5 text-amber-500"><Loader2 size={9} className="animate-spin" />{wsStatus === 'connecting' ? 'connecting' : 'reconnecting'}</span></>}
             {wsStatus === 'disconnected' && <><span className="mx-0.5">·</span><button onClick={() => channel.reconnect(runtimeConnId)} className="inline-flex items-center gap-0.5 text-red-400 hover:opacity-80 transition-opacity" aria-label="Tap to reconnect"><RefreshCw size={9} />reconnect</button></>}
           </p>
@@ -1524,27 +1502,6 @@ export default function ChatRoom({
                 </div>
               )}
             </div>
-            {/* Starter suggestion cards */}
-            <div className="grid grid-cols-2 gap-2.5 w-full max-w-[340px] mt-5">
-              {[
-                { emoji: '💬', label: '开始聊天', desc: '随便聊点什么', action: 'Hi!' },
-                { emoji: '📊', label: '查看状态', desc: '会话和模型信息', action: '/status' },
-                { emoji: '🤖', label: '切换模型', desc: '浏览可用模型', action: '/models' },
-                { emoji: '❓', label: '帮助指南', desc: '可用命令一览', action: '/help' },
-              ].map((card) => (
-                <motion.button
-                  key={card.action}
-                  whileHover={{ scale: 1.03, y: -2 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => quickSend(card.action)}
-                  className="flex flex-col items-start gap-1 p-3 rounded-2xl bg-white/70 dark:bg-card-alt/70 border border-border/40 dark:border-border-dark/40 hover:border-primary/25 hover:shadow-md transition-all text-left"
-                >
-                  <span className="text-lg">{card.emoji}</span>
-                  <span className="text-[13px] font-semibold text-text dark:text-text-inv">{card.label}</span>
-                  <span className="text-[11px] text-text/45 dark:text-text-inv/40 leading-tight">{card.desc}</span>
-                </motion.button>
-              ))}
-            </div>
           </motion.div>
         )}
         {messages.map((msg, i) => (
@@ -1663,7 +1620,7 @@ export default function ChatRoom({
       />
 
       {/* Input Area */}
-      <div className="px-2 pt-2 pb-1 bg-white/70 dark:bg-card-alt/70 backdrop-blur-xl border-t border-border/30 dark:border-border-dark/30 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-30 flex-shrink-0 relative safe-area-bottom flex flex-col gap-2.5">
+      <div className="px-2 pt-2 pb-1 bg-white/60 dark:bg-card-alt/60 backdrop-blur-md border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative safe-area-bottom flex flex-col gap-2.5">
         <AnimatePresence>
           {showSlashMenu && (
             <>
@@ -1844,7 +1801,7 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
-        <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-[20px] p-0.5 flex items-end gap-0.5 shadow-lg shadow-black/5 relative">
+        <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full p-0.5 flex items-center gap-0.5 shadow-lg shadow-black/5 relative">
           {/* Action menu toggle (+ button) */}
           <motion.button
             whileTap={{ scale: 0.9 }}
@@ -1944,22 +1901,16 @@ export default function ChatRoom({
             )}
           </AnimatePresence>
 
-          <textarea
+          <input
+            type="text"
             value={inputValue}
             onChange={handleInputChange}
             onFocus={() => { setShowEmojiPicker(false); }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && agentReady) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
+            onKeyDown={(e) => e.key === 'Enter' && agentReady && handleSend()}
             placeholder={agentReady ? "Message..." : "Switching agent..."}
             disabled={!agentReady}
-            rows={1}
             aria-label="Type a message"
-            className="flex-1 bg-transparent border-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-md text-[14px] py-1.5 px-2 text-text dark:text-text-inv placeholder:text-text/45 dark:placeholder:text-text-inv/45 disabled:opacity-50 resize-none overflow-y-auto leading-relaxed"
-            style={{ maxHeight: '144px' }}
+            className="flex-1 bg-transparent border-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-md text-[14px] py-1.5 px-2 text-text dark:text-text-inv placeholder:text-text/45 dark:placeholder:text-text-inv/45 disabled:opacity-50"
           />
 
           {/* Voice button when no text, Send button when has text */}
