@@ -14,6 +14,7 @@ interface MessageItemProps {
   agentInfo: AgentInfo | null;
   copiedMsgId: string | null;
   runtimeConnId: string;
+  streamingStatus?: string;
   onTouchStart: (id: string) => void;
   onTouchEnd: () => void;
   onRetry: (msg: Message) => void;
@@ -28,7 +29,7 @@ interface MessageItemProps {
 }
 
 function MessageItemInner({
-  msg, index, messages, agentInfo, copiedMsgId, runtimeConnId,
+  msg, index, messages, agentInfo, copiedMsgId, runtimeConnId, streamingStatus,
   onTouchStart, onTouchEnd, onRetry, onReply, onEdit, onDelete,
   onCopy, onQuickSend, onReactionToggle, onReactionRemove, onOpenReactionPicker,
 }: MessageItemProps) {
@@ -166,7 +167,12 @@ function MessageItemInner({
               <div>
                 <MarkdownRenderer content={msg.text} />
                 {isStreaming && (
-                  <span className="inline-block w-2 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
+                  <span className="inline-flex items-center gap-1.5 align-middle ml-0.5">
+                    <span className="inline-block w-2 h-4 bg-primary animate-pulse" />
+                    {streamingStatus && (
+                      <span className="text-[11px] text-primary/70 font-medium whitespace-nowrap">{streamingStatus}</span>
+                    )}
+                  </span>
                 )}
                 {!isUser && !isStreaming && msg.timestamp && (
                   <span className="md:hidden text-[10px] text-text/40 dark:text-text-inv/35 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">

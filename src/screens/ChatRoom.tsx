@@ -1543,6 +1543,10 @@ export default function ChatRoom({
             agentInfo={agentInfo}
             copiedMsgId={copiedMsgId}
             runtimeConnId={runtimeConnId}
+            streamingStatus={msg.isStreaming && isThinking ? (() => {
+              const latestActive = activeToolCalls[activeToolCalls.length - 1];
+              return latestActive ? `🔧 ${formatToolName(latestActive.toolName)}` : (thinkingPhase || undefined);
+            })() : undefined}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
             onRetry={retryMessage}
@@ -1564,9 +1568,9 @@ export default function ChatRoom({
           </div>
         )}
 
-        {/* Thinking indicator */}
+        {/* Thinking indicator — only show when NOT streaming (during streaming, status shows inline next to cursor) */}
         <AnimatePresence>
-          {isThinking && (
+          {isThinking && !messages.some((m) => m.isStreaming) && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1979,6 +1983,7 @@ export default function ChatRoom({
             value={inputValue}
             onChange={handleInputChange}
             onFocus={() => { setShowEmojiPicker(false); }}
+            onBlur={() => { window.scrollTo(0, 0); }}
             onKeyDown={(e) => e.key === 'Enter' && agentReady && handleSend()}
             placeholder={agentReady ? "Message..." : "Switching agent..."}
             disabled={!agentReady}
