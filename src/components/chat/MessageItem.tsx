@@ -51,9 +51,9 @@ function MessageItemInner({
           <div className="flex-1 h-px bg-border dark:bg-border-dark" />
         </div>
       )}
-      {/* Message row — bubble style with asymmetric corners */}
+      {/* Flat thread-style message (Discord style, no bubbles) */}
       <div
-        className={`group/msg flex gap-3 px-2 py-0.5 transition-colors relative animate-in ${isUser ? 'flex-row-reverse' : ''} ${grouped ? 'mt-0.5' : 'mt-4'}`}
+        className={`group/msg flex gap-3 px-2 py-0.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors relative animate-in ${grouped ? 'mt-0.5' : 'mt-4'}`}
         onTouchStart={() => onTouchStart(msg.id)}
         onTouchEnd={onTouchEnd}
         onTouchMove={onTouchEnd}
@@ -75,11 +75,11 @@ function MessageItemInner({
           )}
         </div>
 
-        {/* Content column — max 80% width */}
-        <div className={`min-w-0 overflow-x-hidden max-w-[80%] ${isUser ? 'items-end' : ''}`}>
+        {/* Content column */}
+        <div className="flex-1 min-w-0 overflow-x-hidden">
           {/* Header row */}
           {!grouped && (
-            <div className={`flex items-baseline gap-2 mb-0.5 flex-wrap ${isUser ? 'flex-row-reverse' : ''}`}>
+            <div className="flex items-baseline gap-2 mb-0.5 flex-wrap">
               <span className={`text-[14px] font-bold ${isUser ? 'text-info' : 'text-primary'}`}>
                 {isUser ? 'You' : (agentInfo?.name || 'Bot')}
               </span>
@@ -89,60 +89,59 @@ function MessageItemInner({
                 </span>
               )}
               {!isUser && agentInfo?.model && (
-                <span className="text-[9px] text-text/35 dark:text-text-inv/30 font-medium bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px">
+                <span className="text-[9px] text-text/25 dark:text-text-inv/20 font-medium">
                   {agentInfo.model.split('/').pop()}
                 </span>
               )}
-              {/* Inline reply reference — accent line style */}
-              {msg.replyTo && (() => {
-                const prevRef = index > 0 ? messages[index - 1] : null;
-                const isDuplicateRef = prevRef && prevRef.sender === msg.sender && prevRef.replyTo === msg.replyTo;
-                if (isDuplicateRef) return null;
-                const quoted = messages.find((m) => m.id === msg.replyTo);
-                if (!quoted) return null;
-                const previewText = quoted.text.slice(0, 40) + (quoted.text.length > 40 ? '…' : '');
-                return (
-                  <div className="w-full flex items-center gap-2 mt-0.5 mb-1 px-2.5 py-1.5 rounded-lg bg-text/[0.03] dark:bg-text-inv/[0.04] border-l-[3px] border-l-primary/50">
-                    <span className="text-[11px] text-text/40 dark:text-text-inv/35 truncate" title={quoted.text.slice(0, 200)}>
-                      <span className="font-medium text-text/50 dark:text-text-inv/45">{quoted.sender === 'user' ? 'You' : agentInfo?.name || 'Bot'}</span>
-                      <span className="mx-1">·</span>{previewText}
-                    </span>
-                  </div>
-                );
-              })()}
             </div>
           )}
 
-          {/* Message bubble — asymmetric rounded corners */}
+          {/* Inline reply reference — accent line style */}
+          {msg.replyTo && (() => {
+            const prevRef = index > 0 ? messages[index - 1] : null;
+            const isDuplicateRef = prevRef && prevRef.sender === msg.sender && prevRef.replyTo === msg.replyTo;
+            if (isDuplicateRef) return null;
+            const quoted = messages.find((m) => m.id === msg.replyTo);
+            if (!quoted) return null;
+            const previewText = quoted.text.slice(0, 40) + (quoted.text.length > 40 ? '…' : '');
+            return (
+              <div className="flex items-center gap-2 mb-1 px-2.5 py-1.5 rounded-md bg-text/[0.03] dark:bg-text-inv/[0.04] border-l-[3px] border-l-primary/50">
+                <span className="text-[11px] text-text/40 dark:text-text-inv/35 truncate" title={quoted.text.slice(0, 200)}>
+                  <span className="font-medium text-text/50 dark:text-text-inv/45">{quoted.sender === 'user' ? 'You' : agentInfo?.name || 'Bot'}</span>
+                  <span className="mx-1">·</span>{previewText}
+                </span>
+              </div>
+            );
+          })()}
+
+          {/* Message content — flat, no bubble */}
           <div
-            className={`text-[15px] leading-relaxed relative overflow-x-hidden px-3.5 py-2.5 ${
-              isUser
-                ? `bg-[#1a1a2e] dark:bg-[#2a2a4a] text-white rounded-[18px] ${grouped ? 'rounded-tr-[6px]' : 'rounded-tr-[6px]'}`
-                : isSlashCmd
-                  ? `bg-transparent border border-dashed border-text/15 dark:border-text-inv/15 rounded-xl font-mono text-[13px] text-text/50 dark:text-text-inv/40 italic`
-                  : `bg-[#f4f4f5] dark:bg-[#1e1e2e] text-text dark:text-text-inv rounded-[18px] ${grouped ? 'rounded-tl-[6px]' : 'rounded-tl-[6px]'}`
-            } ${isErrorMsg ? 'text-red-600 dark:text-red-400' : ''} ${hasCodeBlock && !isUser ? 'border-l-[3px] border-l-primary/50' : ''}`}
+            className={`text-[15px] leading-relaxed relative overflow-x-hidden ${
+              isSlashCmd
+                ? 'font-mono text-[13px] text-text/45 dark:text-text-inv/35 italic'
+                : isErrorMsg ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-inv'
+            } ${hasCodeBlock ? 'border-l-[3px] border-l-primary/50 pl-3' : ''}`}
             onTouchStart={(e) => e.stopPropagation()}
           >
             {(msg.mediaType === 'image' && msg.mediaUrl) ? (
               <div>
-                <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover" />
+                <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover mt-1" />
                 {msg.text && <p className="mt-1.5 text-[15px]">{msg.text}</p>}
                 {msg.timestamp && isUser && (
-                  <span className="md:hidden text-[10px] float-right mt-1 ml-3 tabular-nums text-white/60">
+                  <span className="md:hidden text-[10px] float-right mt-1 ml-3 tabular-nums text-text/50 dark:text-text-inv/45">
                     {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
                   </span>
                 )}
               </div>
             ) : (msg.mediaType === 'voice' || msg.mediaType === 'audio') && msg.mediaUrl ? (
               <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2 bg-black/5 dark:bg-white/5 p-2 rounded-lg max-w-[280px]">
+                <div className="flex items-center gap-2 bg-surface/60 dark:bg-[#131420]/60 p-2 rounded-lg max-w-[280px]">
                   <audio src={msg.mediaUrl} controls className="h-8 w-full max-w-[240px]" />
                 </div>
                 {msg.text && <p className="text-[13px] opacity-80">{msg.text}</p>}
               </div>
             ) : msg.mediaType === 'file' && msg.mediaUrl ? (
-              <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-3 rounded-xl max-w-[300px]">
+              <div className="flex items-center gap-3 bg-surface dark:bg-[#131420] p-3 rounded-xl border border-border dark:border-border-dark max-w-[300px] mt-1">
                 <div className="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center text-info shrink-0">
                   <FileText size={20} />
                 </div>
@@ -155,7 +154,7 @@ function MessageItemInner({
               <div className="inline">
                 <span className="whitespace-pre-wrap break-words">{msg.text}</span>
                 {msg.timestamp && (
-                  <span className="md:hidden text-[10px] text-white/50 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
+                  <span className="md:hidden text-[10px] text-text/40 dark:text-text-inv/40 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
                     {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
                   </span>
                 )}
@@ -163,7 +162,7 @@ function MessageItemInner({
                   <div className="md:hidden flex items-center gap-1 mt-1">
                     <button
                       onClick={() => onRetry(msg)}
-                      className="text-[11px] text-red-300 underline"
+                      className="text-[11px] text-red-500 dark:text-red-400 underline"
                     >
                       ⟳ Retry
                     </button>
@@ -187,7 +186,7 @@ function MessageItemInner({
 
           {/* Inline message actions */}
           {!isStreaming && (
-            <div className={`flex items-center gap-1.5 mt-0.5 ${isUser ? 'justify-end' : ''}`}>
+            <div className="flex items-center gap-1.5 mt-0.5">
               {msg.timestamp && (
                 <span className="hidden md:inline text-[10px] text-text/35 dark:text-text-inv/30 tabular-nums">
                   {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
