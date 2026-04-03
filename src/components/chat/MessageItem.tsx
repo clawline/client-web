@@ -53,7 +53,7 @@ function MessageItemInner({
       )}
       {/* Message row — bubble style with asymmetric corners */}
       <div
-        className={`group/msg flex gap-3 px-2 py-0.5 transition-colors relative animate-in ${isUser ? 'flex-row-reverse' : ''} ${grouped ? '' : 'mt-3'}`}
+        className={`group/msg flex gap-3 px-2 py-0.5 transition-colors relative animate-in ${isUser ? 'flex-row-reverse' : ''} ${grouped ? 'mt-0.5' : 'mt-4'}`}
         onTouchStart={() => onTouchStart(msg.id)}
         onTouchEnd={onTouchEnd}
         onTouchMove={onTouchEnd}
@@ -93,18 +93,21 @@ function MessageItemInner({
                   {agentInfo.model.split('/').pop()}
                 </span>
               )}
-              {/* Inline reply reference — compact, deduplicated */}
+              {/* Inline reply reference — accent line style */}
               {msg.replyTo && (() => {
                 const prevRef = index > 0 ? messages[index - 1] : null;
                 const isDuplicateRef = prevRef && prevRef.sender === msg.sender && prevRef.replyTo === msg.replyTo;
                 if (isDuplicateRef) return null;
                 const quoted = messages.find((m) => m.id === msg.replyTo);
                 if (!quoted) return null;
-                const previewText = quoted.text.slice(0, 30) + (quoted.text.length > 30 ? '…' : '');
+                const previewText = quoted.text.slice(0, 40) + (quoted.text.length > 40 ? '…' : '');
                 return (
-                  <span className="text-[10px] text-text/40 dark:text-text-inv/35 truncate max-w-[200px]" title={quoted.text.slice(0, 200)}>
-                    ↩ {quoted.sender === 'user' ? 'You' : 'Bot'}: {previewText}
-                  </span>
+                  <div className="w-full flex items-center gap-2 mt-0.5 mb-1 px-2.5 py-1.5 rounded-lg bg-text/[0.03] dark:bg-text-inv/[0.04] border-l-[3px] border-l-primary/50">
+                    <span className="text-[11px] text-text/40 dark:text-text-inv/35 truncate" title={quoted.text.slice(0, 200)}>
+                      <span className="font-medium text-text/50 dark:text-text-inv/45">{quoted.sender === 'user' ? 'You' : agentInfo?.name || 'Bot'}</span>
+                      <span className="mx-1">·</span>{previewText}
+                    </span>
+                  </div>
                 );
               })()}
             </div>
@@ -114,10 +117,10 @@ function MessageItemInner({
           <div
             className={`text-[15px] leading-relaxed relative overflow-x-hidden px-3.5 py-2.5 ${
               isUser
-                ? `bg-[#1a1a2e] dark:bg-[#2a2a4a] text-white rounded-2xl ${grouped ? 'rounded-tr-lg' : 'rounded-br-lg'}`
+                ? `bg-[#1a1a2e] dark:bg-[#2a2a4a] text-white rounded-[18px] ${grouped ? 'rounded-tr-[6px]' : 'rounded-tr-[6px]'}`
                 : isSlashCmd
                   ? `bg-transparent border border-dashed border-text/15 dark:border-text-inv/15 rounded-xl font-mono text-[13px] text-text/50 dark:text-text-inv/40 italic`
-                  : `bg-[#f4f4f5] dark:bg-[#1e1e2e] text-text dark:text-text-inv rounded-2xl ${grouped ? 'rounded-tl-lg' : 'rounded-bl-lg'}`
+                  : `bg-[#f4f4f5] dark:bg-[#1e1e2e] text-text dark:text-text-inv rounded-[18px] ${grouped ? 'rounded-tl-[6px]' : 'rounded-tl-[6px]'}`
             } ${isErrorMsg ? 'text-red-600 dark:text-red-400' : ''} ${hasCodeBlock && !isUser ? 'border-l-[3px] border-l-primary/50' : ''}`}
             onTouchStart={(e) => e.stopPropagation()}
           >

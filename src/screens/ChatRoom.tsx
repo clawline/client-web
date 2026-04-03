@@ -1305,20 +1305,30 @@ export default function ChatRoom({
             <ChevronLeft size={28} />
           </motion.button>
         )}
-        <div className={`flex flex-col ${isDesktop ? 'items-start ml-2' : 'items-center'}`}>
-          <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-[17px] text-text dark:text-text-inv leading-tight truncate max-w-[200px] md:max-w-none">
-              {agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}
-            </h2>
-            {agentInfo?.model && (
-              <span className="text-[10px] font-medium text-primary/70 bg-primary/8 border border-primary/15 rounded-full px-2 py-0.5 leading-none shrink-0">
-                {agentInfo.model.split('/').pop()}
-              </span>
-            )}
+        {/* Header avatar with status dot */}
+        <div className="relative flex-shrink-0 mr-2.5">
+          <div className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm text-base bg-gradient-to-br from-primary to-primary-deep">
+            {agentInfo?.identityEmoji || '🤖'}
           </div>
-          <p className="text-[11px] text-text/40 dark:text-text-inv/35 truncate max-w-[200px] md:max-w-none flex items-center gap-1">
+          {wsStatus === 'connected' && agentPresence?.status !== 'offline' && (
+            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt" />
+          )}
+          {wsStatus === 'connected' && agentPresence?.status === 'offline' && (
+            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-gray-400 rounded-full border-2 border-white dark:border-card-alt" />
+          )}
+          {(wsStatus === 'connecting' || wsStatus === 'reconnecting') && (
+            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-amber-400 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />
+          )}
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col ${isDesktop ? 'items-start' : ''}`}>
+          <h2 className="font-semibold text-[16px] text-text dark:text-text-inv leading-tight truncate">
+            {agentInfo?.name || agentId || 'OpenClaw Bot'}
+          </h2>
+          <p className="text-[11px] text-text/35 dark:text-text-inv/30 truncate flex items-center gap-1">
             {getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}
-            {wsStatus === 'connected' && <><span className="mx-0.5">·</span><span className={`inline-flex items-center gap-0.5 ${agentPresence?.status === 'offline' ? 'text-text/30 dark:text-text-inv/25' : 'text-primary'}`}><span className={`inline-block w-1.5 h-1.5 rounded-full ${agentPresence?.status === 'offline' ? 'bg-gray-400' : 'bg-primary'}`} />{agentPresence?.status === 'offline' ? formatLastSeen(agentPresence.lastSeen) || 'offline' : 'online'}</span></>}
+            {agentInfo?.model && <><span className="mx-0.5">·</span><span className="text-text/25 dark:text-text-inv/20">{agentInfo.model.split('/').pop()}</span></>}
+            {wsStatus === 'connected' && agentPresence?.status === 'offline' && <><span className="mx-0.5">·</span><span className="text-text/25 dark:text-text-inv/20">{formatLastSeen(agentPresence.lastSeen) || 'offline'}</span></>}
+            {wsStatus === 'connected' && agentPresence?.status !== 'offline' && <><span className="mx-0.5">·</span><span className="text-primary/60">online</span></>}
             {(wsStatus === 'connecting' || wsStatus === 'reconnecting') && <><span className="mx-0.5">·</span><span className="inline-flex items-center gap-0.5 text-amber-500"><Loader2 size={9} className="animate-spin" />{wsStatus === 'connecting' ? 'connecting' : 'reconnecting'}</span></>}
             {wsStatus === 'disconnected' && <><span className="mx-0.5">·</span><button onClick={() => channel.reconnect(runtimeConnId)} className="inline-flex items-center gap-0.5 text-red-400 hover:opacity-80 transition-opacity" aria-label="Tap to reconnect"><RefreshCw size={9} />reconnect</button></>}
           </p>
@@ -1653,7 +1663,7 @@ export default function ChatRoom({
       />
 
       {/* Input Area */}
-      <div className="px-2 pt-2 pb-1 bg-white/60 dark:bg-card-alt/60 backdrop-blur-md border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative safe-area-bottom flex flex-col gap-2.5">
+      <div className="px-2 pt-2 pb-1 bg-white/70 dark:bg-card-alt/70 backdrop-blur-xl border-t border-border/30 dark:border-border-dark/30 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-30 flex-shrink-0 relative safe-area-bottom flex flex-col gap-2.5">
         <AnimatePresence>
           {showSlashMenu && (
             <>
