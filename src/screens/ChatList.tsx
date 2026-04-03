@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
-import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List, ArrowUpDown, Check } from 'lucide-react';
+import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List, ArrowUpDown, Check, Crown } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
 import { CONNECTIONS_UPDATED_EVENT, getConnections, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
@@ -509,12 +509,17 @@ export default function ChatList({
             !isDisabled && 'cursor-pointer active:bg-text/[0.06] dark:active:bg-text-inv/[0.06]',
             isActive ? 'bg-primary/12 dark:bg-primary/15 shadow-[inset_2px_0_0_0_#EF5A23]'
               : isSplitActive ? 'bg-info/8 dark:bg-info/12 shadow-[inset_2px_0_0_0_#5B8DEF]'
-              : 'hover:bg-text/[0.05] dark:hover:bg-text-inv/[0.05]'
+              : 'hover:bg-text/[0.05] dark:hover:bg-text-inv/[0.05] hover:shadow-sm'
           )}>
           {/* Avatar */}
           <div className="relative flex-shrink-0" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
             onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
             {renderAvatar(agent, compact ? 'sm' : 'md')}
+            {agent.isDefault && (
+              <span className={cn('absolute -top-1 -right-1 flex items-center justify-center rounded-full bg-amber-400 border-[1.5px] border-white dark:border-surface-dark shadow-sm', compact ? 'w-3.5 h-3.5' : 'w-4 h-4')}>
+                <Crown size={compact ? 7 : 8} className="text-white" strokeWidth={2.5} />
+              </span>
+            )}
             {showStatus && (
               <span className={cn('absolute -bottom-0.5 -right-0.5 bg-primary rounded-full border-2 border-white dark:border-surface-dark flex items-center justify-center', compact ? 'w-3 h-3' : 'w-3.5 h-3.5')}>
                 <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
@@ -528,7 +533,6 @@ export default function ChatList({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               <h3 className={cn('font-bold truncate', compact ? 'text-[14px] text-text/90 dark:text-text-inv/90' : 'text-[16px]')}>{agent.name}</h3>
-              {agent.isDefault && <span className="text-[9px] font-medium text-text/45 dark:text-text-inv/40 bg-text/[0.05] dark:bg-text-inv/[0.05] rounded px-1 py-px leading-none shrink-0">default</span>}
               {agent.model && <span className="text-[10px] truncate ml-auto shrink-0 bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px text-text/45 dark:text-text-inv/40">{agent.model.split('/').pop()}</span>}
             </div>
             {isThinking ? (
@@ -576,11 +580,16 @@ export default function ChatList({
             !isDisabled && 'cursor-pointer active:scale-[0.96]',
             isActive ? 'ring-2 ring-primary/30 bg-primary/5 dark:bg-primary/10'
               : isSplitActive ? 'ring-2 ring-info/25 bg-info/6 dark:bg-info/10'
-              : 'hover:bg-text/[0.02] dark:hover:bg-text-inv/[0.02]'
+              : 'hover:bg-text/[0.03] dark:hover:bg-text-inv/[0.03] hover:shadow-md hover:-translate-y-0.5'
           )}>
           <div className="relative mb-2" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
             onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
             {renderAvatar(agent, 'lg')}
+            {agent.isDefault && (
+              <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 border-[1.5px] border-white dark:border-card-alt shadow-sm">
+                <Crown size={8} className="text-white" strokeWidth={2.5} />
+              </span>
+            )}
             {showStatus && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />}
           </div>
           <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{agent.name}</h3>
@@ -589,13 +598,12 @@ export default function ChatList({
           ) : isTyping ? (
             <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">正在输入... <TypingDots /></div>
           ) : lastMessage?.text ? (
-            <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-text/50 dark:text-text-inv/40 truncate w-full max-w-full">
+            <p className="mt-1 text-[10px] text-text/45 dark:text-text-inv/40 truncate w-full max-w-full">
               {lastMessage.text.length > 24 ? `${lastMessage.text.slice(0, 24)}…` : lastMessage.text}
-            </div>
+            </p>
           ) : agent.model ? (
             <span className="text-[9px] text-text/50 dark:text-text-inv/40 truncate w-full mt-1">{agent.model.split('/').pop()}</span>
           ) : null}
-          {agent.isDefault && <span className="text-[7px] font-medium text-text/50 dark:text-text-inv/45 bg-text/[0.04] dark:bg-text-inv/[0.04] rounded px-1 py-px mt-1">default</span>}
         </button>
       </motion.div>
     );
@@ -781,13 +789,17 @@ export default function ChatList({
               const isExpanded = expandedIds.includes(connection.id);
               const status = statusMap[connection.id] || 'disconnected';
 
+              const isDisconnected = status === 'disconnected';
+
               return (
-                <div key={connection.id}>
+                <div key={connection.id} className={cn(isDisconnected && 'opacity-75')}>
                   <button type="button" onClick={() => handleToggleGroup(connection.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left group">
                     <span className={cn('inline-flex h-2 w-2 rounded-full shrink-0', getStatusClasses(status))} />
                     <span className="sr-only">{status === 'connected' ? 'Connected' : status === 'connecting' || status === 'reconnecting' ? 'Connecting' : 'Disconnected'}</span>
-                    <span className="text-[12px] font-semibold uppercase tracking-wider text-text/50 dark:text-text-inv/45 truncate flex-1">
+                    <span className={cn('text-[12px] font-semibold uppercase tracking-wider truncate flex-1',
+                      isDisconnected ? 'text-text/35 dark:text-text-inv/30' : 'text-text/50 dark:text-text-inv/45')}>
                       {getConnectionLabel(connection)}
+                      {isDisconnected && <span className="normal-case tracking-normal font-medium ml-1.5 text-text/30 dark:text-text-inv/25">· Disconnected</span>}
                     </span>
                     <ChevronDown size={12} className={cn('shrink-0 text-text/25 dark:text-text-inv/35 transition-transform duration-200', isExpanded && 'rotate-180')} />
                   </button>

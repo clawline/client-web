@@ -32,7 +32,7 @@ export default function BottomNav({ currentScreen, onNavigate }: BottomNavProps)
               aria-current={isActive ? 'page' : undefined}
               className={cn(
                 "p-2 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors relative min-w-[52px]",
-                isActive ? 'text-primary' : 'text-text/35 dark:text-text-inv/35 hover:text-text/55 dark:hover:text-text-inv/55'
+                isActive ? 'text-primary drop-shadow-[0_1px_2px_rgba(239,90,35,0.3)]' : 'text-text/35 dark:text-text-inv/35 hover:text-text/55 dark:hover:text-text-inv/55'
               )}
             >
               <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
