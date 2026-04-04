@@ -3,7 +3,9 @@ import { getActiveConnectionId, getConnectionById } from './connectionStore';
 const DEFAULT_WS_URL = 'wss://gateway.clawlines.net/client';
 const MAX_RECONNECT_ATTEMPTS = 6;
 const MAX_ACTIVE_CONNECTIONS = 6;
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes — chat apps should stay connected
+const HEARTBEAT_INTERVAL_MS = 25 * 1000; // 25 seconds — keeps connection alive through proxies
+const HEARTBEAT_TIMEOUT_MS = 10 * 1000;  // 10 seconds — if no pong, consider connection dead
 const AGENT_CACHE_PREFIX = 'openclaw.agentList.';
 const STATUS_CACHE_PREFIX = 'openclaw.channelStatus.';
 
@@ -95,6 +97,8 @@ type ChannelInstance = {
   lastReconnectAt: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   idleTimer: ReturnType<typeof setTimeout> | null;
+  heartbeatTimer: ReturnType<typeof setInterval> | null;
+  heartbeatPending: boolean;
   manualClose: boolean;
   currentStatus: ConnectionStatus;
   currentServerUrl: string;
@@ -136,6 +140,8 @@ function createInstance(connectionId: string): ChannelInstance {
     lastReconnectAt: 0,
     reconnectTimer: null,
     idleTimer: null,
+    heartbeatTimer: null,
+    heartbeatPending: false,
     manualClose: false,
     currentStatus: 'disconnected',
     currentServerUrl: '',
@@ -168,11 +174,19 @@ class ChannelManager {
   private handleVisibilityChange = () => {
     if (document.visibilityState === 'visible') {
       // Page came back to foreground — reconnect all disconnected instances (debounced)
+      // and restart heartbeats for connected ones
       this.reconnectAllDebounced();
+      for (const instance of this.instances.values()) {
+        if (instance.ws && instance.ws.readyState === WebSocket.OPEN) {
+          this.startHeartbeat(instance);
+        }
+      }
     } else {
-      // Page going to background — pause idle timers so we don't disconnect while user is away
+      // Page going to background — pause idle timers and heartbeats
+      // (browser may throttle timers anyway; no point wasting resources)
       for (const instance of this.instances.values()) {
         this.clearIdleTimer(instance);
+        this.stopHeartbeat(instance);
       }
     }
   };
@@ -408,6 +422,40 @@ class ChannelManager {
     }
   }
 
+  private startHeartbeat(instance: ChannelInstance) {
+    this.stopHeartbeat(instance);
+    instance.heartbeatTimer = setInterval(() => {
+      if (!instance.ws || instance.ws.readyState !== WebSocket.OPEN) {
+        this.stopHeartbeat(instance);
+        return;
+      }
+      // If previous heartbeat never got a response, connection is dead
+      if (instance.heartbeatPending) {
+        instance.heartbeatPending = false;
+        this.stopHeartbeat(instance);
+        // Force close and trigger reconnect
+        try { instance.ws.close(4000, 'Heartbeat timeout'); } catch { /* ignore */ }
+        return;
+      }
+      instance.heartbeatPending = true;
+      try {
+        instance.ws.send(JSON.stringify({ type: 'ping', data: { timestamp: Date.now() } }));
+      } catch {
+        // Send failed — connection is dead
+        this.stopHeartbeat(instance);
+        try { instance.ws?.close(4000, 'Heartbeat send failed'); } catch { /* ignore */ }
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  private stopHeartbeat(instance: ChannelInstance) {
+    if (instance.heartbeatTimer) {
+      clearInterval(instance.heartbeatTimer);
+      instance.heartbeatTimer = null;
+    }
+    instance.heartbeatPending = false;
+  }
+
   private touch(instance: ChannelInstance) {
     instance.lastTouchedAt = Date.now();
     this.scheduleIdleClose(instance);
@@ -535,14 +583,19 @@ class ChannelManager {
       instance.reconnectAttempts = 0;
       this.updateStatus(instance, 'connected');
       this.touch(instance);
+      this.startHeartbeat(instance);
     });
 
     socket.addEventListener('message', (event) => {
       if (instance.connectionToken !== token || instance.ws !== socket) return;
+      // Any message from server means connection is alive — reset heartbeat pending
+      instance.heartbeatPending = false;
       this.touch(instance);
 
       try {
         const packet: InboundPacket = JSON.parse(event.data as string);
+        // Heartbeat response — silently consume, don't forward to UI
+        if (packet.type === 'pong') return;
         if (packet.type === 'connection.open' && packet.data?.chatId) {
           instance.currentChatId = packet.data.chatId as string;
         }
@@ -681,6 +734,7 @@ class ChannelManager {
     instance.manualClose = manual;
     this.clearReconnectTimer(instance);
     this.clearIdleTimer(instance);
+    this.stopHeartbeat(instance);
     this.clearConnectionTyping(instance.connectionId);
     this.clearConnectionThinking(instance.connectionId);
     instance.connectionToken += 1;
