@@ -117,24 +117,27 @@ function SuggestionBarInner({
     return () => { abortRef.current?.abort(); };
   }, []);
 
-  // Early return AFTER all hooks to comply with Rules of Hooks
-  if (showSlashMenu || showEmojiPicker) return null;
+  // Hide content when slash menu / emoji picker is open, but keep icon buttons visible
+  // so users can always tap them without waiting for AnimatePresence re-entry animation.
+  const hideContent = showSlashMenu || showEmojiPicker;
 
   return (
-    <AnimatePresence mode="popLayout">
-      {isLastAi && (
+    <div className="flex items-center gap-1.5 px-0.5">
+      {/* Fixed left icons — always visible, never hidden by slash menu */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <IconButtons skillCount={skillCount} onOpenSlashMenu={onOpenSlashMenu} onOpenContextViewer={onOpenContextViewer} />
+      </div>
+
+      <AnimatePresence mode="popLayout">
+      {!hideContent && isLastAi && (
         <motion.div
           key="ai-suggestions"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
-          className="flex items-center gap-1.5 px-0.5"
+          className="flex items-center gap-1.5 flex-1 min-w-0"
         >
-          {/* Fixed left icons — never scroll */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <IconButtons skillCount={skillCount} onOpenSlashMenu={onOpenSlashMenu} onOpenContextViewer={onOpenContextViewer} />
-            <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5" />
-          </div>
+          <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
 
           {/* Scrollable suggestion area */}
           <div className="flex-1 overflow-x-auto scrollbar-hide">
@@ -191,19 +194,15 @@ function SuggestionBarInner({
         </motion.div>
       )}
 
-      {isLastUser && (
+      {!hideContent && isLastUser && (
         <motion.div
           key="quick-commands"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="flex items-center gap-1.5 px-0.5"
+          className="flex items-center gap-1.5 flex-1 min-w-0"
         >
-          {/* Fixed left icons */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <IconButtons skillCount={skillCount} onOpenSlashMenu={onOpenSlashMenu} onOpenContextViewer={onOpenContextViewer} />
-            <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5" />
-          </div>
+          <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
 
           {/* Scrollable commands */}
           <div className="flex-1 overflow-x-auto scrollbar-hide">
@@ -238,6 +237,7 @@ function SuggestionBarInner({
         </motion.div>
       )}
     </AnimatePresence>
+    </div>
   );
 }
 
@@ -249,22 +249,20 @@ function IconButtons({ skillCount, onOpenSlashMenu, onOpenContextViewer }: {
 }) {
   return (
     <>
-      <motion.button
-        whileTap={{ scale: 0.95 }}
-        onClick={onOpenSlashMenu}
-        className="flex-shrink-0 inline-flex items-center gap-1 w-7 h-7 justify-center bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
+      <button
+        onPointerDown={(e) => { e.stopPropagation(); onOpenSlashMenu(); }}
+        className="flex-shrink-0 inline-flex items-center gap-1 w-9 h-9 justify-center bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20 active:scale-95"
         title={`Skills (${skillCount})`}
       >
         <Puzzle size={15} />
-      </motion.button>
-      <motion.button
-        whileTap={{ scale: 0.95 }}
-        onClick={onOpenContextViewer}
-        className="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20"
+      </button>
+      <button
+        onPointerDown={(e) => { e.stopPropagation(); onOpenContextViewer(); }}
+        className="flex-shrink-0 inline-flex items-center justify-center w-9 h-9 bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20 active:scale-95"
         title="Context"
       >
         <FileText size={15} />
-      </motion.button>
+      </button>
     </>
   );
 }
