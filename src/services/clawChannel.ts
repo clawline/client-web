@@ -888,13 +888,13 @@ class ChannelManager {
     }, connectionId);
   }
 
-  sendTextWithParent(content: string, parentId: string, agentId?: string, connectionId?: string): OutboundPayload {
+  sendTextWithParent(content: string, parentId: string, quotedText?: string, agentId?: string, connectionId?: string): OutboundPayload {
     const instance = this.get(connectionId);
     if (!instance?.ws || instance.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Socket is not connected.');
     }
 
-    const payload: OutboundPayload & { parentId?: string } = {
+    const payload: OutboundPayload & { parentId?: string; quotedText?: string } = {
       messageId: createStableId('msg'),
       chatId: instance.currentChatId,
       chatType: 'direct',
@@ -905,6 +905,10 @@ class ChannelManager {
       timestamp: Date.now(),
       parentId,
     };
+
+    if (quotedText) {
+      payload.quotedText = quotedText;
+    }
 
     if (agentId || instance.currentAgentId) {
       payload.agentId = agentId || instance.currentAgentId;
@@ -1212,8 +1216,8 @@ export function removeReaction(messageId: string, emoji: string, connectionId?: 
   manager.removeReaction(messageId, emoji, connectionId);
 }
 
-export function sendTextWithParent(content: string, parentId: string, agentId?: string, connectionId?: string) {
-  return manager.sendTextWithParent(content, parentId, agentId, connectionId);
+export function sendTextWithParent(content: string, parentId: string, quotedText?: string, agentId?: string, connectionId?: string) {
+  return manager.sendTextWithParent(content, parentId, quotedText, agentId, connectionId);
 }
 
 export function editMessage(messageId: string, newContent: string, connectionId?: string) {

@@ -93,18 +93,19 @@ function MessageItemInner({
                   {agentInfo.model.split('/').pop()}
                 </span>
               )}
-              {/* Inline reply reference — compact, deduplicated */}
+              {/* Inline reply reference — uses quotedText from message payload */}
               {msg.replyTo && (() => {
                 const prevRef = index > 0 ? messages[index - 1] : null;
                 const isDuplicateRef = prevRef && prevRef.sender === msg.sender && prevRef.replyTo === msg.replyTo;
                 if (isDuplicateRef) return null;
-                const quoted = messages.find((m) => m.id === msg.replyTo);
+                // Prefer quotedText carried in payload; fallback to local message lookup
+                const quoted = msg.quotedText || messages.find((m) => m.id === msg.replyTo)?.text;
                 if (!quoted) return null;
-                const previewText = quoted.text.slice(0, 30) + (quoted.text.length > 30 ? '…' : '');
+                const previewText = quoted.slice(0, 60) + (quoted.length > 60 ? '…' : '');
                 return (
-                  <span className="text-[10px] text-text/40 dark:text-text-inv/35 truncate max-w-[200px]" title={quoted.text.slice(0, 200)}>
-                    ↩ {quoted.sender === 'user' ? 'You' : 'Bot'}: {previewText}
-                  </span>
+                  <div className="text-[11px] text-text/50 dark:text-text-inv/40 border-l-2 border-primary/40 pl-1.5 mt-0.5 mb-1 truncate max-w-[300px]" title={quoted.slice(0, 300)}>
+                    {previewText}
+                  </div>
                 );
               })()}
             </div>

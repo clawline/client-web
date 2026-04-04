@@ -13,6 +13,7 @@ export type Message = {
   mediaType?: string;
   mediaUrl?: string;
   replyTo?: string;
+  quotedText?: string;
   timestamp?: number;
   isStreaming?: boolean;
   streamingDone?: boolean;

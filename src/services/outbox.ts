@@ -21,6 +21,7 @@ export type OutboxEntry = {
   mimeType?: string;
   fileName?: string;
   replyTo?: string;
+  quotedText?: string;
   timestamp: number;
 };
 

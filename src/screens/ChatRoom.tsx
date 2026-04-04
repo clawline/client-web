@@ -501,6 +501,7 @@ export default function ChatRoom({
               mediaUrl: mediaUrl || m.mediaUrl,
               mediaType: mediaType || m.mediaType,
               replyTo: (packet.data.replyTo as string) || m.replyTo,
+              quotedText: (packet.data.quotedText as string) || m.quotedText,
             } : m);
           }
           const withoutStreaming = prev.filter((m) => !m.isStreaming && !m.streamingDone);
@@ -511,6 +512,7 @@ export default function ChatRoom({
               sender: 'ai',
               text: content || (mediaType === 'image' ? '[Image]' : mediaType === 'file' ? `📎 File` : ''),
               replyTo: (packet.data.replyTo as string) || undefined,
+              quotedText: (packet.data.quotedText as string) || undefined,
               timestamp: (packet.data.timestamp as number) || Date.now(),
               mediaUrl,
               mediaType,
@@ -629,7 +631,7 @@ export default function ChatRoom({
         const hasMore = Boolean(packet.data.hasMore);
         setHasMoreHistory(hasMore);
         setLoadingMoreHistory(false);
-        const history = (packet.data.messages as Array<{messageId?: string; content?: string; direction?: string; senderId?: string; timestamp?: number; mediaUrl?: string; contentType?: string; mimeType?: string}>).map((m) => {
+        const history = (packet.data.messages as Array<{messageId?: string; content?: string; direction?: string; senderId?: string; timestamp?: number; mediaUrl?: string; contentType?: string; mimeType?: string; replyTo?: string; quotedText?: string}>).map((m) => {
           let mediaType: string | undefined;
           if (m.contentType === 'image' || m.mimeType?.startsWith('image/')) {
             mediaType = 'image';
@@ -645,6 +647,8 @@ export default function ChatRoom({
             timestamp: m.timestamp || Date.now(),
             mediaUrl: m.mediaUrl,
             mediaType,
+            replyTo: m.replyTo,
+            quotedText: m.quotedText,
           };
         });
         setMessages((prev) => {
@@ -805,7 +809,7 @@ export default function ChatRoom({
             try {
               if (entry.type === 'text') {
                 entry.replyTo
-                  ? channel.sendTextWithParent(entry.content, entry.replyTo, entry.agentId || undefined, runtimeConnId)
+                  ? channel.sendTextWithParent(entry.content, entry.replyTo, entry.quotedText, entry.agentId || undefined, runtimeConnId)
                   : channel.sendText(entry.content, entry.agentId || undefined, runtimeConnId);
               } else if (entry.type === 'media' && entry.mediaUrl) {
                 channel.sendMedia({
@@ -1056,6 +1060,7 @@ export default function ChatRoom({
       return;
     }
     const replyId = replyingTo?.id;
+    const replyQuotedText = replyingTo?.text;
     const capturedInput = inputValue;
     setInputValue('');
     setShowSlashMenu(false);
@@ -1064,13 +1069,14 @@ export default function ChatRoom({
     try {
       // Send first to get the stable messageId, then use it for the local message
       const payload = replyId
-        ? channel.sendTextWithParent(capturedInput, replyId, agentId || undefined, runtimeConnId)
+        ? channel.sendTextWithParent(capturedInput, replyId, replyQuotedText, agentId || undefined, runtimeConnId)
         : channel.sendText(capturedInput, agentId || undefined, runtimeConnId);
       const userMsg: Message = {
         id: payload.messageId || Date.now().toString(),
         sender: 'user',
         text: capturedInput,
         replyTo: replyId,
+        quotedText: replyQuotedText,
         timestamp: payload.timestamp || Date.now(),
         deliveryStatus: 'sent',
       };
@@ -1083,6 +1089,7 @@ export default function ChatRoom({
         sender: 'user',
         text: capturedInput,
         replyTo: replyId,
+        quotedText: replyQuotedText,
         timestamp: Date.now(),
         deliveryStatus: 'pending',
       };
@@ -1094,6 +1101,7 @@ export default function ChatRoom({
         content: capturedInput,
         type: 'text',
         replyTo: replyId,
+        quotedText: replyQuotedText,
         timestamp: Date.now(),
       }).catch(() => { /* ignore outbox write failure */ });
     }
