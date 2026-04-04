@@ -52,6 +52,13 @@ export function useSwipeBack({
 
       // Only activate if touch starts near the left edge (within 30px)
       isValidSwipeRef.current = touch.clientX < 30;
+
+      // Prevent iOS native back-swipe gesture by stopping default on edge touches.
+      // Without this, iOS Safari/PWA intercepts the gesture at browser level,
+      // causing a full page reload that kills WebSocket connections.
+      if (isValidSwipeRef.current) {
+        e.preventDefault();
+      }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
@@ -115,8 +122,9 @@ export function useSwipeBack({
       isDraggingRef.current = false;
     };
 
-    // Add passive: false for preventDefault to work in touchmove
-    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    // Add passive: false for preventDefault to work in both touchstart and touchmove
+    // touchstart needs passive: false to block iOS native back-swipe on edge touches
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd, { passive: true });
     document.addEventListener('touchcancel', handleTouchCancel, { passive: true });

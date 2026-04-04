@@ -238,11 +238,19 @@ function AppShell() {
     }
   }, [routerNavigate]);
 
-  // Handle swipe-back gesture
+  // Handle swipe-back gesture — use SPA navigate() instead of window.history.back()
+  // to avoid full page reloads that kill WebSocket connections
   const handleSwipeBack = useCallback(() => {
-    // Use browser history to go back
-    window.history.back();
-  }, []);
+    if (currentScreen === 'chat_room') {
+      navigate('chats');
+    } else if (currentScreen === 'preferences') {
+      navigate('profile');
+    } else if (currentScreen === 'pairing') {
+      navigate('profile');
+    } else {
+      navigate('chats');
+    }
+  }, [currentScreen, navigate]);
 
   // Determine if swipe-back should be enabled
   const canGoBack = ['chat_room', 'preferences', 'pairing'].includes(currentScreen);
