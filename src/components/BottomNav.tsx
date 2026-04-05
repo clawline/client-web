@@ -19,7 +19,7 @@ export default function BottomNav({ currentScreen, onNavigate, unreadChats = 0 }
   ];
 
   return (
-    <div className="absolute left-6 right-6 z-50" style={{ bottom: 'max(1.5rem, env(safe-area-inset-bottom, 1.5rem))' }}>
+    <div className="absolute left-6 right-6 z-50 pwa-nav-offset" style={{ bottom: 'max(1.5rem, env(safe-area-inset-bottom, 1.5rem))' }}>
       <GlassCard className="p-2 flex justify-between items-center px-6" role="navigation" aria-label="Main navigation">
         {navItems.map((item) => {
           const isActive = currentScreen === item.id;

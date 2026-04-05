@@ -218,7 +218,10 @@ input, select, textarea {
 }
 @media (display-mode: standalone) {
   .safe-area-bottom {
-    padding-bottom: max(2px, calc(env(safe-area-inset-bottom, 0px) * 0.35));
+    padding-bottom: max(2px, calc(env(safe-area-inset-bottom, 0px) * 0.2));
+  }
+  .pwa-nav-offset {
+    transform: translateY(30px);
   }
 }
 
