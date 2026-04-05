@@ -212,10 +212,14 @@ input, select, textarea {
   font-size: 16px !important;
 }
 
-/* Safe area bottom padding — different for browser vs PWA standalone */
+/* Safe area bottom padding — reduced in PWA standalone to avoid excess gap above home indicator */
 .safe-area-bottom {
-  padding-bottom: 2px;
   padding-bottom: env(safe-area-inset-bottom, 2px);
+}
+@media (display-mode: standalone) {
+  .safe-area-bottom {
+    padding-bottom: max(2px, calc(env(safe-area-inset-bottom, 0px) * 0.35));
+  }
 }
 
 /* Prevent images/media from causing horizontal overflow */

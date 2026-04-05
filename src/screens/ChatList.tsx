@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { AnimatePresence, motion, Reorder, useDragControls } from 'motion/react';
+import { AnimatePresence, motion, Reorder } from 'motion/react';
 import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List, ArrowUpDown, Check, Crown } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
@@ -683,55 +683,16 @@ export default function ChatList({
     );
   };
 
-  const DraggableListCard = ({ connection, agent, index }: { connection: ServerConnection; agent: AgentInfo; index: number }) => {
-    const dragControls = useDragControls();
-    return (
-      <Reorder.Item
-        key={agent.id}
-        value={agent.id}
-        dragListener={false}
-        dragControls={dragControls}
-        whileDrag={{ scale: 1.01, boxShadow: '0 10px 28px rgba(15,23,42,0.14)', zIndex: 40 }}
-        className="list-none"
-      >
-        {renderListCard(connection, agent, index, false, (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          dragControls.start(event);
-        })}
-      </Reorder.Item>
-    );
-  };
-
-  const DraggableGridCard = ({ connection, agent, index }: { connection: ServerConnection; agent: AgentInfo; index: number }) => {
-    const dragControls = useDragControls();
-    return (
-      <Reorder.Item
-        key={agent.id}
-        value={agent.id}
-        dragListener={false}
-        dragControls={dragControls}
-        whileDrag={{ scale: 1.03, boxShadow: '0 12px 32px rgba(15,23,42,0.16)', zIndex: 40 }}
-        className="list-none"
-      >
-        {renderGridCard(connection, agent, index, (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          dragControls.start(event);
-        })}
-      </Reorder.Item>
-    );
-  };
-
   // ══════════════════════════════════════════════════════════════════
   // REORDER MODE — Reorder.Item, NO click navigation
   // ══════════════════════════════════════════════════════════════════
 
   const renderReorderListCard = (agent: AgentInfo) => (
     <Reorder.Item key={agent.id} value={agent.id}
-      whileDrag={{ scale: 1.02, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: 50 }}
+      whileDrag={{ scale: 1.04, boxShadow: '0 8px 28px rgba(0,0,0,0.18)', zIndex: 50 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
       style={{ touchAction: 'none' }}>
-      <div className={cn('flex items-center gap-3 rounded-lg', compact ? 'px-2.5 py-2' : 'px-4 py-2.5', 'bg-surface dark:bg-surface-dark cursor-grab active:cursor-grabbing')}>
+      <div className={cn('flex items-center gap-3 rounded-lg border border-transparent', compact ? 'px-2.5 py-2' : 'px-4 py-2.5', 'bg-surface dark:bg-surface-dark cursor-grab active:cursor-grabbing active:border-primary/30')}>
         <ArrowUpDown size={14} className="text-text/20 dark:text-text-inv/15 shrink-0" />
         {renderAvatar(agent, compact ? 'sm' : 'md')}
         <h3 className={cn('font-bold truncate flex-1', compact ? 'text-[14px]' : 'text-[16px]')}>{agent.name}</h3>
@@ -741,9 +702,10 @@ export default function ChatList({
 
   const renderReorderGridCard = (agent: AgentInfo) => (
     <Reorder.Item key={agent.id} value={agent.id}
-      whileDrag={{ scale: 1.05, boxShadow: '0 8px 30px rgba(0,0,0,0.15)', zIndex: 50 }}
+      whileDrag={{ scale: 1.08, boxShadow: '0 12px 36px rgba(0,0,0,0.2)', zIndex: 50 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
       style={{ touchAction: 'none' }}>
-      <div className="flex flex-col items-center p-4 pb-3 rounded-2xl bg-surface dark:bg-surface-dark cursor-grab active:cursor-grabbing">
+      <div className="flex flex-col items-center p-4 pb-3 rounded-2xl bg-surface dark:bg-surface-dark cursor-grab active:cursor-grabbing active:ring-2 active:ring-primary/30">
         {renderAvatar(agent, 'xl')}
         <h3 className="text-[13px] font-semibold truncate w-full text-center mt-2">{agent.name}</h3>
       </div>
@@ -794,19 +756,17 @@ export default function ChatList({
       );
     }
 
-    // ── Normal mode ──
+    // ── Normal mode — no drag, plain list ──
     return (
-      <Reorder.Group axis={viewMode === 'grid' ? 'x' : 'y'} values={sortedIds}
-        onReorder={newOrder => handleReorder(connectionId, newOrder)}
-        className={viewMode === 'grid' ? 'grid gap-2 auto-fill-grid px-1 pb-1' : 'space-y-0.5 pb-1'}>
+      <div className={viewMode === 'grid' ? 'grid gap-2 auto-fill-grid px-1 pb-1' : 'space-y-0.5 pb-1'}>
         {sortedIds.map((id, index) => {
           const a = getAgentById(connectionId, id);
           if (!a) return null;
           return viewMode === 'grid'
-            ? <DraggableGridCard key={a.id} connection={connection} agent={a} index={index} />
-            : <DraggableListCard key={a.id} connection={connection} agent={a} index={index} />;
+            ? renderGridCard(connection, a, index)
+            : renderListCard(connection, a, index, false);
         })}
-      </Reorder.Group>
+      </div>
     );
   };
 
