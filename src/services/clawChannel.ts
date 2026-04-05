@@ -6,6 +6,7 @@ const MAX_ACTIVE_CONNECTIONS = 6;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes — chat apps should stay connected
 const HEARTBEAT_INTERVAL_MS = 25 * 1000; // 25 seconds — keeps connection alive through proxies
 const HEARTBEAT_TIMEOUT_MS = 10 * 1000;  // 10 seconds — if no pong, consider connection dead
+const THINKING_TIMEOUT_MS = 60 * 1000;
 const AGENT_CACHE_PREFIX = 'openclaw.agentList.';
 const STATUS_CACHE_PREFIX = 'openclaw.channelStatus.';
 
@@ -164,6 +165,7 @@ class ChannelManager {
   private typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private typingListeners = new Set<TypingListener>();
   private thinkingAgents = new Map<string, Set<string>>();
+  private thinkingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
   private thinkingListeners = new Set<TypingListener>();
   private agentContexts = new Map<string, Map<string, AgentContext>>();
   private agentContextListeners = new Set<AgentContextListener>();
@@ -335,6 +337,19 @@ class ChannelManager {
     this.thinkingListeners.forEach((listener) => listener(connectionId, agentIds));
   }
 
+  private getThinkingTimeoutKey(connectionId: string, agentId: string) {
+    return `${connectionId}::${agentId}`;
+  }
+
+  private clearThinkingTimeout(connectionId: string, agentId: string) {
+    const timeoutKey = this.getThinkingTimeoutKey(connectionId, agentId);
+    const timeout = this.thinkingTimeouts.get(timeoutKey);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.thinkingTimeouts.delete(timeoutKey);
+    }
+  }
+
   private setThinkingState(connectionId: string, agentId: string, isThinking: boolean) {
     if (!connectionId || !agentId) {
       return;
@@ -345,8 +360,14 @@ class ChannelManager {
     if (isThinking) {
       nextThinkingAgents.add(agentId);
       this.thinkingAgents.set(connectionId, nextThinkingAgents);
+      this.clearThinkingTimeout(connectionId, agentId);
+      const timeoutKey = this.getThinkingTimeoutKey(connectionId, agentId);
+      this.thinkingTimeouts.set(timeoutKey, setTimeout(() => {
+        this.setThinkingState(connectionId, agentId, false);
+      }, THINKING_TIMEOUT_MS));
     } else {
       nextThinkingAgents.delete(agentId);
+      this.clearThinkingTimeout(connectionId, agentId);
       if (nextThinkingAgents.size === 0) {
         this.thinkingAgents.delete(connectionId);
       } else {
@@ -358,10 +379,14 @@ class ChannelManager {
   }
 
   private clearConnectionThinking(connectionId: string) {
-    if (this.thinkingAgents.has(connectionId)) {
-      this.thinkingAgents.delete(connectionId);
-      this.emitThinkingChange(connectionId);
+    const thinkingAgents = this.thinkingAgents.get(connectionId);
+    if (!thinkingAgents || thinkingAgents.size === 0) {
+      return;
     }
+
+    thinkingAgents.forEach((agentId) => this.clearThinkingTimeout(connectionId, agentId));
+    this.thinkingAgents.delete(connectionId);
+    this.emitThinkingChange(connectionId);
   }
 
   private setAgentContext(connectionId: string, agentId: string, context: AgentContext) {
@@ -644,6 +669,16 @@ class ChannelManager {
           const thinkingAgentId = typeof packet.data.agentId === 'string' ? packet.data.agentId : undefined;
           if (thinkingAgentId) {
             this.setThinkingState(instance.connectionId, thinkingAgentId, false);
+          }
+        }
+        if (packet.type === 'message.send') {
+          const senderAgentId = typeof packet.data.agentId === 'string'
+            ? packet.data.agentId
+            : typeof packet.data.senderId === 'string' && packet.data.senderId !== instance.currentSenderId
+              ? packet.data.senderId
+              : '';
+          if (senderAgentId) {
+            this.setThinkingState(instance.connectionId, senderAgentId, false);
           }
         }
         if (packet.type === 'suggestion.response') {

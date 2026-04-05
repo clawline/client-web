@@ -55,8 +55,9 @@ function SuggestionBarInner({
   const abortRef = useRef<AbortController | null>(null);
 
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+  const isFreshChat = messages.length === 0;
   const isLastAi = lastMsg?.sender === 'ai';
-  const isLastUser = !lastMsg || lastMsg.sender === 'user';
+  const isLastUser = lastMsg?.sender === 'user';
   const waitingTooLong = isLastUser && lastMsg?.timestamp && (Date.now() - (lastMsg.timestamp || 0)) > 120000 && !isThinking;
 
   const lang = detectLanguage(messages);
@@ -147,6 +148,16 @@ function SuggestionBarInner({
       </div>
 
       <AnimatePresence mode="popLayout">
+      {!hideContent && isFreshChat && (
+        <motion.div
+          key="fresh-chat"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="flex-1"
+        />
+      )}
+
       {!hideContent && isLastAi && (
         <motion.div
           key="ai-suggestions"
@@ -205,12 +216,28 @@ function SuggestionBarInner({
               )}
             </div>
           </div>
+
+          <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
+
+          <div className="max-w-[44%] overflow-x-auto scrollbar-hide shrink-0">
+            <div className="flex items-center gap-1">
+              {QUICK_COMMANDS.map((cmd) => (
+                <QuickCommandPill
+                  key={cmd.label}
+                  emoji={cmd.emoji}
+                  label={cmd.label}
+                  onTap={() => onSetInputValue(cmd.label)}
+                  onLongPress={() => onQuickSend(cmd.label)}
+                />
+              ))}
+            </div>
+          </div>
         </motion.div>
       )}
 
-      {!hideContent && isLastUser && (
+      {!hideContent && isLastUser && waitingTooLong && (
         <motion.div
-          key="quick-commands"
+          key="nudge"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -221,29 +248,18 @@ function SuggestionBarInner({
           {/* Scrollable commands */}
           <div className="flex-1 overflow-x-auto scrollbar-hide">
             <div className="flex items-center gap-1.5">
-              {waitingTooLong && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    onQuickSend(`进度怎么样了？上次我说的是："${lastMsg?.text?.slice(0, 50) || ''}"`);
-                  }}
-                  className="status-breathe flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-100/85 px-3 py-1.5 text-[12px] font-medium text-amber-700 transition-colors active:bg-amber-100 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-300"
-                >
-                  <span className="text-[12px]">👋</span>
-                  催一下
-                </motion.button>
-              )}
-              {QUICK_COMMANDS.map((cmd) => (
-                <QuickCommandPill
-                  key={cmd.label}
-                  emoji={cmd.emoji}
-                  label={cmd.label}
-                  onTap={() => onSetInputValue(cmd.label)}
-                  onLongPress={() => onQuickSend(cmd.label)}
-                />
-              ))}
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  onQuickSend(`进度怎么样了？上次我说的是："${lastMsg?.text?.slice(0, 50) || ''}"`);
+                }}
+                className="status-breathe flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-100/85 px-3 py-1.5 text-[12px] font-medium text-amber-700 transition-colors active:bg-amber-100 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-300"
+              >
+                <span className="text-[12px]">👋</span>
+                催一下
+              </motion.button>
             </div>
           </div>
         </motion.div>

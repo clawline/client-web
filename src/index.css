@@ -5,19 +5,19 @@
 
 @theme {
   --font-sans: "Plus Jakarta Sans", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
-  --color-surface: #EEF2F5;
+  --color-surface: #F6F8FA;
   --color-card: #FFFFFF;
-  --color-card-alt: #1A2230;
-  --color-text: #1A1A1A;
+  --color-card-alt: #21262D;
+  --color-text: #1F2328;
   --color-text-inv: #e2e8f0;
-  --color-border: #D7DFE6;
-  --color-border-dark: #2A3442;
+  --color-border: #E5E9ED;
+  --color-border-dark: #30363D;
   --color-primary: #EF5A23;
   --color-primary-deep: #D04A1A;
   --color-info: #5B8DEF;
   --color-accent: #8B5CF6;
   --color-warn: #F59E0B;
-  --color-surface-dark: #11161D;
+  --color-surface-dark: #161B22;
 }
 
 /* highlight.js inline theme (Catppuccin Mocha) */
@@ -40,27 +40,27 @@
 
 /* Light mode (default) */
 :root {
-  --bg-surface: #EEF2F5;
-  --bg-sidebar: #E4EAF0;
+  --bg-surface: #F6F8FA;
+  --bg-sidebar: #F0F3F6;
   --bg-main: #FFFFFF;
   --bg-card: #FFFFFF;
-  --text-primary: #1A1A1A;
-  --text-secondary: #55626F;
-  --text-muted: #8A97A3;
-  --border-color: #D7DFE6;
+  --text-primary: #1F2328;
+  --text-secondary: #4D5561;
+  --text-muted: #7D8590;
+  --border-color: #E5E9ED;
   --primary: #EF5A23;
 }
 
 /* Dark mode */
 .dark {
-  --bg-surface: #11161D;
-  --bg-sidebar: #18202A;
-  --bg-main: #11161D;
-  --bg-card: #1A2230;
-  --text-primary: #F3F4F6;
-  --text-secondary: #C3CCD8;
-  --text-muted: #8EA0B2;
-  --border-color: #2A3442;
+  --bg-surface: #161B22;
+  --bg-sidebar: #1C2128;
+  --bg-main: #161B22;
+  --bg-card: #21262D;
+  --text-primary: #F0F3F6;
+  --text-secondary: #C9D1D9;
+  --text-muted: #8B949E;
+  --border-color: #30363D;
   --primary: #EF5A23;
 }
 
@@ -92,6 +92,10 @@ body {
   touch-action: manipulation;
   /* Prevent iOS rubber-band bounce on edges */
   overscroll-behavior-y: contain;
+}
+
+.auto-fill-grid {
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
 }
 
 .sidebar-surface {

@@ -53,15 +53,18 @@ interface ConversationMessage {
 }
 
 function buildContext(messages: ConversationMessage[]): string {
-  const recent = messages.slice(-6);
+  const recent = messages.slice(-20);
   return recent
     .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text.slice(0, 300)}`)
     .join('\n');
 }
 
-const SYSTEM_PROMPT = `You are a suggestion generator for a chat interface. Based on the conversation context, generate 3-5 short follow-up questions or prompts the user might want to ask next.
+const SYSTEM_PROMPT = `You are a suggestion generator for a chat interface. Based on the conversation context, predict what the user might want to ask next.
 
 Rules:
+- Write every suggestion from the user's perspective (first person)
+- Predict what the user might want to ask next, not how the assistant should respond
+- Generate 5-10 suggestions
 - Each suggestion must be under 25 characters (Chinese or English)
 - Make suggestions relevant and diverse
 - Mix between clarifying questions, deeper exploration, and action requests
@@ -94,7 +97,7 @@ async function fetchSuggestions(context: string, signal?: AbortSignal): Promise<
       ...(isAzureOpenAI ? {} : { model: config.model }),
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `Recent conversation:\n${context}\n\nGenerate 3-5 follow-up suggestions:` },
+        { role: 'user', content: `Recent conversation:\n${context}\n\nPredict what I might want to ask next. Write 5-10 short suggestions from my perspective in first person:` },
       ],
       temperature: 0.8,
       max_tokens: 200,
@@ -114,7 +117,7 @@ async function fetchSuggestions(context: string, signal?: AbortSignal): Promise<
   try {
     const parsed = JSON.parse(content);
     if (Array.isArray(parsed)) {
-      return parsed.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0).slice(0, 5);
+      return parsed.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0).slice(0, 10);
     }
   } catch {
     const match = content.match(/\[[\s\S]*?\]/);
@@ -122,7 +125,7 @@ async function fetchSuggestions(context: string, signal?: AbortSignal): Promise<
       try {
         const parsed = JSON.parse(match[0]);
         if (Array.isArray(parsed)) {
-          return parsed.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0).slice(0, 5);
+          return parsed.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0).slice(0, 10);
         }
       } catch { /* ignore */ }
     }

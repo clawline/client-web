@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { AnimatePresence, motion, Reorder } from 'motion/react';
+import { AnimatePresence, motion, Reorder, useDragControls } from 'motion/react';
 import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List, ArrowUpDown, Check, Crown } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
@@ -13,7 +13,8 @@ import AvatarUploader from '../components/AvatarUploader';
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
 const EXPANDED_KEY = 'openclaw.chatlist.expandedIds';
 const VIEW_MODE_KEY = 'openclaw.chatlist.viewMode';
-const AGENT_ORDER_KEY = 'openclaw.chatlist.agentOrder';
+const AGENT_ORDER_KEY_PREFIX = 'clawline.agentOrder.';
+const LEGACY_AGENT_ORDER_KEY = 'openclaw.chatlist.agentOrder';
 const AGENT_AVATAR_KEY = 'openclaw.agentAvatars';
 const MESSAGE_PREVIEW_UPDATED_EVENT = 'openclaw:message-preview-updated';
 
@@ -82,6 +83,24 @@ function getStoredPreview(agentId: string, connectionId: string): { text: string
   try { const c = localStorage.getItem(getPreviewKey(connectionId, agentId)); if (c) return JSON.parse(c); } catch {}
   return null;
 }
+function getAgentOrderKey(connectionId: string) { return `${AGENT_ORDER_KEY_PREFIX}${connectionId}`; }
+function getStoredAgentOrder(connectionId: string): string[] {
+  try {
+    const raw = localStorage.getItem(getAgentOrderKey(connectionId));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  try {
+    const legacyRaw = localStorage.getItem(LEGACY_AGENT_ORDER_KEY);
+    if (!legacyRaw) return [];
+    const legacyParsed = JSON.parse(legacyRaw);
+    const legacyOrder = legacyParsed?.[connectionId];
+    return Array.isArray(legacyOrder) ? legacyOrder : [];
+  } catch {}
+  return [];
+}
 
 const LAST_READ_PREFIX = 'openclaw.lastRead.';
 function getLastReadKey(connectionId: string, agentId: string) { return `${LAST_READ_PREFIX}${connectionId}.${agentId}`; }
@@ -99,9 +118,9 @@ function hasUnread(connectionId: string, agentId: string, lastMessageTs?: number
 }
 function getConnectionLabel(c: ServerConnection) { return c.name || c.displayName || 'Server'; }
 function getStatusClasses(status: ChannelStatus) {
-  if (status === 'connected') return 'bg-emerald-500';
-  if (status === 'connecting' || status === 'reconnecting') return 'bg-amber-500';
-  return 'bg-rose-500';
+  if (status === 'connected') return 'bg-primary';
+  if (status === 'connecting' || status === 'reconnecting') return 'bg-amber-400';
+  return 'bg-text/20 dark:bg-text-inv/20';
 }
 function buildAgentMap(connections: ServerConnection[]) {
   return Object.fromEntries(connections.map(c => [c.id, channel.loadCachedAgents(c.id)])) as Record<string, AgentInfo[]>;
@@ -152,9 +171,13 @@ export default function ChatList({
   const [attemptedMap, setAttemptedMap] = useState<Record<string, boolean>>({});
   const [typingAgents, setTypingAgents] = useState<Set<string>>(new Set());
   const [previewMap, setPreviewMap] = useState<Record<string, { text: string; timestamp?: number } | null>>({});
-  const [customOrder, setCustomOrder] = useState<Record<string, string[]>>(() => {
-    try { const raw = localStorage.getItem(AGENT_ORDER_KEY); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
-  });
+  const [customOrder, setCustomOrder] = useState<Record<string, string[]>>(() => (
+    Object.fromEntries(
+      getConnections()
+        .map((connection) => [connection.id, getStoredAgentOrder(connection.id)] as const)
+        .filter(([, order]) => order.length > 0),
+    )
+  ));
   const [customAvatars, setCustomAvatarsState] = useState<Record<string, string>>(() => getCustomAvatars());
   const [avatarMenuAgent, setAvatarMenuAgent] = useState<{ agentId: string; x: number; y: number } | null>(null);
   const [avatarUploadAgent, setAvatarUploadAgent] = useState<string | null>(null);
@@ -216,6 +239,16 @@ export default function ChatList({
     setLoadingMap(prev => Object.fromEntries(next.map(c => [c.id, prev[c.id] ?? channel.loadCachedAgents(c.id).length === 0])) as Record<string, boolean>);
     setRefreshingMap(prev => Object.fromEntries(next.map(c => [c.id, prev[c.id] ?? false])) as Record<string, boolean>);
     setAttemptedMap(prev => Object.fromEntries(next.map(c => [c.id, prev[c.id] ?? false])) as Record<string, boolean>);
+    setCustomOrder((prev) => {
+      const nextOrder: Record<string, string[]> = {};
+      next.forEach((connection) => {
+        const saved = prev[connection.id] ?? getStoredAgentOrder(connection.id);
+        if (saved.length > 0) {
+          nextOrder[connection.id] = saved;
+        }
+      });
+      return nextOrder;
+    });
     setExpandedIds(prev => {
       if (next.length <= 1) return next[0] ? [next[0].id] : [];
       const filtered = prev.filter(id => next.some(c => c.id === id));
@@ -442,7 +475,7 @@ export default function ChatList({
   const handleReorder = useCallback((connectionId: string, newOrder: string[]) => {
     setCustomOrder(prev => {
       const updated = { ...prev, [connectionId]: newOrder };
-      try { localStorage.setItem(AGENT_ORDER_KEY, JSON.stringify(updated)); } catch {}
+      try { localStorage.setItem(getAgentOrderKey(connectionId), JSON.stringify(newOrder)); } catch {}
       return updated;
     });
   }, []);
@@ -466,7 +499,7 @@ export default function ChatList({
   const renderAvatar = (agent: AgentInfo, size: 'sm' | 'md' | 'lg' | 'xl') => {
     const palette = getAgentPalette(agent.id);
     const initials = agent.name.slice(0, 2).toUpperCase();
-    const sizeClasses = size === 'sm' ? 'w-8 h-8 text-[10px] rounded-lg' : size === 'md' ? 'w-10 h-10 text-[12px] rounded-xl' : size === 'lg' ? 'w-12 h-12 text-[15px] rounded-2xl' : 'w-14 h-14 text-[16px] rounded-2xl';
+    const sizeClasses = size === 'sm' ? 'w-8 h-8 text-[11px] rounded-lg' : size === 'md' ? 'w-10 h-10 text-[13px] rounded-xl' : size === 'lg' ? 'w-12 h-12 text-base rounded-2xl' : 'w-14 h-14 text-lg rounded-2xl';
     if (customAvatars[agent.id]) {
       return <img src={customAvatars[agent.id]} alt={agent.name} className={cn('object-cover', sizeClasses)} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />;
     }
@@ -479,10 +512,16 @@ export default function ChatList({
   };
 
   // ══════════════════════════════════════════════════════════════════
-  // NORMAL MODE — plain div+button, NO Reorder, NO drag
+  // NORMAL MODE — click cards + drag handles
   // ══════════════════════════════════════════════════════════════════
 
-  const renderListCard = (connection: ServerConnection, agent: AgentInfo, index: number, showSource = false) => {
+  const renderListCard = (
+    connection: ServerConnection,
+    agent: AgentInfo,
+    index: number,
+    showSource = false,
+    onDragHandlePointerDown?: (event: React.PointerEvent<HTMLDivElement>) => void,
+  ) => {
     const status = statusMap[connection.id] || 'disconnected';
     const isDisabled = attemptedMap[connection.id] && status === 'disconnected';
     const isActive = activeConnectionId === connection.id && activeAgentId === agent.id;
@@ -499,66 +538,84 @@ export default function ChatList({
     return (
       <motion.div key={agent.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6 }} transition={{ delay: Math.min(index * 0.02, 0.12), duration: 0.18 }}>
-        <button type="button" onClick={e => handleAgentClick(connection, agent, e.shiftKey)} disabled={isDisabled}
-          aria-label={`Chat with ${agent.name}`}
-          className={cn(
-            'relative w-full text-left flex items-center gap-3 transition-all duration-150',
-            compact ? 'px-3 py-2.5' : 'px-5 py-3.5', 'rounded-[18px]',
-            'focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
-            isDisabled && 'cursor-not-allowed',
-            !isDisabled && 'cursor-pointer active:bg-black/[0.05] dark:active:bg-white/[0.05]',
-            isActive
-              ? 'bg-white text-text shadow-[0_14px_28px_-24px_rgba(15,23,42,0.55),inset_2px_0_0_0_#EF5A23] dark:bg-card-alt dark:text-text-inv'
-              : isSplitActive
-                ? 'bg-white/88 text-text shadow-[0_14px_28px_-24px_rgba(91,141,239,0.55),inset_2px_0_0_0_#5B8DEF] dark:bg-card-alt/92 dark:text-text-inv'
-                : 'bg-white/62 text-text shadow-[0_12px_24px_-26px_rgba(15,23,42,0.38)] hover:bg-white/92 hover:shadow-[0_14px_30px_-24px_rgba(15,23,42,0.32)] dark:bg-white/[0.04] dark:text-text-inv dark:hover:bg-white/[0.07]'
-          )}>
-          {/* Avatar */}
-          <div className="relative flex-shrink-0" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
-            onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
-            {renderAvatar(agent, compact ? 'sm' : 'md')}
-            {agent.isDefault && (
-              <span className={cn('absolute -top-1 -right-1 flex items-center justify-center rounded-full bg-amber-400 border-[1.5px] border-white dark:border-surface-dark shadow-sm', compact ? 'w-3.5 h-3.5' : 'w-4 h-4')}>
-                <Crown size={compact ? 7 : 8} className="text-white" strokeWidth={2.5} />
-              </span>
-            )}
-            {showStatus && (
-              <span className={cn('absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white dark:border-surface-dark flex items-center justify-center shadow-sm', isThinking ? 'bg-primary status-breathe' : 'bg-sky-500', compact ? 'w-3 h-3' : 'w-3.5 h-3.5')}>
-                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-              </span>
-            )}
-            {showOnlineDot && (
-              <span className={cn('absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white dark:border-surface-dark bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]', compact ? 'w-2.5 h-2.5' : 'w-3 h-3')} />
-            )}
-          </div>
-          {/* Content */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h3 className={cn('font-bold truncate text-text dark:text-text-inv', compact ? 'text-[14px]' : 'text-[16px]')}>{agent.name}</h3>
-              {agent.model && <span className="text-[10px] truncate ml-auto shrink-0 rounded-full border border-slate-300/65 bg-slate-900/[0.04] px-2 py-px font-medium text-slate-600 dark:border-slate-700/70 dark:bg-white/[0.06] dark:text-slate-300">{agent.model.split('/').pop()}</span>}
+        <div className="group flex items-stretch gap-1.5">
+          <button type="button" onClick={e => handleAgentClick(connection, agent, e.shiftKey)} disabled={isDisabled}
+            aria-label={`Chat with ${agent.name}`}
+            className={cn(
+              'relative w-full flex-1 text-left flex items-center gap-3 transition-all duration-150',
+              compact ? 'px-3 py-2.5' : 'px-5 py-3', 'rounded-lg',
+              'focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+              isDisabled && 'opacity-40 cursor-not-allowed',
+              !isDisabled && 'cursor-pointer active:bg-text/[0.06] dark:active:bg-text-inv/[0.06]',
+              isActive ? 'bg-primary/12 dark:bg-primary/15 shadow-[inset_2px_0_0_0_#EF5A23]'
+                : isSplitActive ? 'bg-info/8 dark:bg-info/12 shadow-[inset_2px_0_0_0_#5B8DEF]'
+                : 'hover:bg-text/[0.05] dark:hover:bg-text-inv/[0.05] hover:shadow-sm'
+            )}>
+            {/* Avatar */}
+            <div className="relative flex-shrink-0" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
+              onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
+              {renderAvatar(agent, compact ? 'sm' : 'md')}
+              {agent.isDefault && (
+                <span className={cn('absolute -top-1 -right-1 flex items-center justify-center rounded-full bg-amber-400 border-[1.5px] border-white dark:border-surface-dark shadow-sm', compact ? 'w-3.5 h-3.5' : 'w-4 h-4')}>
+                  <Crown size={compact ? 7 : 8} className="text-white" strokeWidth={2.5} />
+                </span>
+              )}
+              {showStatus && (
+                <span className={cn('absolute -bottom-0.5 -right-0.5 bg-primary rounded-full border-2 border-white dark:border-surface-dark flex items-center justify-center', compact ? 'w-3 h-3' : 'w-3.5 h-3.5')}>
+                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                </span>
+              )}
+              {showOnlineDot && (
+                <span className={cn('absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white dark:border-surface-dark bg-primary', compact ? 'w-2.5 h-2.5' : 'w-3 h-3')} />
+              )}
             </div>
-            {isThinking ? (
-              <p className={cn('mt-1 inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/18 bg-primary/10 px-2.5 py-1 font-semibold text-primary shadow-sm', compact ? 'text-[11px]' : 'text-[12px]')}><span className="h-1.5 w-1.5 rounded-full bg-primary status-breathe" />思考中 <TypingDots /></p>
-            ) : isTyping ? (
-              <p className={cn('mt-1 inline-flex max-w-full items-center gap-1.5 rounded-full border border-sky-500/18 bg-sky-500/10 px-2.5 py-1 font-semibold text-sky-600 shadow-sm dark:text-sky-300', compact ? 'text-[11px]' : 'text-[12px]')}><span className="h-1.5 w-1.5 rounded-full bg-sky-500 status-breathe" />正在输入 <TypingDots /></p>
-            ) : preview ? (
-              <p className={cn('truncate mt-1 text-slate-600 dark:text-slate-400', compact ? 'text-[12px]' : 'text-[14px]')}>{preview}</p>
-            ) : (
-              <p className={cn('truncate mt-1 text-slate-400 dark:text-slate-500', compact ? 'text-[12px]' : 'text-[14px]', isDisabled && 'italic')}>Start a conversation</p>
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h3 className={cn('font-bold truncate', compact ? 'text-[14px] text-text/90 dark:text-text-inv/90' : 'text-[16px]')}>{agent.name}</h3>
+                {agent.model && <span className="text-[10px] truncate ml-auto shrink-0 bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px text-text/45 dark:text-text-inv/40">{agent.model.split('/').pop()}</span>}
+              </div>
+              {isThinking ? (
+                <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[12px]' : 'text-[14px]')}>思考中... <TypingDots /></p>
+              ) : isTyping ? (
+                <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[12px]' : 'text-[14px]')}>正在输入... <TypingDots /></p>
+              ) : preview ? (
+                <p className={cn('truncate mt-0.5', compact ? 'text-[12px] text-text/45 dark:text-text-inv/40' : 'text-[14px] text-text/45 dark:text-text-inv/40')}>{preview}</p>
+              ) : (
+                <p className={cn('truncate mt-0.5', compact ? 'text-[12px] text-text/30 dark:text-text-inv/25' : 'text-[14px] text-text/30 dark:text-text-inv/25')}>Start a conversation</p>
+              )}
+            </div>
+            {/* Timestamp */}
+            {lastMessage?.timestamp && (
+              <span className={cn('text-[10px] shrink-0 self-start mt-0.5', compact ? 'text-text/30 dark:text-text-inv/25' : 'text-text/30 dark:text-text-inv/25')}>
+                {formatRelativeTime(lastMessage.timestamp)}
+              </span>
             )}
-          </div>
-          {/* Timestamp */}
-          {lastMessage?.timestamp && (
-            <span className={cn('text-[10px] font-normal shrink-0 self-start mt-0.5 text-slate-400 dark:text-slate-500', isDisabled && 'italic')}>
-              {formatRelativeTime(lastMessage.timestamp)}
-            </span>
+          </button>
+          {onDragHandlePointerDown && (
+            <div
+              role="button"
+              aria-label={`Reorder ${agent.name}`}
+              title="Drag to reorder"
+              onPointerDown={onDragHandlePointerDown}
+              onClick={(e) => e.preventDefault()}
+              className="flex shrink-0 cursor-grab items-center px-1.5 text-text/20 transition-colors hover:text-text/45 active:cursor-grabbing active:text-primary dark:text-text-inv/20 dark:hover:text-text-inv/45"
+              style={{ touchAction: 'none' }}
+            >
+              <ArrowUpDown size={13} />
+            </div>
           )}
-        </button>
+        </div>
       </motion.div>
     );
   };
 
-    const renderGridCard = (connection: ServerConnection, agent: AgentInfo, index: number) => {
+  const renderGridCard = (
+    connection: ServerConnection,
+    agent: AgentInfo,
+    index: number,
+    onDragHandlePointerDown?: (event: React.PointerEvent<HTMLDivElement>) => void,
+  ) => {
     const status = statusMap[connection.id] || 'disconnected';
     const isDisabled = attemptedMap[connection.id] && status === 'disconnected';
     const isActive = activeConnectionId === connection.id && activeAgentId === agent.id;
@@ -572,42 +629,97 @@ export default function ChatList({
     return (
       <motion.div key={agent.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }} transition={{ delay: Math.min(index * 0.03, 0.15), duration: 0.2 }}>
-        <button type="button" onClick={e => handleAgentClick(connection, agent, e.shiftKey)} disabled={isDisabled}
-          aria-label={`Chat with ${agent.name}`}
-          className={cn(
-            'relative w-full flex flex-col items-center text-center p-3 pb-2.5 rounded-[22px] transition-all duration-150',
-            'bg-white/72 dark:bg-card-alt/50 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.38)]',
-            'focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
-            isDisabled && 'cursor-not-allowed opacity-60',
-            !isDisabled && 'cursor-pointer active:scale-[0.96]',
-            isActive ? 'ring-2 ring-primary/30 bg-primary/5 dark:bg-primary/10'
-              : isSplitActive ? 'ring-2 ring-info/25 bg-info/6 dark:bg-info/10'
-              : 'hover:bg-white hover:shadow-[0_18px_36px_-24px_rgba(15,23,42,0.34)] hover:-translate-y-0.5 dark:hover:bg-card-alt/80'
-          )}>
-          <div className="relative mb-2" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
-            onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
-            {renderAvatar(agent, 'lg')}
-            {agent.isDefault && (
-              <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 border-[1.5px] border-white dark:border-card-alt shadow-sm">
-                <Crown size={8} className="text-white" strokeWidth={2.5} />
-              </span>
-            )}
-            {showStatus && <span className={cn('absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-card-alt', isThinking ? 'bg-primary status-breathe' : 'bg-sky-500')} />}
-          </div>
-          <h3 className="text-[12px] font-semibold truncate w-full leading-tight text-text dark:text-text-inv">{agent.name}</h3>
-          {isThinking ? (
-            <div className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-primary/18 bg-primary/10 px-2.5 py-1 text-[10px] font-semibold text-primary shadow-sm"><span className="h-1.5 w-1.5 rounded-full bg-primary status-breathe" />思考中 <TypingDots /></div>
-          ) : isTyping ? (
-            <div className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-sky-500/18 bg-sky-500/10 px-2.5 py-1 text-[10px] font-semibold text-sky-600 shadow-sm dark:text-sky-300"><span className="h-1.5 w-1.5 rounded-full bg-sky-500 status-breathe" />正在输入 <TypingDots /></div>
-          ) : lastMessage?.text ? (
-            <p className="mt-1 text-[10px] text-slate-600 dark:text-slate-400 truncate w-full max-w-full">
-              {lastMessage.text.length > 24 ? `${lastMessage.text.slice(0, 24)}…` : lastMessage.text}
-            </p>
-          ) : agent.model ? (
-            <span className={cn('text-[9px] text-slate-500 dark:text-slate-400 truncate w-full mt-1', isDisabled && 'italic')}>{agent.model.split('/').pop()}</span>
-          ) : null}
-        </button>
+        <div className="relative">
+          <button type="button" onClick={e => handleAgentClick(connection, agent, e.shiftKey)} disabled={isDisabled}
+            aria-label={`Chat with ${agent.name}`}
+            className={cn(
+              'relative w-full flex flex-col items-center text-center p-3 pb-2.5 rounded-2xl transition-all duration-150',
+              'bg-white/60 dark:bg-card-alt/40',
+              'focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+              isDisabled && 'opacity-40 cursor-not-allowed',
+              !isDisabled && 'cursor-pointer active:scale-[0.96]',
+              isActive ? 'ring-2 ring-primary/30 bg-primary/5 dark:bg-primary/10'
+                : isSplitActive ? 'ring-2 ring-info/25 bg-info/6 dark:bg-info/10'
+                : 'hover:bg-text/[0.03] dark:hover:bg-text-inv/[0.03] hover:shadow-md hover:-translate-y-0.5'
+            )}>
+            <div className="relative mb-2" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
+              onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
+              {renderAvatar(agent, 'lg')}
+              {agent.isDefault && (
+                <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 border-[1.5px] border-white dark:border-card-alt shadow-sm">
+                  <Crown size={8} className="text-white" strokeWidth={2.5} />
+                </span>
+              )}
+              {showStatus && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />}
+            </div>
+            <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{agent.name}</h3>
+            {isThinking ? (
+              <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">思考中... <TypingDots /></div>
+            ) : isTyping ? (
+              <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">正在输入... <TypingDots /></div>
+            ) : lastMessage?.text ? (
+              <p className="mt-1 text-[10px] text-text/45 dark:text-text-inv/40 truncate w-full max-w-full">
+                {lastMessage.text.length > 24 ? `${lastMessage.text.slice(0, 24)}…` : lastMessage.text}
+              </p>
+            ) : agent.model ? (
+              <span className="text-[9px] text-text/50 dark:text-text-inv/40 truncate w-full mt-1">{agent.model.split('/').pop()}</span>
+            ) : null}
+          </button>
+          {onDragHandlePointerDown && (
+            <div
+              role="button"
+              aria-label={`Reorder ${agent.name}`}
+              title="Drag to reorder"
+              onPointerDown={onDragHandlePointerDown}
+              onClick={(e) => e.preventDefault()}
+              className="absolute top-2 right-2 flex h-7 w-7 cursor-grab items-center justify-center rounded-full bg-white/88 text-text/25 shadow-sm transition-colors hover:text-text/50 active:cursor-grabbing active:text-primary dark:bg-card-alt/88 dark:text-text-inv/25 dark:hover:text-text-inv/50"
+              style={{ touchAction: 'none' }}
+            >
+              <ArrowUpDown size={12} />
+            </div>
+          )}
+        </div>
       </motion.div>
+    );
+  };
+
+  const DraggableListCard = ({ connection, agent, index }: { connection: ServerConnection; agent: AgentInfo; index: number }) => {
+    const dragControls = useDragControls();
+    return (
+      <Reorder.Item
+        key={agent.id}
+        value={agent.id}
+        dragListener={false}
+        dragControls={dragControls}
+        whileDrag={{ scale: 1.01, boxShadow: '0 10px 28px rgba(15,23,42,0.14)', zIndex: 40 }}
+        className="list-none"
+      >
+        {renderListCard(connection, agent, index, false, (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          dragControls.start(event);
+        })}
+      </Reorder.Item>
+    );
+  };
+
+  const DraggableGridCard = ({ connection, agent, index }: { connection: ServerConnection; agent: AgentInfo; index: number }) => {
+    const dragControls = useDragControls();
+    return (
+      <Reorder.Item
+        key={agent.id}
+        value={agent.id}
+        dragListener={false}
+        dragControls={dragControls}
+        whileDrag={{ scale: 1.03, boxShadow: '0 12px 32px rgba(15,23,42,0.16)', zIndex: 40 }}
+        className="list-none"
+      >
+        {renderGridCard(connection, agent, index, (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          dragControls.start(event);
+        })}
+      </Reorder.Item>
     );
   };
 
@@ -619,7 +731,7 @@ export default function ChatList({
     <Reorder.Item key={agent.id} value={agent.id}
       whileDrag={{ scale: 1.02, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: 50 }}
       style={{ touchAction: 'none' }}>
-      <div className={cn('flex items-center gap-3 rounded-[18px]', compact ? 'px-2.5 py-2' : 'px-4 py-2.5', 'bg-white/72 dark:bg-card-alt/70 shadow-sm cursor-grab active:cursor-grabbing')}>
+      <div className={cn('flex items-center gap-3 rounded-lg', compact ? 'px-2.5 py-2' : 'px-4 py-2.5', 'bg-surface dark:bg-surface-dark cursor-grab active:cursor-grabbing')}>
         <ArrowUpDown size={14} className="text-text/20 dark:text-text-inv/15 shrink-0" />
         {renderAvatar(agent, compact ? 'sm' : 'md')}
         <h3 className={cn('font-bold truncate flex-1', compact ? 'text-[14px]' : 'text-[16px]')}>{agent.name}</h3>
@@ -631,7 +743,7 @@ export default function ChatList({
     <Reorder.Item key={agent.id} value={agent.id}
       whileDrag={{ scale: 1.05, boxShadow: '0 8px 30px rgba(0,0,0,0.15)', zIndex: 50 }}
       style={{ touchAction: 'none' }}>
-      <div className="flex flex-col items-center p-4 pb-3 rounded-[22px] bg-white/72 dark:bg-card-alt/70 shadow-sm cursor-grab active:cursor-grabbing">
+      <div className="flex flex-col items-center p-4 pb-3 rounded-2xl bg-surface dark:bg-surface-dark cursor-grab active:cursor-grabbing">
         {renderAvatar(agent, 'xl')}
         <h3 className="text-[13px] font-semibold truncate w-full text-center mt-2">{agent.name}</h3>
       </div>
@@ -672,7 +784,7 @@ export default function ChatList({
       return (
         <Reorder.Group axis={viewMode === 'grid' ? 'x' : 'y'} values={sortedIds}
           onReorder={newOrder => handleReorder(connectionId, newOrder)}
-          className={viewMode === 'grid' ? 'grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 px-1 pb-1' : 'space-y-0.5 pb-1'}>
+          className={viewMode === 'grid' ? 'grid gap-2 auto-fill-grid px-1 pb-1' : 'space-y-0.5 pb-1'}>
           {sortedIds.map(id => {
             const a = getAgentById(connectionId, id);
             if (!a) return null;
@@ -684,15 +796,17 @@ export default function ChatList({
 
     // ── Normal mode ──
     return (
-      <div className={viewMode === 'grid' ? 'grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 px-1 pb-1' : 'space-y-0.5 pb-1'}>
-        <AnimatePresence initial={false}>
-          {sortedIds.map((id, index) => {
-            const a = getAgentById(connectionId, id);
-            if (!a) return null;
-            return viewMode === 'grid' ? renderGridCard(connection, a, index) : renderListCard(connection, a, index);
-          })}
-        </AnimatePresence>
-      </div>
+      <Reorder.Group axis={viewMode === 'grid' ? 'x' : 'y'} values={sortedIds}
+        onReorder={newOrder => handleReorder(connectionId, newOrder)}
+        className={viewMode === 'grid' ? 'grid gap-2 auto-fill-grid px-1 pb-1' : 'space-y-0.5 pb-1'}>
+        {sortedIds.map((id, index) => {
+          const a = getAgentById(connectionId, id);
+          if (!a) return null;
+          return viewMode === 'grid'
+            ? <DraggableGridCard key={a.id} connection={connection} agent={a} index={index} />
+            : <DraggableListCard key={a.id} connection={connection} agent={a} index={index} />;
+        })}
+      </Reorder.Group>
     );
   };
 
@@ -707,11 +821,11 @@ export default function ChatList({
           {!compact && <h1 className="text-xl font-bold tracking-tight mb-4">Chats</h1>}
         </div>
         <div className="flex-1 flex flex-col items-center justify-center px-8">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/70 shadow-[0_18px_36px_-26px_rgba(15,23,42,0.3)] dark:bg-white/[0.05]">
-            <Server size={28} className="text-slate-500 dark:text-slate-400" />
+          <div className="w-16 h-16 rounded-2xl bg-text/[0.06] dark:bg-text-inv/[0.06] flex items-center justify-center mb-4">
+            <Server size={28} className="text-text/30 dark:text-text-inv/25" />
           </div>
-          <p className="mb-1 text-[15px] font-medium text-text dark:text-text-inv">No servers connected</p>
-          <p className="mb-5 text-center text-[13px] text-slate-500 dark:text-slate-400">Add a server to start chatting with agents</p>
+          <p className="text-[15px] font-medium text-text/60 dark:text-text-inv/50 mb-1">No servers connected</p>
+          <p className="text-[13px] text-text/50 dark:text-text-inv/40 mb-5 text-center">Add a server to start chatting with agents</p>
           <button onClick={onAddServer} className="px-5 py-2 rounded-lg bg-primary text-white text-[13px] font-medium hover:bg-primary-deep transition-colors">
             Add Server
           </button>
@@ -723,34 +837,34 @@ export default function ChatList({
   return (
     <div className={cn('flex flex-col h-full min-h-0', !compact && 'pb-24')}>
       {/* Header */}
-      <div className={cn('sticky top-0 z-10 bg-[linear-gradient(180deg,rgba(228,234,240,0.96),rgba(228,234,240,0.9))] backdrop-blur-lg shadow-[0_12px_24px_-24px_rgba(15,23,42,0.35)] dark:bg-[linear-gradient(180deg,rgba(24,32,42,0.96),rgba(24,32,42,0.9))] dark:shadow-[0_12px_24px_-24px_rgba(2,6,23,0.72)]', compact ? 'px-3 pt-3 pb-2' : 'px-5 pt-6 pb-3')}>
+      <div className={cn('sticky top-0 bg-surface/90 dark:bg-surface-dark/90 backdrop-blur-lg z-10', compact ? 'px-3 pt-3 pb-2' : 'px-5 pt-6 pb-3')}>
         <div className="flex justify-between items-center mb-3 gap-3">
           <div className="min-w-0 flex-1">
-            {!compact && <h1 className="text-xl font-bold tracking-tight text-text dark:text-text-inv">{reorderMode ? 'Reorder Agents' : 'Chats'}</h1>}
-            {compact && <span className="font-semibold text-[15px] block truncate text-text dark:text-text-inv">{reorderMode ? 'Reorder' : 'Chats'}</span>}
+            {!compact && <h1 className="text-xl font-bold tracking-tight">{reorderMode ? 'Reorder Agents' : 'Chats'}</h1>}
+            {compact && <span className="font-semibold text-[15px] block truncate">{reorderMode ? 'Reorder' : 'Chats'}</span>}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {!reorderMode && (
               <>
                 <motion.button whileTap={{ scale: 0.9 }} onClick={toggleViewMode}
-                  className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-xl bg-white/78 p-2.5 text-slate-600 shadow-sm transition-colors hover:bg-white hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
+                  className="p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-text/35 dark:text-text-inv/30 hover:text-primary transition-colors"
                   title={viewMode === 'list' ? 'Grid view' : 'List view'}>
                   {viewMode === 'list' ? <LayoutGrid size={16} /> : <List size={16} />}
                 </motion.button>
                 <motion.button whileTap={{ scale: 0.9 }} onClick={handleRefresh}
-                  className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-xl bg-white/78 p-2.5 text-slate-600 shadow-sm transition-colors hover:bg-white hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv">
+                  className="p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-text/40 dark:text-text-inv/40 hover:text-primary transition-colors">
                   <RefreshCw size={16} className={Object.values(refreshingMap).some(Boolean) ? 'animate-spin' : ''} />
                 </motion.button>
               </>
             )}
             <motion.button whileTap={{ scale: 0.9 }} onClick={() => setReorderMode(m => !m)}
-              className={cn('flex min-h-[36px] min-w-[36px] items-center justify-center rounded-xl p-2.5 shadow-sm transition-colors', reorderMode ? 'bg-primary text-white shadow-[0_12px_24px_-18px_rgba(239,90,35,0.95)]' : 'bg-white/78 text-slate-600 hover:bg-white hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv')}
+              className={cn('p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-md transition-colors', reorderMode ? 'text-white bg-primary' : 'text-text/35 dark:text-text-inv/30 hover:text-primary')}
               title={reorderMode ? 'Done' : 'Reorder agents'}>
               {reorderMode ? <Check size={16} /> : <ArrowUpDown size={16} />}
             </motion.button>
             {!reorderMode && (
-              <span className={cn('rounded-full border px-2 py-1 text-[10px] font-semibold shadow-sm',
-                connectedCount > 0 ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-slate-300/70 bg-white/75 text-slate-500 dark:border-slate-700/70 dark:bg-white/[0.06] dark:text-slate-400')}>
+              <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded-full',
+                connectedCount > 0 ? 'text-primary/70 bg-primary/8' : 'text-text/50 dark:text-text-inv/40 bg-text/5 dark:bg-text-inv/5')}>
                 {connectedCount}/{connections.length}
               </span>
             )}
@@ -760,9 +874,9 @@ export default function ChatList({
         {/* Search — hidden in reorder mode */}
         {!reorderMode && (
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={compact ? 14 : 16} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text/50 dark:text-text-inv/45" size={compact ? 14 : 16} />
             <Input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search agents…"
-              className={cn('pl-9 rounded-[18px] border border-border/85 bg-white/88 placeholder:text-slate-400 dark:border-border-dark/80 dark:bg-card-alt/88 dark:placeholder:text-slate-500',
+              className={cn('pl-9 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] border-0 placeholder:text-text/30 dark:placeholder:text-text-inv/25',
                 compact ? 'h-8 py-0 text-[12px] pl-8' : 'h-10 py-0 text-[14px]')} />
           </div>
         )}
@@ -772,13 +886,13 @@ export default function ChatList({
       <div className={cn('flex-1 overflow-y-auto', compact ? 'px-1 pb-2' : 'px-2 pb-4')}>
         {/* Reorder mode hint */}
         {reorderMode && (
-          <p className="py-2 mb-1 text-center text-[12px] text-slate-500 dark:text-slate-400">
+          <p className="text-center text-[12px] text-text/40 dark:text-text-inv/35 py-2 mb-1">
             Drag to reorder • Tap <Check size={10} className="inline" /> when done
           </p>
         )}
 
         {searchQuery.trim() && !reorderMode ? (
-          <div className={viewMode === 'grid' ? 'grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 px-1' : 'space-y-0.5'}>
+          <div className={viewMode === 'grid' ? 'grid gap-2 auto-fill-grid px-1' : 'space-y-0.5'}>
             {filteredResults.length > 0 ? filteredResults.map(({ agent, connection }, i) => (
               viewMode === 'grid' ? renderGridCard(connection, agent, i) : renderListCard(connection, agent, i, true)
             )) : (
@@ -786,7 +900,7 @@ export default function ChatList({
             )}
           </div>
         ) : showGroupedView ? (
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {connections.map(connection => {
               const isExpanded = expandedIds.includes(connection.id);
               const status = statusMap[connection.id] || 'disconnected';
@@ -794,16 +908,16 @@ export default function ChatList({
               const isDisconnected = status === 'disconnected';
 
               return (
-                <div key={connection.id} className={cn(isDisconnected && 'opacity-85')}>
-                  <button type="button" onClick={() => handleToggleGroup(connection.id)} className="w-full flex items-center gap-2.5 rounded-[18px] bg-white/55 px-3.5 py-2.5 text-left shadow-[0_12px_24px_-26px_rgba(15,23,42,0.35)] transition-colors hover:bg-white/78 dark:bg-white/[0.04] dark:hover:bg-white/[0.07]">
-                    <span className={cn('inline-flex h-2.5 w-2.5 rounded-full shrink-0 shadow-[0_0_0_4px_rgba(255,255,255,0.6)] dark:shadow-[0_0_0_4px_rgba(17,22,29,0.72)]', getStatusClasses(status), status !== 'disconnected' && 'status-breathe')} />
+                <div key={connection.id} className={cn(isDisconnected && 'opacity-75')}>
+                  <button type="button" onClick={() => handleToggleGroup(connection.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left group">
+                    <span className={cn('inline-flex h-2 w-2 rounded-full shrink-0', getStatusClasses(status))} />
                     <span className="sr-only">{status === 'connected' ? 'Connected' : status === 'connecting' || status === 'reconnecting' ? 'Connecting' : 'Disconnected'}</span>
-                    <span className={cn('flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.24em]',
-                      isDisconnected ? 'text-slate-400 dark:text-slate-500' : 'text-slate-600 dark:text-slate-300')}>
+                    <span className={cn('text-[12px] font-semibold uppercase tracking-wider truncate flex-1',
+                      isDisconnected ? 'text-text/35 dark:text-text-inv/30' : 'text-text/50 dark:text-text-inv/45')}>
                       {getConnectionLabel(connection)}
-                      {isDisconnected && <span className="ml-2 normal-case tracking-normal font-medium italic text-slate-400 dark:text-slate-500">Disconnected</span>}
+                      {isDisconnected && <span className="normal-case tracking-normal font-medium ml-1.5 text-text/30 dark:text-text-inv/25">· Disconnected</span>}
                     </span>
-                    <ChevronDown size={12} className={cn('shrink-0 text-slate-400 transition-transform duration-200 dark:text-slate-500', isExpanded && 'rotate-180')} />
+                    <ChevronDown size={12} className={cn('shrink-0 text-text/25 dark:text-text-inv/35 transition-transform duration-200', isExpanded && 'rotate-180')} />
                   </button>
                   <AnimatePresence initial={false}>
                     {isExpanded && (
@@ -825,8 +939,9 @@ export default function ChatList({
         {!reorderMode && (
           <button onClick={onAddServer}
             className={cn('w-full mt-3 py-2.5 flex items-center justify-center gap-1.5',
-              'rounded-[18px] border border-dashed border-slate-300/80 bg-white/55 text-[13px] font-medium text-slate-500 shadow-[0_12px_24px_-26px_rgba(15,23,42,0.28)]',
-              'hover:border-slate-400/80 hover:bg-white/78 hover:text-text dark:border-slate-700/60 dark:bg-white/[0.04] dark:text-slate-400 dark:hover:border-slate-600/70 dark:hover:bg-white/[0.07] dark:hover:text-text-inv',
+              'text-[13px] font-medium text-text/35 dark:text-text-inv/30',
+              'rounded-lg border border-dashed border-text/10 dark:border-text-inv/10',
+              'hover:border-text/20 dark:hover:border-text-inv/15 hover:text-text/50 dark:hover:text-text-inv/40',
               'transition-colors')}>
             <Plus size={13} /> Add Server
           </button>
@@ -835,14 +950,14 @@ export default function ChatList({
 
       {/* Avatar context menu */}
       {avatarMenuAgent && (
-        <div className="fixed z-50 min-w-[140px] rounded-[16px] border border-border/70 bg-white/95 py-1 shadow-[0_20px_40px_-24px_rgba(15,23,42,0.42)] backdrop-blur-xl dark:border-border-dark/70 dark:bg-card-alt/95 dark:shadow-[0_24px_44px_-24px_rgba(2,6,23,0.72)]"
+        <div className="fixed z-50 bg-white dark:bg-card-alt rounded-lg shadow-lg border border-border/60 dark:border-border-dark/60 py-1 min-w-[140px]"
           style={{ left: avatarMenuAgent.x, top: avatarMenuAgent.y }} onClick={e => e.stopPropagation()}>
-          <button className="w-full px-3 py-1.5 text-left text-[12px] text-text transition-colors hover:bg-slate-100 dark:text-text-inv dark:hover:bg-white/[0.06]"
+          <button className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-text/[0.04] dark:hover:bg-text-inv/[0.04] transition-colors"
             onClick={() => handleSetCustomAvatar(avatarMenuAgent.agentId)}>
             {customAvatars[avatarMenuAgent.agentId] ? 'Change avatar' : 'Set custom avatar'}
           </button>
           {customAvatars[avatarMenuAgent.agentId] && (
-            <button className="w-full px-3 py-1.5 text-left text-[12px] text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
+            <button className="w-full text-left px-3 py-1.5 text-[12px] text-red-500 hover:bg-text/[0.04] dark:hover:bg-text-inv/[0.04] transition-colors"
               onClick={() => handleRemoveCustomAvatar(avatarMenuAgent.agentId)}>
               Remove avatar
             </button>

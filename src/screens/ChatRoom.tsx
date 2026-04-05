@@ -189,7 +189,8 @@ export default function ChatRoom({
   const audioChunksRef = useRef<Blob[]>([]);
   const skills = agentInfo?.skills ?? [];
   const configuredSkills = agentInfo?.configuredSkills ?? [];
-  const builtinSkills = new Set(agentInfo?.builtinSkills ?? []);
+  const configuredSkillSet = new Set(configuredSkills);
+  const builtinSkillSet = new Set(agentInfo?.builtinSkills ?? []);
 
   // B1: Retry pending message — dequeue first, send, re-enqueue on failure
   const retryMessage = async (msg: Message) => {
@@ -1108,25 +1109,49 @@ export default function ChatRoom({
     }
   };
 
-  const quickSend = (text: string) => {
-    if (text.trim() === '/memory') {
+  const quickSend = useCallback((text: string, options?: { clearInput?: boolean }) => {
+    const clearInput = options?.clearInput ?? true;
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    if (trimmed === '/memory') {
       setShowMemory(true);
       setShowSlashMenu(false);
-      setInputValue('');
+      if (clearInput) {
+        setInputValue('');
+      }
       return;
     }
+    if (!agentReady) return;
     try {
-      const payload = channel.sendText(text, agentId || undefined, runtimeConnId);
-      const userMsg: Message = { id: payload.messageId || Date.now().toString(), sender: 'user', text, timestamp: payload.timestamp || Date.now(), deliveryStatus: 'sent' };
+      const payload = channel.sendText(trimmed, agentId || undefined, runtimeConnId);
+      const userMsg: Message = { id: payload.messageId || Date.now().toString(), sender: 'user', text: trimmed, timestamp: payload.timestamp || Date.now(), deliveryStatus: 'sent' };
       setMessages((prev) => [...prev, userMsg]);
     } catch {
       const msgId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setMessages((prev) => [...prev, { id: msgId, sender: 'user', text, timestamp: Date.now(), deliveryStatus: 'pending' as DeliveryStatus }]);
-      outbox.enqueue({ id: msgId, connectionId: runtimeConnId, agentId: agentId || '', content: text, type: 'text', timestamp: Date.now() }).catch(() => {});
+      setMessages((prev) => [...prev, { id: msgId, sender: 'user', text: trimmed, timestamp: Date.now(), deliveryStatus: 'pending' as DeliveryStatus }]);
+      outbox.enqueue({ id: msgId, connectionId: runtimeConnId, agentId: agentId || '', content: trimmed, type: 'text', timestamp: Date.now() }).catch(() => {});
     }
-    setInputValue('');
     setShowSlashMenu(false);
-  };
+    if (clearInput) {
+      setInputValue('');
+    }
+  }, [agentId, agentReady, runtimeConnId]);
+
+  useEffect(() => {
+    if (wsStatus !== 'connected' || !connId || !agentId || !agentReady) return;
+    const key = `clawline.lastAutoStatus.${connId}:${agentId}`;
+    try {
+      const last = parseInt(localStorage.getItem(key) || '0', 10);
+      if (Date.now() - last < 3600_000) return;
+      localStorage.setItem(key, String(Date.now()));
+    } catch {
+      return;
+    }
+    const timer = setTimeout(() => {
+      quickSend('/status', { clearInput: false });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [agentId, agentReady, connId, quickSend, wsStatus]);
 
   // --- Image sending — now stages for preview ---
   const handleImagePick = () => fileInputRef.current?.click();
@@ -1330,6 +1355,25 @@ export default function ChatRoom({
     onOpenConversation(nextChatId);
   };
 
+  const slashSkillMenuActive = skills.length > 0 && (
+    inputValue === '/' || '/use'.startsWith(inputValue) || inputValue.startsWith('/use ')
+  );
+  const filterSlashSkill = (skillName: string) => {
+    if (inputValue === '/' || inputValue === '/use') return true;
+    if (inputValue.startsWith('/use ')) {
+      const query = inputValue.slice(5).toLowerCase();
+      return skillName.toLowerCase().includes(query);
+    }
+    return `/use ${skillName}`.startsWith(inputValue);
+  };
+  const workspaceSkills = [...new Set(configuredSkills.filter((skillName) => !builtinSkillSet.has(skillName)))];
+  const globalSkills = [...new Set(skills.filter((skillName) => !configuredSkillSet.has(skillName) && !builtinSkillSet.has(skillName)))];
+  const builtinSkills = [...new Set(skills.filter((skillName) => builtinSkillSet.has(skillName)))];
+  const filteredWorkspaceSkills = slashSkillMenuActive ? workspaceSkills.filter(filterSlashSkill) : [];
+  const filteredGlobalSkills = slashSkillMenuActive ? globalSkills.filter(filterSlashSkill) : [];
+  const filteredBuiltinSkills = slashSkillMenuActive ? builtinSkills.filter(filterSlashSkill) : [];
+  const hasSkillMatches = filteredWorkspaceSkills.length > 0 || filteredGlobalSkills.length > 0 || filteredBuiltinSkills.length > 0;
+
   return (
     <div className="relative flex h-full flex-col bg-white dark:bg-[#11161d]">
       {/* Header */}
@@ -1394,20 +1438,6 @@ export default function ChatRoom({
               <span>Split</span>
             </motion.button>
           )}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={() => {
-              const newChatId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-              onOpenConversation(newChatId);
-            }}
-            className="rounded-xl bg-slate-900/[0.04] p-2.5 text-slate-600 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
-            aria-label="New conversation"
-          >
-            <Plus size={20} />
-          </motion.button>
-          <motion.button whileTap={{ scale: 0.9 }} onClick={openHistoryDrawer} className="rounded-xl bg-slate-900/[0.04] p-2.5 text-slate-600 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv" aria-label="Open history drawer">
-            <MessageSquare size={20} />
-          </motion.button>
           {isSplitPane && onCloseSplit && (
             <motion.button whileTap={{ scale: 0.9 }} onClick={onCloseSplit} className="rounded-xl bg-slate-900/[0.04] p-2.5 text-slate-600 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv" aria-label="Close split view">
               <X size={20} />
@@ -1746,84 +1776,86 @@ export default function ChatRoom({
                 })()}
 
                 {/* Skills section */}
-                {skills.length > 0 && (inputValue === '/' || '/use'.startsWith(inputValue) || inputValue.startsWith('/use ')) && (() => {
-                  const loadedSkills = skills.filter(s => !builtinSkills.has(s));
-                  const builtinSkillsList = skills.filter(s => builtinSkills.has(s));
-
-                  const filterSkill = (s: string) => {
-                    if (inputValue === '/' || inputValue === '/use') return true;
-                    if (inputValue.startsWith('/use ')) {
-                      const q = inputValue.slice(5).toLowerCase();
-                      return s.toLowerCase().includes(q);
-                    }
-                    return `/use ${s}`.startsWith(inputValue);
-                  };
-
-                  const filteredLoaded = loadedSkills.filter(filterSkill);
-                  const filteredBuiltin = builtinSkillsList.filter(filterSkill);
-
-                  if (filteredLoaded.length === 0 && filteredBuiltin.length === 0) return null;
-
-                  return (
-                    <>
-                      {/* Loaded skills — always visible */}
-                      {filteredLoaded.length > 0 && (
-                        <>
-                          <div className="sticky top-0 flex items-center gap-1.5 bg-white/96 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:bg-card-alt/96 dark:text-slate-500">
-                            <Puzzle size={10} className="text-primary" />
-                            Skills ({filteredLoaded.length})
-                          </div>
-                          {filteredLoaded.map(skillName => (
-                            <button
-                              key={`skill-${skillName}`}
-                              onClick={() => handleCommandSelect(`/use ${skillName}`)}
-                              className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.05]"
-                            >
-                              <div className="w-7 h-7 rounded-lg bg-primary/8 flex items-center justify-center text-primary shrink-0">
-                                <Puzzle size={14} />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <span className="text-[13px] font-medium text-text dark:text-text-inv">{skillName}</span>
-                              </div>
-                            </button>
-                          ))}
-                        </>
-                      )}
-
-                      {/* Built-in / unloaded skills — collapsible, greyed out */}
-                      {filteredBuiltin.length > 0 && (
-                        <>
+                {slashSkillMenuActive && hasSkillMatches && (
+                  <>
+                    {filteredWorkspaceSkills.length > 0 && (
+                      <>
+                        <div className="sticky top-0 flex items-center gap-1.5 bg-white/96 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:bg-card-alt/96 dark:text-slate-500">
+                          <Puzzle size={10} className="text-primary" />
+                          Workspace Skills ({filteredWorkspaceSkills.length})
+                        </div>
+                        {filteredWorkspaceSkills.map((skillName) => (
                           <button
-                            type="button"
-                            onClick={() => setShowBuiltinSkills(prev => !prev)}
-                            className="sticky top-0 flex w-full items-center gap-1.5 bg-white/96 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-300 transition-colors hover:text-slate-500 dark:bg-card-alt/96 dark:text-slate-600 dark:hover:text-slate-400"
+                            key={`workspace-${skillName}`}
+                            onClick={() => handleCommandSelect(`/use ${skillName}`)}
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.05]"
                           >
-                            {showBuiltinSkills ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                            Built-in ({filteredBuiltin.length})
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/8 text-primary">
+                              <Puzzle size={14} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[13px] font-medium text-text dark:text-text-inv">{skillName}</span>
+                            </div>
                           </button>
-                          {showBuiltinSkills && filteredBuiltin.map(skillName => (
-                            <button
-                              key={`builtin-${skillName}`}
-                              onClick={() => handleCommandSelect(`/use ${skillName}`)}
-                              className="flex w-full items-center gap-2.5 px-3 py-2 text-left opacity-55 transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.05]"
-                            >
-                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-900/[0.03] text-slate-400 dark:bg-white/[0.04] dark:text-slate-500">
-                                <Puzzle size={14} />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <span className="text-[13px] italic text-slate-400 dark:text-slate-500">{skillName}</span>
-                              </div>
-                            </button>
-                          ))}
-                        </>
-                      )}
-                    </>
-                  );
-                })()}
+                        ))}
+                      </>
+                    )}
+
+                    {filteredGlobalSkills.length > 0 && (
+                      <>
+                        <div className="sticky top-0 flex items-center gap-1.5 bg-white/96 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:bg-card-alt/96 dark:text-slate-500">
+                          <Puzzle size={10} className="text-slate-400 dark:text-slate-500" />
+                          Global Skills ({filteredGlobalSkills.length})
+                        </div>
+                        {filteredGlobalSkills.map((skillName) => (
+                          <button
+                            key={`global-${skillName}`}
+                            onClick={() => handleCommandSelect(`/use ${skillName}`)}
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.05]"
+                          >
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-900/[0.03] text-slate-400 dark:bg-white/[0.04] dark:text-slate-500">
+                              <Puzzle size={14} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[13px] text-slate-500 dark:text-slate-400">{skillName}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
+
+                    {filteredBuiltinSkills.length > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setShowBuiltinSkills((prev) => !prev)}
+                          className="sticky top-0 flex w-full items-center gap-1.5 bg-white/96 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-300 transition-colors hover:text-slate-500 dark:bg-card-alt/96 dark:text-slate-600 dark:hover:text-slate-400"
+                        >
+                          {showBuiltinSkills ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                          Built-in Skills ({filteredBuiltinSkills.length})
+                        </button>
+                        {showBuiltinSkills && filteredBuiltinSkills.map((skillName) => (
+                          <button
+                            key={`builtin-${skillName}`}
+                            onClick={() => handleCommandSelect(`/use ${skillName}`)}
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left opacity-55 transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.05]"
+                          >
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-900/[0.03] text-slate-400 dark:bg-white/[0.04] dark:text-slate-500">
+                              <Puzzle size={14} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[13px] italic text-slate-400 dark:text-slate-500">{skillName}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </>
+                )}
 
                 {/* Empty state */}
                 {slashCommands.filter(cmd => cmd.label.startsWith(inputValue) || inputValue === '/').length === 0
-                  && !(skills.length > 0 && (inputValue.startsWith('/use ')))
+                  && !hasSkillMatches
                   && (
                   <div className="px-3 py-4 text-center text-[12px] text-slate-400 dark:text-slate-500">
                     No matching commands
@@ -1997,7 +2029,12 @@ export default function ChatRoom({
                       type="text"
                       value={fileCaption}
                       onChange={(e) => setFileCaption(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSendPendingFile()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                          e.preventDefault();
+                          handleSendPendingFile();
+                        }
+                      }}
                       placeholder="Add a caption..."
                       className="w-full bg-transparent text-[12px] text-slate-600 outline-none placeholder:text-slate-400 dark:text-slate-300 dark:placeholder:text-slate-500"
                       autoFocus
@@ -2020,7 +2057,12 @@ export default function ChatRoom({
             onChange={handleInputChange}
             onFocus={() => { setShowEmojiPicker(false); }}
             onBlur={() => { window.scrollTo(0, 0); }}
-            onKeyDown={(e) => e.key === 'Enter' && agentReady && handleSend()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing && agentReady) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder={agentReady ? "Message..." : "Switching agent..."}
             disabled={!agentReady}
             aria-label="Type a message"
