@@ -45,6 +45,8 @@ export type AgentInfo = {
   skills?: string[];
   /** Skills explicitly declared in agent config (subset of skills) */
   configuredSkills?: string[];
+  /** Skills from npm-bundled locations (openclaw built-in) */
+  builtinSkills?: string[];
   status?: 'online' | 'idle' | 'busy';
 };
 

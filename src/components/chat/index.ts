@@ -10,6 +10,7 @@ export {
   formatLastSeen,
   formatToolName,
   formatToolArgSnippet,
+  formatResultSummary,
   isDifferentDay,
   isGroupedWithPrev,
   humanizeError,

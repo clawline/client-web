@@ -71,6 +71,38 @@ export function formatToolName(name: string): string {
 }
 
 /** Extract a short one-line arg snippet for tool status display (max ~40 chars) */
+/** Parse tool result summary — extract readable text from JSON content blocks */
+export function formatResultSummary(raw: string, maxLen = 60): string {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  // Try to parse as JSON content block array: {"content":[{"type":"text","text":"..."}]}
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed?.content && Array.isArray(parsed.content)) {
+        const texts = parsed.content
+          .filter((b: Record<string, unknown>) => b.type === 'text' && typeof b.text === 'string')
+          .map((b: Record<string, unknown>) => b.text as string);
+        if (texts.length > 0) {
+          const joined = texts.join(' ').replace(/\n/g, ' ').trim();
+          return joined.length > maxLen ? joined.slice(0, maxLen) + '…' : joined;
+        }
+      }
+      // Generic JSON — try to extract meaningful values
+      if (typeof parsed === 'object' && parsed !== null) {
+        const text = parsed.text ?? parsed.message ?? parsed.result ?? parsed.output ?? parsed.summary;
+        if (typeof text === 'string') {
+          const oneline = text.replace(/\n/g, ' ').trim();
+          return oneline.length > maxLen ? oneline.slice(0, maxLen) + '…' : oneline;
+        }
+      }
+    } catch { /* not JSON, fall through */ }
+  }
+  // Plain text
+  const oneline = trimmed.replace(/\n/g, ' ');
+  return oneline.length > maxLen ? oneline.slice(0, maxLen) + '…' : oneline;
+}
+
 export function formatToolArgSnippet(args?: Record<string, unknown>): string {
   if (!args) return '';
   // Prioritize the most meaningful arg

@@ -6,6 +6,24 @@ import { requestSuggestions } from '../../services/clawChannel';
 import { getSuggestions, isSuggestionServiceAvailable, clearSuggestionCache } from '../../services/suggestions';
 import type { Message } from './types';
 
+/** Hook for long-press detection (800ms) */
+function useLongPress(onLongPress: () => void, onClick: () => void, ms = 800) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firedRef = useRef(false);
+  const onStart = useCallback(() => {
+    firedRef.current = false;
+    timerRef.current = setTimeout(() => { firedRef.current = true; onLongPress(); }, ms);
+  }, [onLongPress, ms]);
+  const onEnd = useCallback(() => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    if (!firedRef.current) onClick();
+  }, [onClick]);
+  const onCancel = useCallback(() => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+  }, []);
+  return { onTouchStart: onStart, onTouchEnd: onEnd, onTouchCancel: onCancel, onMouseDown: onStart, onMouseUp: onEnd, onMouseLeave: onCancel };
+}
+
 interface SuggestionBarProps {
   messages: Message[];
   isThinking: boolean;
@@ -165,17 +183,13 @@ function SuggestionBarInner({
 
               {/* AI-generated suggestions */}
               {aiSuggestions.length > 0 && aiSuggestions.map((sug, i) => (
-                <motion.button
+                <SuggestionPill
                   key={`ai-${i}-${sug}`}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: i * 0.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => onSetInputValue(sug)}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors border border-transparent hover:border-border/30 dark:hover:border-border-dark/30"
-                >
-                  {sug}
-                </motion.button>
+                  text={sug}
+                  delay={i * 0.05}
+                  onTap={() => onSetInputValue(sug)}
+                  onLongPress={() => onQuickSend(sug)}
+                />
               ))}
 
               {/* Refresh button when suggestions are shown */}
@@ -222,15 +236,13 @@ function SuggestionBarInner({
                 </motion.button>
               )}
               {QUICK_COMMANDS.map((cmd) => (
-                <motion.button
+                <QuickCommandPill
                   key={cmd.label}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => onQuickSend(cmd.label)}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors"
-                >
-                  <span>{cmd.emoji}</span>
-                  {cmd.label}
-                </motion.button>
+                  emoji={cmd.emoji}
+                  label={cmd.label}
+                  onTap={() => onSetInputValue(cmd.label)}
+                  onLongPress={() => onQuickSend(cmd.label)}
+                />
               ))}
             </div>
           </div>
@@ -238,6 +250,42 @@ function SuggestionBarInner({
       )}
     </AnimatePresence>
     </div>
+  );
+}
+
+/** Suggestion pill — tap to fill input, long-press (800ms) to send directly */
+function SuggestionPill({ text, delay = 0, onTap, onLongPress }: {
+  text: string; delay?: number; onTap: () => void; onLongPress: () => void;
+}) {
+  const lp = useLongPress(onLongPress, onTap);
+  return (
+    <motion.button
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay }}
+      whileTap={{ scale: 0.95 }}
+      {...lp}
+      className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors border border-transparent hover:border-border/30 dark:hover:border-border-dark/30 select-none"
+    >
+      {text}
+    </motion.button>
+  );
+}
+
+/** Quick command pill — tap to fill input, long-press (800ms) to send directly */
+function QuickCommandPill({ emoji, label, onTap, onLongPress }: {
+  emoji: string; label: string; onTap: () => void; onLongPress: () => void;
+}) {
+  const lp = useLongPress(onLongPress, onTap);
+  return (
+    <motion.button
+      whileTap={{ scale: 0.95 }}
+      {...lp}
+      className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors select-none"
+    >
+      <span>{emoji}</span>
+      {label}
+    </motion.button>
   );
 }
 

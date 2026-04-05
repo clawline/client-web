@@ -17,7 +17,7 @@ import * as outbox from '../services/outbox';
 import {
   type DeliveryStatus, type Message, type AgentInfo,
   QUICK_COMMANDS, EMOJI_LIST,
-  formatTime, formatDate, formatLastSeen, formatToolName, formatToolArgSnippet, formatRelativeTime,
+  formatTime, formatDate, formatLastSeen, formatToolName, formatToolArgSnippet, formatResultSummary, formatRelativeTime,
   isDifferentDay, isGroupedWithPrev, humanizeError, fileToDataUrl,
   getPreviewKey, emitPreviewUpdated, saveAgentPreview, mergeMessages,
   getConnectionDisplayName, getSkillDescription,
@@ -189,6 +189,7 @@ export default function ChatRoom({
   const audioChunksRef = useRef<Blob[]>([]);
   const skills = agentInfo?.skills ?? [];
   const configuredSkills = agentInfo?.configuredSkills ?? [];
+  const builtinSkills = new Set(agentInfo?.builtinSkills ?? []);
 
   // B1: Retry pending message — dequeue first, send, re-enqueue on failure
   const retryMessage = async (msg: Message) => {
@@ -1620,7 +1621,7 @@ export default function ChatRoom({
                             <span className="font-medium">{formatToolName(tc.toolName)}</span>
                             {tc.resultSummary && (
                               <span className="text-text/30 dark:text-text-inv/30 truncate" title={tc.resultSummary}>
-                                — {tc.resultSummary.replace(/\n/g, ' ').slice(0, 60)}
+                                — {formatResultSummary(tc.resultSummary)}
                               </span>
                             )}
                             <span className="text-text/25 dark:text-text-inv/25 flex-shrink-0">{tc.endTime - tc.startTime}ms</span>
@@ -1718,9 +1719,8 @@ export default function ChatRoom({
 
                 {/* Skills section */}
                 {skills.length > 0 && (inputValue === '/' || '/use'.startsWith(inputValue) || inputValue.startsWith('/use ')) && (() => {
-                  const configuredSet = new Set(configuredSkills);
-                  const loadedSkills = skills.filter(s => configuredSet.has(s));
-                  const builtinSkills = skills.filter(s => !configuredSet.has(s));
+                  const loadedSkills = skills.filter(s => !builtinSkills.has(s));
+                  const builtinSkillsList = skills.filter(s => builtinSkills.has(s));
 
                   const filterSkill = (s: string) => {
                     if (inputValue === '/' || inputValue === '/use') return true;
@@ -1732,7 +1732,7 @@ export default function ChatRoom({
                   };
 
                   const filteredLoaded = loadedSkills.filter(filterSkill);
-                  const filteredBuiltin = builtinSkills.filter(filterSkill);
+                  const filteredBuiltin = builtinSkillsList.filter(filterSkill);
 
                   if (filteredLoaded.length === 0 && filteredBuiltin.length === 0) return null;
 
