@@ -86,7 +86,7 @@ function MessageItemInner({
               </span>
               {msg.timestamp && (
                 <span className="text-[10px] text-text/30 dark:text-text-inv/25 tabular-nums">
-                  {formatTime(msg.timestamp)}
+                  {formatTime(msg.timestamp)}{isUser && <DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />}
                 </span>
               )}
               {!isUser && agentInfo?.model && (
@@ -123,11 +123,7 @@ function MessageItemInner({
               <div>
                 <img src={msg.mediaUrl} alt="Message attachment" loading="lazy" className="max-w-full rounded-lg shadow-sm max-h-[300px] object-cover mt-1" />
                 {msg.text && <p className="mt-1.5 text-[15px]">{msg.text}</p>}
-                {msg.timestamp && isUser && (
-                  <span className="md:hidden text-[10px] float-right mt-1 ml-3 tabular-nums text-text/50 dark:text-text-inv/45">
-                    {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
-                  </span>
-                )}
+
               </div>
             ) : (msg.mediaType === 'voice' || msg.mediaType === 'audio') && msg.mediaUrl ? (
               <div className="flex flex-col gap-1">
@@ -149,11 +145,7 @@ function MessageItemInner({
             ) : isUser ? (
               <div className="inline">
                 <span className="whitespace-pre-wrap break-words">{msg.text}</span>
-                {msg.timestamp && (
-                  <span className="md:hidden text-[10px] text-text/40 dark:text-text-inv/40 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
-                    {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
-                  </span>
-                )}
+
                 {msg.deliveryStatus === 'pending' && (
                   <div className="md:hidden flex items-center gap-1 mt-1">
                     <button
@@ -180,11 +172,7 @@ function MessageItemInner({
                     )}
                   </span>
                 )}
-                {!isUser && !isStreaming && msg.timestamp && (
-                  <span className="md:hidden text-[10px] text-text/40 dark:text-text-inv/35 float-right mt-1 ml-3 tabular-nums whitespace-nowrap">
-                    {formatTime(msg.timestamp)}
-                  </span>
-                )}
+
               </div>
             )}
           </div>
@@ -192,11 +180,7 @@ function MessageItemInner({
           {/* Inline message actions */}
           {!isStreaming && (
             <div className="flex items-center gap-1.5 mt-0.5">
-              {msg.timestamp && (
-                <span className="hidden md:inline text-[10px] text-text/35 dark:text-text-inv/30 tabular-nums">
-                  {formatTime(msg.timestamp)}<DeliveryTicks status={msg.deliveryStatus} isUser={isUser} />
-                </span>
-              )}
+
               {isUser && msg.deliveryStatus === 'pending' && (
                 <button
                   onClick={() => onRetry(msg)}

@@ -56,6 +56,7 @@ function SuggestionBarInner({
 
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
   const isFreshChat = messages.length === 0;
+  const hasUserMessage = messages.some(m => m.sender === 'user');  // Show once user has sent any message
   const isLastAi = lastMsg?.sender === 'ai';
   const isLastUser = lastMsg?.sender === 'user';
   const waitingTooLong = isLastUser && lastMsg?.timestamp && (Date.now() - (lastMsg.timestamp || 0)) > 120000 && !isThinking;
@@ -158,7 +159,7 @@ function SuggestionBarInner({
         />
       )}
 
-      {!hideContent && isLastAi && (
+      {!hideContent && hasUserMessage && (
         <motion.div
           key="ai-suggestions"
           initial={{ opacity: 0, y: 10 }}

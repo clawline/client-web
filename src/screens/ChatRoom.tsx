@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronDown, ChevronRight, Columns2, MoreHorizontal, Smile, Mic, MicOff, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, RefreshCw, Copy, Check, Shield } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ChevronRight, Columns2, MoreHorizontal, Smile, Mic, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, RefreshCw, Copy, Check, Shield, Keyboard } from 'lucide-react';
+import { SpeechRecognitionSession } from '../services/volcASR';
 import { cn } from '../lib/utils';
 import * as channel from '../services/clawChannel';
 import type { AgentContext, ConversationSummary } from '../services/clawChannel';
@@ -133,9 +134,14 @@ export default function ChatRoom({
   const [toolCallHistory, setToolCallHistory] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number; endTime: number; resultSummary?: string }[]>([]);
   const [toolHistoryExpanded, setToolHistoryExpanded] = useState(false);
   const retryingRef = useRef<Set<string>>(new Set()); // B1: prevent double-tap retry
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceInterimText, setVoiceInterimText] = useState('');
+  const [voiceFinalText, setVoiceFinalText] = useState('');
+  const [voiceSwipeY, setVoiceSwipeY] = useState(0);
+  const voiceSessionRef = useRef<SpeechRecognitionSession | null>(null);
+  const voiceTouchStartRef = useRef<{ y: number; time: number } | null>(null);
+
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
   const [editingMsg, setEditingMsg] = useState<Message | null>(null);
@@ -188,8 +194,7 @@ export default function ChatRoom({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+
   const skills = agentInfo?.skills ?? [];
   const configuredSkills = agentInfo?.configuredSkills ?? [];
   const configuredSkillSet = new Set(configuredSkills);
@@ -1259,66 +1264,93 @@ export default function ChatRoom({
     setFileCaption('');
   };
 
-  // --- Voice recording ---
-  const toggleRecording = useCallback(async () => {
-    if (isRecording && mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      setRecordingSeconds(0);
-      if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
-      return;
+  // --- Voice-to-text (STT) ---
+  const startVoiceRecognition = useCallback(() => {
+    if (voiceSessionRef.current) return;
+    setVoiceListening(true);
+    setVoiceInterimText('');
+    setVoiceFinalText('');
+
+    const session = new SpeechRecognitionSession({
+      onResult: (text, isFinal) => {
+        if (isFinal) {
+          setVoiceFinalText((prev) => prev + text);
+          setVoiceInterimText('');
+        } else {
+          setVoiceInterimText(text);
+        }
+      },
+      onError: (err) => {
+        console.warn('[STT] error:', err);
+        setVoiceListening(false);
+        voiceSessionRef.current = null;
+      },
+      onEnd: () => {
+        setVoiceListening(false);
+        voiceSessionRef.current = null;
+      },
+    });
+    session.start();
+    voiceSessionRef.current = session;
+  }, []);
+
+  const stopVoiceRecognition = useCallback(() => {
+    if (voiceSessionRef.current) {
+      voiceSessionRef.current.stop();
+      voiceSessionRef.current = null;
     }
+    setVoiceListening(false);
+  }, []);
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      audioChunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = reader.result as string;
-          const userMsg: Message = {
-            id: Date.now().toString(),
-            sender: 'user',
-            text: '[Voice]',
-            mediaType: 'voice',
-            deliveryStatus: 'sent',
-          };
-          setMessages((prev) => [...prev, userMsg]);
-
-          try {
-            channel.sendMedia({
-              messageType: 'voice',
-              content: '',
-              mediaUrl: dataUrl,
-              mimeType: 'audio/webm',
-              agentId: agentId || undefined,
-            }, runtimeConnId);
-          } catch { /* ignore */ }
-        };
-        reader.readAsDataURL(blob);
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      setIsRecording(true);
-      setRecordingSeconds(0);
-      recordingTimerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { id: `err-${Date.now()}`, sender: 'ai', text: '⚠️ Microphone access denied.' },
-      ]);
+  const submitVoiceText = useCallback(() => {
+    const text = (voiceFinalText + voiceInterimText).trim();
+    stopVoiceRecognition();
+    if (text) {
+      setInputValue(text);
+      // Auto-send
+      setTimeout(() => {
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        const msg: Message = { id: Date.now().toString(), sender: 'user', text: trimmed, deliveryStatus: 'pending' };
+        setMessages((prev) => [...prev, msg]);
+        try {
+          if (replyingTo) {
+            channel.sendTextWithParent(trimmed, replyingTo.id, replyingTo.text?.slice(0, 200), agentId || undefined, runtimeConnId);
+          } else {
+            channel.sendText(trimmed, agentId || undefined, runtimeConnId);
+          }
+          setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, deliveryStatus: 'sent' as DeliveryStatus } : m));
+        } catch { /* ignore */ }
+        setInputValue('');
+        setReplyingTo(null);
+        setVoiceFinalText('');
+        setVoiceInterimText('');
+        setVoiceMode(false);  // Exit voice mode after sending
+        setIsThinking(true);
+      }, 50);
     }
-  }, [agentId, isRecording, runtimeConnId]);
+  }, [voiceFinalText, voiceInterimText, stopVoiceRecognition, agentId, runtimeConnId, replyingTo]);
+
+  // Handle voice button touch events for swipe-up-to-send
+  const handleVoiceTouchStart = useCallback((e: React.TouchEvent) => {
+    voiceTouchStartRef.current = { y: e.touches[0].clientY, time: Date.now() };
+    setVoiceSwipeY(0);
+  }, []);
+
+  const handleVoiceTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!voiceTouchStartRef.current) return;
+    const dy = voiceTouchStartRef.current.y - e.touches[0].clientY;
+    setVoiceSwipeY(Math.max(0, dy));
+  }, []);
+
+  const handleVoiceTouchEnd = useCallback(() => {
+    if (voiceSwipeY > 60) {
+      // Swipe up → submit
+      submitVoiceText();
+    }
+    setVoiceSwipeY(0);
+    voiceTouchStartRef.current = null;
+  }, [voiceSwipeY, submitVoiceText]);
 
   const handleCommandSelect = (cmd: string) => {
     // Commands that need additional arguments → fill input
@@ -2046,6 +2078,117 @@ export default function ChatRoom({
         </AnimatePresence>
 
         <div className="pressable-inset relative flex items-center gap-1 rounded-[24px] border border-slate-300/80 bg-white/96 p-1.5 dark:border-slate-700/80 dark:bg-card-alt/96">
+          {voiceMode ? (
+            <>
+              {/* Recognized text floating above bar */}
+              <AnimatePresence>
+                {(voiceFinalText || voiceInterimText) && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    className="absolute bottom-full left-0 right-0 z-20 mx-1 mb-2 rounded-2xl border border-border/60 bg-white/96 px-4 py-3 shadow-lg dark:border-border-dark/60 dark:bg-card-alt/96"
+                  >
+                    <p className="text-[14px] text-text dark:text-text-inv leading-relaxed">
+                      {voiceFinalText}
+                      {voiceInterimText && (
+                        <span className="text-text/40 dark:text-text-inv/40">{voiceInterimText}</span>
+                      )}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Keyboard toggle */}
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  const text = (voiceFinalText + voiceInterimText).trim();
+                  stopVoiceRecognition();
+                  if (text) setInputValue(prev => prev ? prev + ' ' + text : text);
+                  setVoiceFinalText('');
+                  setVoiceInterimText('');
+                  setVoiceMode(false);
+                }}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/[0.04] text-slate-600 transition-colors hover:bg-primary/10 hover:text-primary dark:bg-white/[0.06] dark:text-slate-300"
+                aria-label="Switch to keyboard"
+              >
+                <Keyboard size={20} />
+              </motion.button>
+
+              {/* Tap-to-speak button */}
+              <motion.button
+                className={`flex-1 h-11 rounded-full flex items-center justify-center gap-2 transition-all relative overflow-hidden ${
+                  voiceListening
+                    ? 'bg-primary/10 dark:bg-primary/20'
+                    : 'bg-slate-900/[0.04] dark:bg-white/[0.06]'
+                }`}
+                onClick={() => voiceListening ? stopVoiceRecognition() : startVoiceRecognition()}
+                onTouchStart={handleVoiceTouchStart}
+                onTouchMove={handleVoiceTouchMove}
+                onTouchEnd={handleVoiceTouchEnd}
+                aria-label={voiceListening ? 'Stop listening' : 'Start voice input'}
+              >
+                {voiceListening ? (
+                  <>
+                    <div className="flex items-center gap-[3px] h-5">
+                      {[0, 1, 2, 3, 4].map((i) => (
+                        <motion.div
+                          key={i}
+                          className="w-[3px] rounded-full bg-primary"
+                          initial={{ height: 8 }}
+                          animate={{ height: [8, 20, 12, 18, 8] }}
+                          transition={{
+                            duration: 0.8,
+                            repeat: Infinity,
+                            delay: i * 0.1,
+                            ease: 'easeInOut',
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[14px] text-primary font-medium">正在听...</span>
+                  </>
+                ) : (
+                  <>
+                    <Mic size={18} className="text-slate-500 dark:text-slate-400" />
+                    <span className="text-[14px] text-slate-500 dark:text-slate-400">点击说话</span>
+                  </>
+                )}
+                {/* Swipe-up overlay */}
+                <AnimatePresence>
+                  {voiceSwipeY > 20 && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: Math.min(voiceSwipeY / 60, 1) }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 flex items-center justify-center bg-primary/15 dark:bg-primary/25 rounded-full"
+                    >
+                      <span className="text-[13px] text-primary font-semibold">↑ 松开发送</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.button>
+
+              {/* Send button when text recognized */}
+              <AnimatePresence>
+                {(voiceFinalText || voiceInterimText) && (
+                  <motion.button
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.8, opacity: 0 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={submitVoiceText}
+                    className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-md shadow-primary/30"
+                    aria-label="Send voice text"
+                  >
+                    <Send size={18} />
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </>
+          ) : (
+            <>
           {/* Action menu toggle (+ button) */}
           <motion.button
             whileTap={{ scale: 0.9 }}
@@ -2169,7 +2312,7 @@ export default function ChatRoom({
             className="flex-1 bg-transparent border-none px-2 py-1.5 text-[14px] text-text placeholder:text-slate-400 focus:outline-none focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-primary dark:text-text-inv dark:placeholder:text-slate-500 disabled:text-slate-400 disabled:italic disabled:opacity-90"
           />
 
-          {/* Voice button when no text, Send button when has text */}
+          {/* Voice mode toggle when no text, Send button when has text */}
           {inputValue.trim() ? (
             <motion.button
               initial={{ scale: 0.8, opacity: 0 }}
@@ -2183,36 +2326,17 @@ export default function ChatRoom({
             >
               <Send size={18} />
             </motion.button>
-          ) : isRecording ? (
-            <div className="flex items-center gap-2">
-              <motion.div
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 'auto' }}
-                className="flex items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 dark:bg-red-900/20"
-              >
-                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                <span className="text-[13px] text-red-500 font-semibold tabular-nums min-w-[36px]">
-                  {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
-                </span>
-              </motion.div>
-              <motion.button
-                whileTap={{ scale: 0.85 }}
-                onClick={toggleRecording}
-                aria-label="Stop recording and send"
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/30"
-              >
-                <Send size={18} />
-              </motion.button>
-            </div>
           ) : (
             <motion.button
               whileTap={{ scale: 0.9 }}
-              onClick={toggleRecording}
-              aria-label="Start voice recording"
+              onClick={() => setVoiceMode(true)}
+              aria-label="Switch to voice input"
               className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/[0.05] text-slate-600 transition-colors hover:bg-primary/10 hover:text-primary dark:bg-white/[0.06] dark:text-slate-300"
             >
               <Mic size={18} />
             </motion.button>
+          )}
+            </>
           )}
         </div>
       </div>
