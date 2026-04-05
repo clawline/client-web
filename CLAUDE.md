@@ -135,12 +135,16 @@ Heavy screens (`ChatRoom`, `Dashboard`, `Profile`, `Search`, `Preferences`, `Pai
 - **localStorage keys**: Prefixed with `openclaw.` (e.g., `openclaw.darkMode`, `openclaw.connections`).
 - **IndexedDB databases**: `clawline-messages` (messages), `clawline-outbox` (offline queue).
 - **Comments**: Bilingual (English and Chinese) in some areas — this is intentional.
+- **Formatting**: 2-space indentation, single quotes, trailing commas.
+- **HTML sanitization**: All user/markdown content sanitized via `dompurify` before rendering.
 
-## Deployment
+## CI/CD & Deployment
 
-- **Vercel**: Primary deployment (`vercel.json` configured for SPA)
+- **GitHub Actions** (`.github/workflows/release.yml`): On push to `main`, builds Docker image, pushes to Azure Container Registry (`externalacr.azurecr.io`), and creates a GitHub Release tagged `v{VERSION}-{SHA_SHORT}`
+- **Vercel**: SPA deployment (`vercel.json` configured with rewrites)
 - **Docker**: Multi-stage build (Node 22 → nginx) available via `Dockerfile`
 - **Dev hosts**: `web.dev.dora.restry.cn`, `dev.dora.restry.cn` in Vite allowed hosts
+- **Additional docs**: `docs/deploy.md`, `docs/features.md`, `docs/customize.md` for detailed deployment/feature/branding guidance
 
 ## Gotchas
 
@@ -150,3 +154,4 @@ Heavy screens (`ChatRoom`, `Dashboard`, `Profile`, `Search`, `Preferences`, `Pai
 - WebSocket gateway default: `wss://gateway.clawlines.net/client`
 - Build produces `__APP_VERSION__` and `__BUILD_HASH__` global defines
 - The `miniprogram/` directory referenced in README does not exist in this repo (it's a separate WeChat mini-program project)
+- `.impeccable.md` at project root contains the design system documentation (brand personality, aesthetic direction)
