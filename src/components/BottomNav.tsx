@@ -7,14 +7,15 @@ import { cn } from '../lib/utils';
 interface BottomNavProps {
   currentScreen: Screen;
   onNavigate: (screen: Screen) => void;
+  unreadChats?: number;
 }
 
-export default function BottomNav({ currentScreen, onNavigate }: BottomNavProps) {
+export default function BottomNav({ currentScreen, onNavigate, unreadChats = 0 }: BottomNavProps) {
   const navItems = [
-    { id: 'chats', icon: MessageCircle, label: 'Chats' },
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Resources' },
-    { id: 'search', icon: Search, label: 'Search' },
-    { id: 'profile', icon: User, label: 'Profile' },
+    { id: 'chats', icon: MessageCircle, label: 'Chats', badge: unreadChats },
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Resources', badge: 0 },
+    { id: 'search', icon: Search, label: 'Search', badge: 0 },
+    { id: 'profile', icon: User, label: 'Profile', badge: 0 },
   ];
 
   return (
@@ -28,14 +29,21 @@ export default function BottomNav({ currentScreen, onNavigate }: BottomNavProps)
               key={item.id}
               whileTap={{ scale: 0.9 }}
               onClick={() => onNavigate(item.id as Screen)}
-              aria-label={item.label}
+              aria-label={item.badge > 0 ? `${item.label} (${item.badge} unread)` : item.label}
               aria-current={isActive ? 'page' : undefined}
               className={cn(
-                "p-2 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors relative min-w-[52px]",
+                "p-2 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors relative min-w-[52px] min-h-[44px]",
                 isActive ? 'text-primary drop-shadow-[0_1px_2px_rgba(239,90,35,0.3)]' : 'text-text/35 dark:text-text-inv/35 hover:text-text/55 dark:hover:text-text-inv/55'
               )}
             >
-              <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
+              <div className="relative">
+                <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
+                {item.badge > 0 && !isActive && (
+                  <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-primary text-white text-[9px] font-bold px-1 shadow-sm shadow-primary/30">
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                )}
+              </div>
               <span className={cn('text-[10px] leading-none', isActive ? 'font-semibold' : 'font-medium')}>
                 {item.label}
               </span>

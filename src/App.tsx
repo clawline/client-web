@@ -16,6 +16,7 @@ const MAX_SIDEBAR = 600;
 const DEFAULT_SIDEBAR = 288; // w-72
 const EMPTY_SPLIT_VALUE = '__empty__';
 import { getActiveConnectionId, getConnectionById, setActiveConnectionId } from './services/connectionStore';
+import { MESSAGE_PREVIEW_UPDATED_EVENT } from './components/chat/utils';
 import { useSwipeBack } from './hooks/useSwipeBack';
 import { usePWAUpdate } from './hooks/usePWAUpdate';
 import { useIOSPWA } from './hooks/useIOSPWA';
@@ -169,6 +170,29 @@ function AppShell() {
   const [splitAgentId, setSplitAgentId] = useState<string | null>(null);
   const [splitChatId, setSplitChatId] = useState<string | null>(null);
   const [splitConnectionId, setSplitConnectionId] = useState<string | null>(null);
+
+  // Unread message badge for BottomNav
+  const [unreadChats, setUnreadChats] = useState(0);
+  const currentScreenRef = useRef(currentScreen);
+  currentScreenRef.current = currentScreen;
+
+  useEffect(() => {
+    const handler = () => {
+      // Only count unread when user is NOT looking at chats or a chat room
+      if (currentScreenRef.current !== 'chats' && currentScreenRef.current !== 'chat_room') {
+        setUnreadChats(prev => prev + 1);
+      }
+    };
+    window.addEventListener(MESSAGE_PREVIEW_UPDATED_EVENT, handler);
+    return () => window.removeEventListener(MESSAGE_PREVIEW_UPDATED_EVENT, handler);
+  }, []);
+
+  // Clear unread when user navigates to chats
+  useEffect(() => {
+    if (currentScreen === 'chats' || currentScreen === 'chat_room') {
+      setUnreadChats(0);
+    }
+  }, [currentScreen]);
 
   // PWA update detection
   const { updateAvailable, applyUpdate, dismissUpdate } = usePWAUpdate();
@@ -562,7 +586,7 @@ function AppShell() {
         </AnimatePresence>
 
         {showBottomNav && (
-          <BottomNav currentScreen={currentScreen} onNavigate={navigate} />
+          <BottomNav currentScreen={currentScreen} onNavigate={navigate} unreadChats={unreadChats} />
         )}
         </div>
       </div>

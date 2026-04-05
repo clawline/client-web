@@ -278,7 +278,7 @@ class ChannelManager {
     });
     
     if (!res.ok) {
-      const statusText = res.status === 413 ? 'File too large (max 10MB)' : res.status === 401 ? 'Authentication failed' : res.status === 403 ? 'Access denied (CORS)' : `Upload failed (${res.status})`;
+      const statusText = res.status === 413 ? 'File too large (max 10 MB)' : res.status === 401 ? 'Authentication failed — please reconnect' : res.status === 403 ? 'Access denied — check server permissions' : `Upload failed (error ${res.status})`;
       throw new Error(statusText);
     }
     const data = await res.json();

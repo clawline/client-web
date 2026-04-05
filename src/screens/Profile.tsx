@@ -38,12 +38,20 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
     });
   }, [getIdTokenClaims]);
 
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
   const handleRemove = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (id === activeId) {
-      channel.close(true, id);
+    setPendingDeleteId(id);
+  };
+
+  const confirmRemove = () => {
+    if (!pendingDeleteId) return;
+    if (pendingDeleteId === activeId) {
+      channel.close(true, pendingDeleteId);
     }
-    removeConnection(id);
+    removeConnection(pendingDeleteId);
+    setPendingDeleteId(null);
     refresh();
   };
 
@@ -125,37 +133,37 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-[15px] truncate">{conn.displayName || conn.name}</p>
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
                     <motion.button
                       whileTap={{ scale: 0.8 }}
                       onClick={(e) => handleMove(e, conn.id, -1)}
-                      className="p-2 text-text/20 dark:text-text-inv/20 hover:text-text/60 dark:hover:text-text-inv/60 transition-colors"
+                      className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-text/20 dark:text-text-inv/20 hover:text-text/60 dark:hover:text-text-inv/60 transition-colors"
                       disabled={index === 0}
                     >
-                      <ChevronUp size={14} />
+                      <ChevronUp size={16} />
                     </motion.button>
                     <motion.button
                       whileTap={{ scale: 0.8 }}
                       onClick={(e) => handleMove(e, conn.id, 1)}
-                      className="p-2 text-text/20 dark:text-text-inv/20 hover:text-text/60 dark:hover:text-text-inv/60 transition-colors"
+                      className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-text/20 dark:text-text-inv/20 hover:text-text/60 dark:hover:text-text-inv/60 transition-colors"
                       disabled={index === connections.length - 1}
                     >
-                      <ChevronDown size={14} />
+                      <ChevronDown size={16} />
                     </motion.button>
                   </div>
                   <motion.button
                     whileTap={{ scale: 0.8 }}
                     onClick={(e) => openEdit(e, conn)}
-                    className="p-2 text-text/20 dark:text-text-inv/20 hover:text-info transition-colors flex-shrink-0"
+                    className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-text/20 dark:text-text-inv/20 hover:text-info transition-colors flex-shrink-0"
                   >
-                    <Pencil size={14} />
+                    <Pencil size={16} />
                   </motion.button>
                   <motion.button
                     whileTap={{ scale: 0.8 }}
                     onClick={(e) => handleRemove(e, conn.id)}
-                    className="p-2 text-text/20 dark:text-text-inv/20 hover:text-red-400 transition-colors flex-shrink-0"
+                    className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-text/20 dark:text-text-inv/20 hover:text-red-400 transition-colors flex-shrink-0"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={16} />
                   </motion.button>
                 </div>
               ))}
@@ -264,6 +272,35 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
                 </>
               )}
               <Button className="w-full" onClick={saveEdit}>Save Changes</Button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete confirmation dialog */}
+      <AnimatePresence>
+        {pendingDeleteId && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm px-6"
+            onClick={() => setPendingDeleteId(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+              className="w-full max-w-sm rounded-2xl bg-white dark:bg-card-alt p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-[17px] font-semibold text-text dark:text-text-inv mb-2">Remove Server</h3>
+              <p className="text-[14px] text-text/60 dark:text-text-inv/50 mb-5">
+                This will disconnect and remove <span className="font-medium text-text dark:text-text-inv">{connections.find(c => c.id === pendingDeleteId)?.displayName || 'this server'}</span>. Chat history will be preserved locally.
+              </p>
+              <div className="flex gap-3">
+                <Button variant="outline" className="flex-1" onClick={() => setPendingDeleteId(null)}>Cancel</Button>
+                <Button className="flex-1 bg-red-500 hover:bg-red-600 text-white" onClick={confirmRemove}>Remove</Button>
+              </div>
             </motion.div>
           </motion.div>
         )}
