@@ -62,16 +62,21 @@ function openDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
+export const OUTBOX_OVERFLOW_EVENT = 'openclaw:outbox-overflow';
+
 export async function enqueue(entry: OutboxEntry): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
 
-    // Nit: enforce soft cap — evict oldest if over limit
     const countReq = store.count();
     countReq.onsuccess = () => {
       if (countReq.result >= MAX_PENDING) {
+        // Warn user that oldest message was dropped
+        window.dispatchEvent(new CustomEvent(OUTBOX_OVERFLOW_EVENT, {
+          detail: { dropped: 1, total: countReq.result },
+        }));
         // Delete oldest entry by cursor
         const cursor = store.openCursor();
         cursor.onsuccess = () => {

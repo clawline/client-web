@@ -186,14 +186,18 @@ function AppShell() {
 
   // Unread message badge for BottomNav
   const [unreadChats, setUnreadChats] = useState(0);
+  const unreadAgentsRef = useRef(new Set<string>());
   const currentScreenRef = useRef(currentScreen);
   currentScreenRef.current = currentScreen;
 
   useEffect(() => {
-    const handler = () => {
-      // Only count unread when user is NOT looking at chats or a chat room
+    const handler = (e: Event) => {
       if (currentScreenRef.current !== 'chats' && currentScreenRef.current !== 'chat_room') {
-        setUnreadChats(prev => prev + 1);
+        const detail = (e as CustomEvent).detail;
+        if (detail?.connectionId && detail?.agentId) {
+          unreadAgentsRef.current.add(`${detail.connectionId}:${detail.agentId}`);
+          setUnreadChats(unreadAgentsRef.current.size);
+        }
       }
     };
     window.addEventListener(MESSAGE_PREVIEW_UPDATED_EVENT, handler);
@@ -203,6 +207,7 @@ function AppShell() {
   // Clear unread when user navigates to chats
   useEffect(() => {
     if (currentScreen === 'chats' || currentScreen === 'chat_room') {
+      unreadAgentsRef.current.clear();
       setUnreadChats(0);
     }
   }, [currentScreen]);
