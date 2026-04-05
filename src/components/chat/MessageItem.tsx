@@ -6,6 +6,7 @@ import { DeliveryTicks } from './DeliveryTicks';
 import { formatTime, formatDate, isDifferentDay, isGroupedWithPrev } from './utils';
 import MarkdownRenderer from '../MarkdownRenderer';
 import ActionCard from '../ActionCard';
+import SlashResponseCard, { parseSlashResponse } from './SlashResponseCard';
 
 interface MessageItemProps {
   msg: Message;
@@ -166,7 +167,11 @@ function MessageItemInner({
               </div>
             ) : (
               <div>
-                <MarkdownRenderer content={msg.text} />
+                {!isUser && !isStreaming && parseSlashResponse(msg.text) ? (
+                  <SlashResponseCard text={msg.text} />
+                ) : (
+                  <MarkdownRenderer content={msg.text} />
+                )}
                 {isStreaming && (
                   <span className="inline-flex items-center gap-1.5 align-middle ml-0.5">
                     <span className="inline-block w-2 h-4 bg-primary animate-pulse" />
