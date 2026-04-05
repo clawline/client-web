@@ -134,7 +134,7 @@ export default function ChatRoom({
   const [toolCallHistory, setToolCallHistory] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number; endTime: number; resultSummary?: string }[]>([]);
   const [toolHistoryExpanded, setToolHistoryExpanded] = useState(false);
   const retryingRef = useRef<Set<string>>(new Set()); // B1: prevent double-tap retry
-  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(() => localStorage.getItem('clawline:voiceMode') === 'true');
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceInterimText, setVoiceInterimText] = useState('');
   const [voiceFinalText, setVoiceFinalText] = useState('');
@@ -2108,6 +2108,7 @@ export default function ChatRoom({
                   if (text) setInputValue(prev => prev ? prev + ' ' + text : text);
                   setVoiceFinalText('');
                   setVoiceInterimText('');
+                  localStorage.setItem('clawline:voiceMode', 'false');
                   setVoiceMode(false);
                 }}
                 className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/[0.04] text-slate-600 transition-colors hover:bg-primary/10 hover:text-primary dark:bg-white/[0.06] dark:text-slate-300"
@@ -2329,7 +2330,7 @@ export default function ChatRoom({
           ) : (
             <motion.button
               whileTap={{ scale: 0.9 }}
-              onClick={() => setVoiceMode(true)}
+              onClick={() => { localStorage.setItem('clawline:voiceMode', 'true'); setVoiceMode(true); }}
               aria-label="Switch to voice input"
               className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/[0.05] text-slate-600 transition-colors hover:bg-primary/10 hover:text-primary dark:bg-white/[0.06] dark:text-slate-300"
             >
