@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronDown, ChevronRight, Columns2, MoreHorizontal, Smile, Mic, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, RefreshCw, Copy, Check, Shield, Keyboard } from 'lucide-react';
+import { ChevronDown, ChevronRight, Smile, Mic, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, Copy, Check, Shield, Keyboard } from 'lucide-react';
 import { SpeechRecognitionSession } from '../services/volcASR';
 import { cn } from '../lib/utils';
 import * as channel from '../services/clawChannel';
@@ -24,7 +24,8 @@ import {
   getConnectionDisplayName, getSkillDescription,
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
-import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner } from '../components/chat';
+import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, FloatingNavButtons, AgentHeaderCard, AgentDetailSheet } from '../components/chat';
+import { useScrollVisibility } from '../hooks/useScrollVisibility';
 
 function getAgentInfo(agentId: string | null | undefined, connectionId: string): AgentInfo | null {
   const list = channel.loadCachedAgents(connectionId);
@@ -146,6 +147,7 @@ export default function ChatRoom({
   const [peerTyping, setPeerTyping] = useState(false);
   const [editingMsg, setEditingMsg] = useState<Message | null>(null);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [showAgentDetail, setShowAgentDetail] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showFileGallery, setShowFileGallery] = useState(false);
   const [showContextViewer, setShowContextViewer] = useState(false);
@@ -194,6 +196,7 @@ export default function ChatRoom({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { opacity: navOpacity, transitionMs: navTransitionMs, onScroll: onNavScroll, onContainerClick: onNavContainerClick } = useScrollVisibility(scrollContainerRef);
 
   const skills = agentInfo?.skills ?? [];
   const configuredSkills = agentInfo?.configuredSkills ?? [];
@@ -1503,77 +1506,19 @@ export default function ChatRoom({
   return (
     <div className="relative flex h-full flex-col bg-white dark:bg-[#11161d]">
       {/* Header */}
-      <div className="sticky top-0 z-20 flex min-h-[56px] items-center justify-between bg-white/92 px-4 py-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.4)] backdrop-blur-[20px] dark:bg-card-alt/92 dark:shadow-[0_16px_32px_-24px_rgba(2,6,23,0.8)]">
-        {!isDesktop && (
-          <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="ml-[-4px] rounded-xl bg-slate-900/[0.04] p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-text shadow-sm transition-colors hover:bg-slate-900/[0.07] dark:bg-white/[0.06] dark:text-text-inv dark:hover:bg-white/[0.1]" aria-label="Go back">
-            <ChevronLeft size={28} />
-          </motion.button>
-        )}
-        <div className={`flex flex-col ${isDesktop ? 'items-start ml-2' : 'items-center'}`}>
-          <h2 className="max-w-[200px] truncate text-[17px] font-semibold leading-tight text-text dark:text-text-inv md:max-w-none">
-            {agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}
-          </h2>
-          <div className="mt-1 flex max-w-[220px] flex-wrap items-center gap-1.5 md:max-w-none">
-            <span className="inline-flex items-center rounded-full border border-slate-300/75 bg-slate-900/[0.035] px-2.5 py-1 text-[10px] font-medium text-slate-600 shadow-sm dark:border-slate-700/75 dark:bg-white/[0.06] dark:text-slate-300">
-              {getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}
-            </span>
-            {agentInfo?.model && (
-              <span className="inline-flex items-center rounded-full border border-slate-300/75 bg-slate-900/[0.035] px-2.5 py-1 text-[10px] font-medium text-slate-600 shadow-sm dark:border-slate-700/75 dark:bg-white/[0.06] dark:text-slate-300">
-                {agentInfo.model.split('/').pop()}
-              </span>
-            )}
-            {wsStatus === 'connected' && (
-              <span className={cn(
-                'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold shadow-sm',
-                agentPresence?.status === 'offline'
-                  ? 'border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-300'
-                  : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-              )}>
-                <span className={cn('inline-block h-1.5 w-1.5 rounded-full', agentPresence?.status === 'offline' ? 'bg-rose-500' : 'bg-emerald-500 status-breathe')} />
-                {agentPresence?.status === 'offline' ? formatLastSeen(agentPresence.lastSeen) || 'offline' : 'online'}
-              </span>
-            )}
-            {(wsStatus === 'connecting' || wsStatus === 'reconnecting') && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/12 px-2.5 py-1 text-[10px] font-semibold text-amber-600 shadow-sm dark:text-amber-300">
-                <Loader2 size={10} className="animate-spin" />
-                {wsStatus === 'connecting' ? 'connecting' : 'reconnecting'}
-              </span>
-            )}
-            {wsStatus === 'disconnected' && (
-              <button onClick={() => channel.reconnect(runtimeConnId)} className="inline-flex items-center gap-1 rounded-full border border-rose-500/20 bg-rose-500/10 px-2.5 py-1 text-[10px] font-semibold text-rose-600 shadow-sm transition-colors hover:bg-rose-500/15 dark:text-rose-300" aria-label="Tap to reconnect">
-                <RefreshCw size={10} />
-                reconnect
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          {!isSplitPane && showSplitButton && agentId && onToggleSplit && (
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              onClick={onToggleSplit}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[12px] font-medium shadow-sm transition-colors',
-                splitActive
-                  ? 'border-primary/30 bg-primary/10 text-primary'
-                  : 'border-slate-300/75 bg-slate-900/[0.035] text-slate-600 hover:border-primary/25 hover:bg-white hover:text-text dark:border-slate-700/75 dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'
-              )}
-              aria-label="Toggle split view"
-            >
-              <Columns2 size={15} />
-              <span>Split</span>
-            </motion.button>
-          )}
-          {isSplitPane && onCloseSplit && (
-            <motion.button whileTap={{ scale: 0.9 }} onClick={onCloseSplit} className="rounded-xl bg-slate-900/[0.04] p-2.5 text-slate-600 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv" aria-label="Close split view">
-              <X size={20} />
-            </motion.button>
-          )}
-          <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="mr-[-8px] rounded-xl bg-slate-900/[0.04] p-2.5 text-slate-600 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv" aria-label="More options">
-            <MoreHorizontal size={24} />
-          </motion.button>
-        </div>
-      </div>
+      {/* Floating nav buttons — overlaid above message list */}
+      <FloatingNavButtons
+        opacity={navOpacity}
+        transitionMs={navTransitionMs}
+        isDesktop={isDesktop}
+        isSplitPane={isSplitPane}
+        splitActive={splitActive}
+        showSplitButton={Boolean(showSplitButton && agentId && onToggleSplit)}
+        onBack={onBack}
+        onMenuOpen={() => setShowHeaderMenu(true)}
+        onToggleSplit={onToggleSplit}
+        onCloseSplit={onCloseSplit}
+      />
 
       {/* Header context menu */}
       <HeaderMenu
@@ -1587,6 +1532,7 @@ export default function ChatRoom({
         onSendCommand={handleHeaderCommand}
         thinkLevel={thinkLevel}
         onOpenMemory={() => { setShowHeaderMenu(false); setShowMemory(true); }}
+        onOpenAgentDetail={() => { setShowHeaderMenu(false); setShowAgentDetail(true); }}
         onClearChat={() => {
           setMessages([]);
           setHasLoadedMessages(true);
@@ -1670,7 +1616,23 @@ export default function ChatRoom({
       </AnimatePresence>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-white px-4 py-6 pb-4 overscroll-contain dark:bg-[#11161d]" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div
+        ref={scrollContainerRef}
+        className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-white px-4 py-6 pb-4 overscroll-contain dark:bg-[#11161d]"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+        onScroll={onNavScroll}
+        onClick={onNavContainerClick}
+      >
+        {/* Agent header card — top of message stream */}
+        <AgentHeaderCard
+          agentInfo={agentInfo}
+          agentId={agentId}
+          connectionName={getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}
+          wsStatus={wsStatus as 'connected' | 'connecting' | 'reconnecting' | 'disconnected'}
+          presence={agentPresence}
+          onAvatarClick={() => setShowAgentDetail(true)}
+          onReconnect={() => channel.reconnect(runtimeConnId)}
+        />
         {/* Load more indicator */}
         {loadingMoreHistory && (
           <div className="flex justify-center py-3">
@@ -2363,6 +2325,17 @@ export default function ChatRoom({
           />
         )}
       </AnimatePresence>
+
+      {/* Agent detail sheet */}
+      <AgentDetailSheet
+        isOpen={showAgentDetail}
+        onClose={() => setShowAgentDetail(false)}
+        agentInfo={agentInfo}
+        agentId={agentId}
+        connectionName={getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}
+        wsStatus={wsStatus as 'connected' | 'connecting' | 'reconnecting' | 'disconnected'}
+        presence={agentPresence}
+      />
     </div>
   );
 }

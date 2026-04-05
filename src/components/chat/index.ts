@@ -29,3 +29,6 @@ export { SuggestionBar } from './SuggestionBar';
 export { HistoryDrawer, type ConversationItem } from './HistoryDrawer';
 export { HeaderMenu } from './HeaderMenu';
 export { ConnectionBanner } from './ConnectionBanner';
+export { FloatingNavButtons } from './FloatingNavButtons';
+export { AgentHeaderCard } from './AgentHeaderCard';
+export { AgentDetailSheet } from './AgentDetailSheet';
