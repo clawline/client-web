@@ -137,7 +137,7 @@ function buildLoadingMap(connections: ServerConnection[]) {
 export default function ChatList({
   onOpenChat, onOpenSplitChat, onAddServer, compact,
   activeAgentId, activeConnectionId, splitEnabled, splitAwaitingAgent,
-  splitActiveAgentId, splitActiveConnectionId,
+  splitPanes,
 }: {
   onOpenChat: (connectionId: string, agentId: string, chatId?: string) => void;
   onOpenSplitChat?: (connectionId: string, agentId: string, chatId?: string) => void;
@@ -147,8 +147,7 @@ export default function ChatList({
   activeConnectionId?: string | null;
   splitEnabled?: boolean;
   splitAwaitingAgent?: boolean;
-  splitActiveAgentId?: string | null;
-  splitActiveConnectionId?: string | null;
+  splitPanes?: { connectionId: string; agentId: string; chatId: string | null }[];
 }) {
   // ── State ──
   const [connections, setConnections] = useState<ServerConnection[]>(() => getConnections());
@@ -441,7 +440,8 @@ export default function ChatList({
     const status = statusMap[connection.id] || 'disconnected';
     if (attemptedMap[connection.id] && status === 'disconnected') return;
     const isCurrentlyActive = activeConnectionId === connection.id && activeAgentId === agent.id;
-    const target: PendingOpen['target'] = (splitAwaitingAgent && !isCurrentlyActive && onOpenSplitChat)
+    const isAlreadyInSplit = (splitPanes ?? []).some((p) => p.connectionId === connection.id && p.agentId === agent.id);
+    const target: PendingOpen['target'] = (splitAwaitingAgent && !isCurrentlyActive && !isAlreadyInSplit && onOpenSplitChat)
       ? 'split'
       : (shiftKey && splitEnabled && onOpenSplitChat ? 'split' : 'primary');
 
@@ -530,7 +530,7 @@ export default function ChatList({
     const status = statusMap[connection.id] || 'disconnected';
     const isDisabled = attemptedMap[connection.id] && status === 'disconnected';
     const isActive = activeConnectionId === connection.id && activeAgentId === agent.id;
-    const isSplitActive = splitActiveConnectionId === connection.id && splitActiveAgentId === agent.id;
+    const isSplitActive = (splitPanes ?? []).some((p) => p.connectionId === connection.id && p.agentId === agent.id);
     const previewKey = getPreviewStateKey(connection.id, agent.id);
     const lastMessage = Object.prototype.hasOwnProperty.call(previewMap, previewKey) ? previewMap[previewKey] : getStoredPreview(agent.id, connection.id);
     const preview = lastMessage?.text ? (lastMessage.text.length > 50 ? `${lastMessage.text.slice(0, 50)}…` : lastMessage.text) : null;
@@ -624,7 +624,7 @@ export default function ChatList({
     const status = statusMap[connection.id] || 'disconnected';
     const isDisabled = attemptedMap[connection.id] && status === 'disconnected';
     const isActive = activeConnectionId === connection.id && activeAgentId === agent.id;
-    const isSplitActive = splitActiveConnectionId === connection.id && splitActiveAgentId === agent.id;
+    const isSplitActive = (splitPanes ?? []).some((p) => p.connectionId === connection.id && p.agentId === agent.id);
     const previewKey = getPreviewStateKey(connection.id, agent.id);
     const lastMessage = Object.prototype.hasOwnProperty.call(previewMap, previewKey) ? previewMap[previewKey] : getStoredPreview(agent.id, connection.id);
     const isTyping = typingAgents.has(previewKey);

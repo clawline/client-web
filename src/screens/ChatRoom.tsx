@@ -1204,6 +1204,9 @@ export default function ChatRoom({
 
   useEffect(() => {
     if (wsStatus !== 'connected' || !connId || !agentId || !agentReady) return;
+    // Only auto-send /status if no communication in this chat for 1 hour
+    const lastMsgTime = messages.length > 0 ? Math.max(...messages.map((m) => m.timestamp || 0)) : 0;
+    if (lastMsgTime && Date.now() - lastMsgTime < 3600_000) return;
     const key = `clawline.lastAutoStatus.${connId}:${agentId}`;
     try {
       const last = parseInt(localStorage.getItem(key) || '0', 10);
@@ -1216,7 +1219,7 @@ export default function ChatRoom({
       quickSend('/status', { clearInput: false });
     }, 500);
     return () => clearTimeout(timer);
-  }, [agentId, agentReady, connId, quickSend, wsStatus]);
+  }, [agentId, agentReady, connId, messages, quickSend, wsStatus]);
 
   // --- Image sending — now stages for preview ---
   const handleImagePick = () => fileInputRef.current?.click();
