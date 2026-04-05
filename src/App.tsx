@@ -491,6 +491,7 @@ function AppShell() {
               activeAgentId={activeAgentId}
               activeConnectionId={activeConnectionId}
               splitEnabled={isSplitViewport && currentScreen === 'chat_room'}
+              splitAwaitingAgent={splitOpen && !splitHasAgent}
               splitActiveAgentId={splitAgentId}
               splitActiveConnectionId={splitConnectionId}
             />

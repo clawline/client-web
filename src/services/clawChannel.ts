@@ -48,6 +48,8 @@ export type AgentInfo = {
   configuredSkills?: string[];
   /** Skills from npm-bundled locations (openclaw built-in) */
   builtinSkills?: string[];
+  globalSkills?: string[];
+  workspaceSkills?: string[];
   status?: 'online' | 'idle' | 'busy';
 };
 

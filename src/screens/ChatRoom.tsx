@@ -68,6 +68,8 @@ const slashCommands = [
   { id: 'activation', icon: Zap, label: '/activation', desc: 'Activation mode (mention/always)', section: SECTION_ADVANCED },
 ];
 
+type ThinkLevel = 'off' | 'low' | 'medium' | 'high';
+
 export default function ChatRoom({
   agentId,
   chatId,
@@ -113,6 +115,7 @@ export default function ChatRoom({
   const [isContextLoading, setIsContextLoading] = useState(false);
   const [hasLoadedMessages, setHasLoadedMessages] = useState(false);
   const [inputValue, setInputValue] = useState('');
+  const [thinkLevel, setThinkLevel] = useState<ThinkLevel>('off');
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [showBuiltinSkills, setShowBuiltinSkills] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -191,6 +194,7 @@ export default function ChatRoom({
   const configuredSkills = agentInfo?.configuredSkills ?? [];
   const configuredSkillSet = new Set(configuredSkills);
   const builtinSkillSet = new Set(agentInfo?.builtinSkills ?? []);
+  const draftKey = connId && agentId ? `draft:${connId}:${agentId}` : null;
 
   // B1: Retry pending message — dequeue first, send, re-enqueue on failure
   const retryMessage = async (msg: Message) => {
@@ -237,6 +241,10 @@ export default function ChatRoom({
   useEffect(() => {
     // no-op: skills panel removed, skills now in slash menu
   }, [skillCount]);
+
+  useEffect(() => {
+    setThinkLevel('off');
+  }, [agentId, connId]);
 
   useEffect(() => {
     return channel.onAgentContextChange((contextConnectionId, contextAgentId, nextContext) => {
@@ -325,8 +333,22 @@ export default function ChatRoom({
     };
   }, [agentId, chatId, connId]);
 
+  useEffect(() => {
+    if (!draftKey) {
+      setInputValue('');
+      return;
+    }
+
+    try {
+      setInputValue(localStorage.getItem(draftKey) || '');
+    } catch {
+      setInputValue('');
+    }
+  }, [draftKey]);
+
   // Persist messages on change (debounced to avoid thrashing IndexedDB)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!connId || !agentId || !hasLoadedMessages) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -340,6 +362,23 @@ export default function ChatRoom({
     }, 500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [hasLoadedMessages, messages, agentId, connId, chatId]);
+
+  useEffect(() => {
+    if (!draftKey) return;
+    if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = setTimeout(() => {
+      try {
+        if (inputValue) localStorage.setItem(draftKey, inputValue);
+        else localStorage.removeItem(draftKey);
+      } catch {
+        // ignore storage write errors
+      }
+    }, 300);
+
+    return () => {
+      if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    };
+  }, [draftKey, inputValue]);
 
   useEffect(() => {
     if (!connId || !agentId) {
@@ -986,6 +1025,7 @@ export default function ChatRoom({
   const [fileCaption, setFileCaption] = useState('');
 
   const handleFilePick = () => fileInputRef2.current?.click();
+
   const handleFileSelected2 = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1051,47 +1091,34 @@ export default function ChatRoom({
     setFileCaption('');
   };
 
-  const handleSend = () => {
-    if (editingMsg) { handleSaveEdit(); return; }
-    if (!inputValue.trim()) return;
-    if (!agentReady) return; // Bug 1: Prevent sending before agent is ready
-    if (inputValue.trim() === '/memory') {
-      setShowMemory(true);
-      setInputValue('');
-      setShowSlashMenu(false);
-      return;
-    }
-    const replyId = replyingTo?.id;
-    const replyQuotedText = replyingTo?.text;
-    const capturedInput = inputValue;
-    setInputValue('');
-    setShowSlashMenu(false);
-    setReplyingTo(null);
+  const sendTextMessage = useCallback((
+    text: string,
+    options?: { replyId?: string; replyQuotedText?: string },
+  ) => {
+    if (!agentReady) return false;
 
     try {
-      // Send first to get the stable messageId, then use it for the local message
-      const payload = replyId
-        ? channel.sendTextWithParent(capturedInput, replyId, replyQuotedText, agentId || undefined, runtimeConnId)
-        : channel.sendText(capturedInput, agentId || undefined, runtimeConnId);
+      const payload = options?.replyId
+        ? channel.sendTextWithParent(text, options.replyId, options.replyQuotedText, agentId || undefined, runtimeConnId)
+        : channel.sendText(text, agentId || undefined, runtimeConnId);
       const userMsg: Message = {
         id: payload.messageId || Date.now().toString(),
         sender: 'user',
-        text: capturedInput,
-        replyTo: replyId,
-        quotedText: replyQuotedText,
+        text,
+        replyTo: options?.replyId,
+        quotedText: options?.replyQuotedText,
         timestamp: payload.timestamp || Date.now(),
         deliveryStatus: 'sent',
       };
       setMessages((prev) => [...prev, userMsg]);
     } catch {
-      // Offline: queue message in outbox with 'pending' status
       const msgId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const userMsg: Message = {
         id: msgId,
         sender: 'user',
-        text: capturedInput,
-        replyTo: replyId,
-        quotedText: replyQuotedText,
+        text,
+        replyTo: options?.replyId,
+        quotedText: options?.replyQuotedText,
         timestamp: Date.now(),
         deliveryStatus: 'pending',
       };
@@ -1100,14 +1127,46 @@ export default function ChatRoom({
         id: msgId,
         connectionId: runtimeConnId,
         agentId: agentId || '',
-        content: capturedInput,
+        content: text,
         type: 'text',
-        replyTo: replyId,
-        quotedText: replyQuotedText,
+        replyTo: options?.replyId,
+        quotedText: options?.replyQuotedText,
         timestamp: Date.now(),
       }).catch(() => { /* ignore outbox write failure */ });
     }
+
+    return true;
+  }, [agentId, agentReady, runtimeConnId]);
+
+  const handleSend = () => {
+    if (editingMsg) { handleSaveEdit(); return; }
+    const trimmedInput = inputValue.trim();
+    if (!trimmedInput) return;
+    if (!agentReady) return; // Bug 1: Prevent sending before agent is ready
+    if (trimmedInput === '/memory') {
+      setShowMemory(true);
+      setInputValue('');
+      setShowSlashMenu(false);
+      if (draftKey) localStorage.removeItem(draftKey);
+      return;
+    }
+    const replyId = replyingTo?.id;
+    const replyQuotedText = replyingTo?.text;
+    const capturedInput = inputValue;
+    setInputValue('');
+    setShowSlashMenu(false);
+    setReplyingTo(null);
+    if (draftKey) localStorage.removeItem(draftKey);
+    sendTextMessage(capturedInput, { replyId, replyQuotedText });
   };
+
+  const handleHeaderCommand = useCallback((cmd: string) => {
+    const match = cmd.match(/^\/think\s+(off|low|medium|high)$/i);
+    if (match) {
+      setThinkLevel(match[1].toLowerCase() as ThinkLevel);
+    }
+    sendTextMessage(cmd);
+  }, [sendTextMessage]);
 
   const quickSend = useCallback((text: string, options?: { clearInput?: boolean }) => {
     const clearInput = options?.clearInput ?? true;
@@ -1118,24 +1177,17 @@ export default function ChatRoom({
       setShowSlashMenu(false);
       if (clearInput) {
         setInputValue('');
+        if (draftKey) localStorage.removeItem(draftKey);
       }
       return;
     }
-    if (!agentReady) return;
-    try {
-      const payload = channel.sendText(trimmed, agentId || undefined, runtimeConnId);
-      const userMsg: Message = { id: payload.messageId || Date.now().toString(), sender: 'user', text: trimmed, timestamp: payload.timestamp || Date.now(), deliveryStatus: 'sent' };
-      setMessages((prev) => [...prev, userMsg]);
-    } catch {
-      const msgId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setMessages((prev) => [...prev, { id: msgId, sender: 'user', text: trimmed, timestamp: Date.now(), deliveryStatus: 'pending' as DeliveryStatus }]);
-      outbox.enqueue({ id: msgId, connectionId: runtimeConnId, agentId: agentId || '', content: trimmed, type: 'text', timestamp: Date.now() }).catch(() => {});
-    }
+    sendTextMessage(trimmed);
     setShowSlashMenu(false);
     if (clearInput) {
       setInputValue('');
+      if (draftKey) localStorage.removeItem(draftKey);
     }
-  }, [agentId, agentReady, runtimeConnId]);
+  }, [draftKey, sendTextMessage]);
 
   useEffect(() => {
     if (wsStatus !== 'connected' || !connId || !agentId || !agentReady) return;
@@ -1366,8 +1418,8 @@ export default function ChatRoom({
     }
     return `/use ${skillName}`.startsWith(inputValue);
   };
-  const workspaceSkills = [...new Set(configuredSkills.filter((skillName) => !builtinSkillSet.has(skillName)))];
-  const globalSkills = [...new Set(skills.filter((skillName) => !configuredSkillSet.has(skillName) && !builtinSkillSet.has(skillName)))];
+  const workspaceSkills = [...new Set(agentInfo?.workspaceSkills ?? configuredSkills.filter((skillName) => !builtinSkillSet.has(skillName)))];
+  const globalSkills = [...new Set(agentInfo?.globalSkills ?? skills.filter((skillName) => !configuredSkillSet.has(skillName) && !builtinSkillSet.has(skillName)))];
   const builtinSkills = [...new Set(skills.filter((skillName) => builtinSkillSet.has(skillName)))];
   const filteredWorkspaceSkills = slashSkillMenuActive ? workspaceSkills.filter(filterSlashSkill) : [];
   const filteredGlobalSkills = slashSkillMenuActive ? globalSkills.filter(filterSlashSkill) : [];
@@ -1455,6 +1507,11 @@ export default function ChatRoom({
         onClose={() => setShowHeaderMenu(false)}
         onOpenHistory={openHistoryDrawer}
         onOpenFiles={openFileGallery}
+        showSplitOption={Boolean(!isSplitPane && showSplitButton && agentId && onToggleSplit)}
+        splitActive={splitActive}
+        onToggleSplit={onToggleSplit}
+        onSendCommand={handleHeaderCommand}
+        thinkLevel={thinkLevel}
         onOpenMemory={() => { setShowHeaderMenu(false); setShowMemory(true); }}
         onClearChat={() => {
           setMessages([]);

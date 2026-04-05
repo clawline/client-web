@@ -136,7 +136,7 @@ function buildLoadingMap(connections: ServerConnection[]) {
 
 export default function ChatList({
   onOpenChat, onOpenSplitChat, onAddServer, compact,
-  activeAgentId, activeConnectionId, splitEnabled,
+  activeAgentId, activeConnectionId, splitEnabled, splitAwaitingAgent,
   splitActiveAgentId, splitActiveConnectionId,
 }: {
   onOpenChat: (connectionId: string, agentId: string, chatId?: string) => void;
@@ -146,6 +146,7 @@ export default function ChatList({
   activeAgentId?: string | null;
   activeConnectionId?: string | null;
   splitEnabled?: boolean;
+  splitAwaitingAgent?: boolean;
   splitActiveAgentId?: string | null;
   splitActiveConnectionId?: string | null;
 }) {
@@ -439,7 +440,10 @@ export default function ChatList({
     if (reorderMode) return; // safety guard — shouldn't happen since button is disabled
     const status = statusMap[connection.id] || 'disconnected';
     if (attemptedMap[connection.id] && status === 'disconnected') return;
-    const target: PendingOpen['target'] = shiftKey && splitEnabled && onOpenSplitChat ? 'split' : 'primary';
+    const isCurrentlyActive = activeConnectionId === connection.id && activeAgentId === agent.id;
+    const target: PendingOpen['target'] = (splitAwaitingAgent && !isCurrentlyActive && onOpenSplitChat)
+      ? 'split'
+      : (shiftKey && splitEnabled && onOpenSplitChat ? 'split' : 'primary');
 
     if (status === 'connected') {
       // Already connected: just switch agent + navigate immediately

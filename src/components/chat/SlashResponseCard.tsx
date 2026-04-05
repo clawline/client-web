@@ -116,25 +116,26 @@ export default function SlashResponseCard({ text }: Props) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="rounded-2xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark overflow-hidden"
+      className="overflow-hidden rounded-xl border border-border bg-primary/10 dark:border-border-dark dark:bg-primary/10"
     >
       {parsed.title && (
-        <div className="px-3.5 pt-3 pb-1.5 text-[13px] font-semibold text-text dark:text-text-inv">
-          {parsed.title}
+        <div className="flex items-center gap-2 px-3.5 pt-3 pb-1.5 text-[13px] font-semibold text-text dark:text-text-inv">
+          <span className="h-4 w-0.5 rounded-full bg-primary" />
+          <span>{parsed.title}</span>
         </div>
       )}
       <div className="divide-y divide-border/30 dark:divide-border-dark/30">
         {parsed.rows.map((row, i) => (
           <div
             key={i}
-            className={`flex items-start gap-2.5 px-3.5 py-2 ${!parsed.title && i === 0 ? 'pt-3' : ''} ${i === parsed.rows.length - 1 ? 'pb-3' : ''}`}
+            className={`flex items-start gap-2.5 px-3.5 py-1.5 ${!parsed.title && i === 0 ? 'pt-3' : ''} ${i === parsed.rows.length - 1 ? 'pb-3' : ''}`}
           >
-            <span className="text-[15px] mt-0.5 shrink-0 w-5 text-center">{row.emoji}</span>
+            <span className="mt-0.5 w-5 shrink-0 text-center text-[14px]">{row.emoji}</span>
             <div className="min-w-0 flex-1">
-              <span className="text-[11px] font-medium text-text/40 dark:text-text-inv/35 uppercase tracking-wider">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-text/40 dark:text-text-inv/35">
                 {row.label}
               </span>
-              <div className="text-[13.5px] text-text dark:text-text-inv leading-snug mt-0.5 break-words">
+              <div className="mt-0.5 break-words text-[13px] leading-snug text-text dark:text-text-inv">
                 {formatValue(row.value)}
               </div>
             </div>
