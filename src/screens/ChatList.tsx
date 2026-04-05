@@ -447,10 +447,11 @@ export default function ChatList({
 
     if (status === 'connected') {
       // Already connected: just switch agent + navigate immediately
-      channel.selectAgent(agent.id, connection.id);
       if (target === 'split' && onOpenSplitChat) {
+        // Don't selectAgent on the base connection — split pane manages its own connection
         onOpenSplitChat(connection.id, agent.id, connection.chatId);
       } else {
+        channel.selectAgent(agent.id, connection.id);
         onOpenChat(connection.id, agent.id, connection.chatId);
       }
       return;

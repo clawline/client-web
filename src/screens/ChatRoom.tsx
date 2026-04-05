@@ -1111,6 +1111,19 @@ export default function ChatRoom({
         deliveryStatus: 'sent',
       };
       setMessages((prev) => [...prev, userMsg]);
+      // Immediately show thinking state after sending (unless it's a slash command)
+      if (!text.startsWith('/')) {
+        setIsThinking(true);
+        setThinkingPhase('Thinking');
+        thinkingStartRef.current = Date.now();
+        if (thinkingTimerRef.current) clearInterval(thinkingTimerRef.current);
+        thinkingTimerRef.current = setInterval(() => {
+          const elapsed = Date.now() - thinkingStartRef.current;
+          if (elapsed > 15000) setThinkingPhase('Working on it…');
+          else if (elapsed > 8000) setThinkingPhase('Putting it together');
+          else if (elapsed > 4000) setThinkingPhase('Analyzing');
+        }, 1000);
+      }
     } catch {
       const msgId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const userMsg: Message = {

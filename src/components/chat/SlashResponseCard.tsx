@@ -119,8 +119,8 @@ export default function SlashResponseCard({ text }: Props) {
       className="overflow-hidden rounded-xl border border-border bg-primary/10 dark:border-border-dark dark:bg-primary/10"
     >
       {parsed.title && (
-        <div className="flex items-center gap-2 px-3.5 pt-3 pb-1.5 text-[13px] font-semibold text-text dark:text-text-inv">
-          <span className="h-4 w-0.5 rounded-full bg-primary" />
+        <div className="flex items-center gap-2 px-3 pt-2.5 pb-1 text-[12px] font-semibold text-text dark:text-text-inv">
+          <span className="h-3.5 w-0.5 rounded-full bg-primary" />
           <span>{parsed.title}</span>
         </div>
       )}
@@ -128,17 +128,15 @@ export default function SlashResponseCard({ text }: Props) {
         {parsed.rows.map((row, i) => (
           <div
             key={i}
-            className={`flex items-start gap-2.5 px-3.5 py-1.5 ${!parsed.title && i === 0 ? 'pt-3' : ''} ${i === parsed.rows.length - 1 ? 'pb-3' : ''}`}
+            className={`flex items-center gap-2 px-3 py-1 ${!parsed.title && i === 0 ? 'pt-2.5' : ''} ${i === parsed.rows.length - 1 ? 'pb-2.5' : ''}`}
           >
-            <span className="mt-0.5 w-5 shrink-0 text-center text-[14px]">{row.emoji}</span>
-            <div className="min-w-0 flex-1">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-text/40 dark:text-text-inv/35">
-                {row.label}
-              </span>
-              <div className="mt-0.5 break-words text-[13px] leading-snug text-text dark:text-text-inv">
-                {formatValue(row.value)}
-              </div>
-            </div>
+            <span className="w-4 shrink-0 text-center text-[13px]">{row.emoji}</span>
+            <span className="text-[11px] font-medium text-text/40 dark:text-text-inv/35 whitespace-nowrap">
+              {row.label}
+            </span>
+            <span className="min-w-0 flex-1 break-words text-[12px] leading-snug text-text dark:text-text-inv">
+              {formatValue(row.value)}
+            </span>
           </div>
         ))}
       </div>
