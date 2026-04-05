@@ -11,6 +11,7 @@ import IOSInstallPrompt from './components/IOSInstallPrompt';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 const SIDEBAR_WIDTH_KEY = 'openclaw.sidebar.width';
+const SPLIT_STATE_KEY = 'openclaw.split.enabled';
 const MIN_SIDEBAR = 240;
 const MAX_SIDEBAR = 600;
 const DEFAULT_SIDEBAR = 288; // w-72
@@ -173,7 +174,15 @@ function AppShell() {
   const [activeAgentId, setActiveAgentId] = useState<string | null>(initialFromUrl.agentId ?? null);
   const [activeChatId, setActiveChatId] = useState<string | null>(initialFromUrl.chatId ?? null);
   const [activeConnectionId, setActiveConnectionState] = useState<string | null>(initialFromUrl.connectionId ?? getActiveConnectionId());
-  const [splitPanes, setSplitPanes] = useState<SplitPane[]>([]);
+  const [splitPanes, setSplitPanes] = useState<SplitPane[]>(() => {
+    // On large screens, default to one empty split pane (user can close to opt out)
+    if (typeof window !== 'undefined' && window.innerWidth >= 1440) {
+      const saved = localStorage.getItem(SPLIT_STATE_KEY);
+      if (saved === 'off') return []; // User explicitly closed split
+      return [{ connectionId: EMPTY_SPLIT_VALUE, agentId: EMPTY_SPLIT_VALUE, chatId: null }];
+    }
+    return [];
+  });
 
   // Unread message badge for BottomNav
   const [unreadChats, setUnreadChats] = useState(0);
@@ -299,10 +308,17 @@ function AppShell() {
 
   const closeSplitView = useCallback(() => {
     setSplitPanes([]);
+    try { localStorage.setItem(SPLIT_STATE_KEY, 'off'); } catch { /* noop */ }
   }, []);
 
   const closeSplitPane = useCallback((index: number) => {
-    setSplitPanes((prev) => prev.filter((_, i) => i !== index));
+    setSplitPanes((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      if (next.length === 0) {
+        try { localStorage.setItem(SPLIT_STATE_KEY, 'off'); } catch { /* noop */ }
+      }
+      return next;
+    });
   }, []);
 
   const openSplitChat = useCallback((connectionId: string, agentId: string, chatId?: string) => {
@@ -328,6 +344,7 @@ function AppShell() {
       return;
     }
     // Add an empty split pane
+    try { localStorage.removeItem(SPLIT_STATE_KEY); } catch { /* noop */ }
     setSplitPanes((prev) => [
       ...prev,
       { connectionId: EMPTY_SPLIT_VALUE, agentId: EMPTY_SPLIT_VALUE, chatId: null },
@@ -336,9 +353,10 @@ function AppShell() {
 
   useEffect(() => {
     if (!isSplitViewport || currentScreen !== 'chat_room') {
-      closeSplitView();
+      // Don't persist 'off' when screen changes or viewport shrinks
+      setSplitPanes([]);
     }
-  }, [closeSplitView, currentScreen, isSplitViewport]);
+  }, [currentScreen, isSplitViewport]);
 
   // ── Conditional returns AFTER all hooks ──
 
