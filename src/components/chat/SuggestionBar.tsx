@@ -253,12 +253,12 @@ function SuggestionBarInner({
                 animate={{ opacity: 1, scale: 1 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => {
-                  onQuickSend(`进度怎么样了？上次我说的是："${lastMsg?.text?.slice(0, 50) || ''}"`);
+                  onQuickSend(`Any updates? Last I said: "${lastMsg?.text?.slice(0, 50) || ''}"`);
                 }}
                 className="status-breathe flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-100/85 px-3 py-1.5 text-[12px] font-medium text-amber-700 transition-colors active:bg-amber-100 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-300"
               >
                 <span className="text-[12px]">👋</span>
-                催一下
+                Nudge
               </motion.button>
             </div>
           </div>

@@ -1379,7 +1379,7 @@ export default function ChatRoom({
       {/* Header */}
       <div className="sticky top-0 z-20 flex min-h-[56px] items-center justify-between bg-white/92 px-4 py-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.4)] backdrop-blur-[20px] dark:bg-card-alt/92 dark:shadow-[0_16px_32px_-24px_rgba(2,6,23,0.8)]">
         {!isDesktop && (
-          <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="ml-[-4px] rounded-xl bg-slate-900/[0.04] p-2 text-text shadow-sm transition-colors hover:bg-slate-900/[0.07] dark:bg-white/[0.06] dark:text-text-inv dark:hover:bg-white/[0.1]" aria-label="Go back">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="ml-[-4px] rounded-xl bg-slate-900/[0.04] p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-text shadow-sm transition-colors hover:bg-slate-900/[0.07] dark:bg-white/[0.06] dark:text-text-inv dark:hover:bg-white/[0.1]" aria-label="Go back">
             <ChevronLeft size={28} />
           </motion.button>
         )}
@@ -1951,7 +1951,7 @@ export default function ChatRoom({
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowMoreIcons(!showMoreIcons)}
-            className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'bg-slate-900/[0.04] text-slate-600 hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'}`}
+            className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'bg-slate-900/[0.04] text-slate-600 hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'}`}
             aria-label="Attach"
           >
             <Plus size={20} />
@@ -2079,7 +2079,7 @@ export default function ChatRoom({
               onClick={handleSend}
               disabled={!agentReady}
               aria-label="Send message"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-md shadow-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-md shadow-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Send size={18} />
             </motion.button>
@@ -2099,7 +2099,7 @@ export default function ChatRoom({
                 whileTap={{ scale: 0.85 }}
                 onClick={toggleRecording}
                 aria-label="Stop recording and send"
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/30"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/30"
               >
                 <Send size={18} />
               </motion.button>
@@ -2109,7 +2109,7 @@ export default function ChatRoom({
               whileTap={{ scale: 0.9 }}
               onClick={toggleRecording}
               aria-label="Start voice recording"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/[0.05] text-slate-600 transition-colors hover:bg-primary/10 hover:text-primary dark:bg-white/[0.06] dark:text-slate-300"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/[0.05] text-slate-600 transition-colors hover:bg-primary/10 hover:text-primary dark:bg-white/[0.06] dark:text-slate-300"
             >
               <Mic size={18} />
             </motion.button>

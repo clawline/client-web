@@ -576,9 +576,9 @@ export default function ChatList({
                 {agent.model && <span className="text-[10px] truncate ml-auto shrink-0 bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px text-text/45 dark:text-text-inv/40">{agent.model.split('/').pop()}</span>}
               </div>
               {isThinking ? (
-                <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[12px]' : 'text-[14px]')}>思考中... <TypingDots /></p>
+                <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[12px]' : 'text-[14px]')}>Thinking... <TypingDots /></p>
               ) : isTyping ? (
-                <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[12px]' : 'text-[14px]')}>正在输入... <TypingDots /></p>
+                <p className={cn('mt-0.5 text-primary flex items-center gap-1', compact ? 'text-[12px]' : 'text-[14px]')}>Typing... <TypingDots /></p>
               ) : preview ? (
                 <p className={cn('truncate mt-0.5', compact ? 'text-[12px] text-text/45 dark:text-text-inv/40' : 'text-[14px] text-text/45 dark:text-text-inv/40')}>{preview}</p>
               ) : (
@@ -654,9 +654,9 @@ export default function ChatList({
             </div>
             <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{agent.name}</h3>
             {isThinking ? (
-              <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">思考中... <TypingDots /></div>
+              <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">Thinking... <TypingDots /></div>
             ) : isTyping ? (
-              <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">正在输入... <TypingDots /></div>
+              <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">Typing... <TypingDots /></div>
             ) : lastMessage?.text ? (
               <p className="mt-1 text-[10px] text-text/45 dark:text-text-inv/40 truncate w-full max-w-full">
                 {lastMessage.text.length > 24 ? `${lastMessage.text.slice(0, 24)}…` : lastMessage.text}
@@ -807,18 +807,18 @@ export default function ChatList({
             {!reorderMode && (
               <>
                 <motion.button whileTap={{ scale: 0.9 }} onClick={toggleViewMode}
-                  className="p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-text/35 dark:text-text-inv/30 hover:text-primary transition-colors"
+                  className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-text/35 dark:text-text-inv/30 hover:text-primary transition-colors"
                   title={viewMode === 'list' ? 'Grid view' : 'List view'}>
-                  {viewMode === 'list' ? <LayoutGrid size={16} /> : <List size={16} />}
+                  {viewMode === 'list' ? <LayoutGrid size={18} /> : <List size={18} />}
                 </motion.button>
                 <motion.button whileTap={{ scale: 0.9 }} onClick={handleRefresh}
-                  className="p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-text/40 dark:text-text-inv/40 hover:text-primary transition-colors">
+                  className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-text/40 dark:text-text-inv/40 hover:text-primary transition-colors">
                   <RefreshCw size={16} className={Object.values(refreshingMap).some(Boolean) ? 'animate-spin' : ''} />
                 </motion.button>
               </>
             )}
             <motion.button whileTap={{ scale: 0.9 }} onClick={() => setReorderMode(m => !m)}
-              className={cn('p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-md transition-colors', reorderMode ? 'text-white bg-primary' : 'text-text/35 dark:text-text-inv/30 hover:text-primary')}
+              className={cn('p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md transition-colors', reorderMode ? 'text-white bg-primary' : 'text-text/35 dark:text-text-inv/30 hover:text-primary')}
               title={reorderMode ? 'Done' : 'Reorder agents'}>
               {reorderMode ? <Check size={16} /> : <ArrowUpDown size={16} />}
             </motion.button>

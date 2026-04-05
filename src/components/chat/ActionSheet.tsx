@@ -49,7 +49,7 @@ function ActionSheetInner({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
-              className="flex items-center gap-1 bg-[#1f2c34] dark:bg-[#1f2c34] rounded-full px-2 py-1.5 shadow-xl mb-2"
+              className="flex items-center gap-1 bg-white dark:bg-[#1f2c34] rounded-full px-2 py-1.5 shadow-xl mb-2 border border-border/40 dark:border-transparent"
             >
               {['👍', '❤️', '😂', '😮', '😢', '🙏', '👏'].map((e) => (
                 <motion.button
@@ -60,7 +60,7 @@ function ActionSheetInner({
                     onClose();
                   }}
                   className={`w-10 h-10 text-[22px] flex items-center justify-center rounded-full transition-all ${
-                    lMsg.reactions?.includes(e) ? 'bg-white/20 scale-110' : 'hover:bg-white/10'
+                    lMsg.reactions?.includes(e) ? 'bg-primary/15 dark:bg-white/20 scale-110' : 'hover:bg-text/5 dark:hover:bg-white/10'
                   }`}
                 >
                   {e}
@@ -69,7 +69,7 @@ function ActionSheetInner({
               <motion.button
                 whileTap={{ scale: 0.85 }}
                 onClick={() => { onOpenReactionPicker(longPressedMsgId); onClose(); }}
-                className="w-10 h-10 flex items-center justify-center rounded-full text-white/60 hover:bg-white/10"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-text/40 dark:text-white/60 hover:bg-text/5 dark:hover:bg-white/10"
               >
                 <SmilePlus size={18} />
               </motion.button>
@@ -98,30 +98,30 @@ function ActionSheetInner({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
             transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-            className="fixed bottom-0 left-0 right-0 z-[60] md:hidden bg-[#1f2c34] dark:bg-[#1f2c34] rounded-t-2xl shadow-2xl safe-area-bottom"
+            className="fixed bottom-0 left-0 right-0 z-[60] md:hidden bg-white dark:bg-[#1f2c34] rounded-t-2xl shadow-2xl safe-area-bottom border-t border-border/30 dark:border-transparent"
           >
             <div className="flex flex-col">
               <button
                 onClick={() => { onReply(lMsg); onClose(); }}
-                className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-white/90 active:bg-white/10 transition-colors"
+                className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-text/85 dark:text-white/90 active:bg-text/5 dark:active:bg-white/10 transition-colors"
               >
-                <CornerDownLeft size={20} className="text-white/60" />
+                <CornerDownLeft size={20} className="text-text/40 dark:text-white/60" />
                 Reply
               </button>
               <button
                 onClick={() => { onCopy(lMsg.id, lMsg.text); onClose(); }}
-                className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-white/90 active:bg-white/10 transition-colors"
+                className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-text/85 dark:text-white/90 active:bg-text/5 dark:active:bg-white/10 transition-colors"
               >
-                <Copy size={20} className="text-white/60" />
+                <Copy size={20} className="text-text/40 dark:text-white/60" />
                 Copy
               </button>
               {lIsUser && (
                 <>
                   <button
                     onClick={() => { onEdit(lMsg); onClose(); }}
-                    className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-white/90 active:bg-white/10 transition-colors"
+                    className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-text/85 dark:text-white/90 active:bg-text/5 dark:active:bg-white/10 transition-colors"
                   >
-                    <Pencil size={20} className="text-white/60" />
+                    <Pencil size={20} className="text-text/40 dark:text-white/60" />
                     Edit
                   </button>
                   <button

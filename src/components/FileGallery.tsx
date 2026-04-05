@@ -39,11 +39,11 @@ const CODE_EXTENSIONS = new Set(['ts', 'js', 'py', 'json', 'html', 'css', 'sh'])
 const TEXT_PREVIEW_EXTENSIONS = new Set(['md', 'txt', 'ts', 'js', 'py', 'json', 'html', 'css', 'sh']);
 
 const tabs: { id: GalleryTab; label: string }[] = [
-  { id: 'all', label: '全部' },
-  { id: 'image', label: '图片' },
-  { id: 'document', label: '文档' },
-  { id: 'audio', label: '音频' },
-  { id: 'code', label: '代码' },
+  { id: 'all', label: 'All' },
+  { id: 'image', label: 'Images' },
+  { id: 'document', label: 'Docs' },
+  { id: 'audio', label: 'Audio' },
+  { id: 'code', label: 'Code' },
 ];
 
 function formatTime(timestamp: number) {
