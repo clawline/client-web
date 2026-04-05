@@ -96,7 +96,7 @@ export default function AgentContextViewer({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.98 }}
           transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-          className="flex max-h-[70vh] w-full max-w-lg flex-col overflow-hidden rounded-[28px] border border-border/80 bg-white/92 shadow-2xl shadow-black/10 backdrop-blur-[20px] dark:border-border-dark/80 dark:bg-card-alt/92"
+          className="flex max-h-[70vh] w-full max-w-lg flex-col overflow-hidden rounded-[28px] border border-border/80 bg-white/96 shadow-[0_30px_60px_-28px_rgba(15,23,42,0.42)] backdrop-blur-[20px] dark:border-border-dark/80 dark:bg-card-alt/96 dark:shadow-[0_34px_64px_-28px_rgba(2,6,23,0.82)]"
           onClick={(event) => event.stopPropagation()}
         >
           <div className="flex items-center justify-between gap-3 border-b border-border/80 px-5 py-4 dark:border-border-dark/80">
@@ -105,13 +105,13 @@ export default function AgentContextViewer({
                 <FileText size={16} className="text-primary" />
                 <span>Agent Context</span>
               </div>
-              <p className="truncate text-[12px] text-text/45 dark:text-text-inv/45">{agentName}</p>
+              <p className="truncate text-[12px] text-slate-500 dark:text-slate-400">{agentName}</p>
             </div>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={onRefresh}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-text/55 transition-colors hover:bg-surface hover:text-text dark:text-text-inv/55 dark:hover:bg-surface-dark dark:hover:text-text-inv"
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900/[0.04] text-slate-500 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
                 aria-label="Refresh agent context"
               >
                 <RefreshCw size={16} className={cn(isLoading && 'animate-spin')} />
@@ -119,7 +119,7 @@ export default function AgentContextViewer({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-text/55 transition-colors hover:bg-surface hover:text-text dark:text-text-inv/55 dark:hover:bg-surface-dark dark:hover:text-text-inv"
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900/[0.04] text-slate-500 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
                 aria-label="Close context viewer"
               >
                 <X size={18} />
@@ -136,10 +136,10 @@ export default function AgentContextViewer({
                     type="button"
                     onClick={() => setActiveFileName(file.name)}
                     className={cn(
-                      'shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors',
+                      'shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-medium shadow-sm transition-colors',
                       activeFile?.name === file.name
                         ? 'border-primary/30 bg-primary/10 text-primary'
-                        : 'border-border/80 text-text/60 hover:border-primary/20 hover:text-text dark:border-border-dark/80 dark:text-text-inv/60 dark:hover:text-text-inv'
+                        : 'border-border/80 bg-white text-slate-600 hover:border-primary/20 hover:text-text dark:border-border-dark/80 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:text-text-inv'
                     )}
                   >
                     {formatTabLabel(file.name)}
@@ -158,12 +158,12 @@ export default function AgentContextViewer({
             ) : activeFile ? (
               <div className="space-y-3">
                 {activeFile.updatedAt && (
-                  <div className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 text-[11px] font-medium text-text/55 dark:bg-surface-dark dark:text-text-inv/55">
+                  <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-white px-3 py-1 text-[11px] font-medium text-slate-500 shadow-sm dark:border-border-dark/70 dark:bg-white/[0.04] dark:text-slate-400">
                     <Clock3 size={12} />
                     <span>{formatUpdatedAt(activeFile.updatedAt)}</span>
                   </div>
                 )}
-                <div className="rounded-[22px] border border-border/70 bg-surface/60 p-4 dark:border-border-dark/70 dark:bg-surface-dark/60">
+                <div className="rounded-[22px] border border-border/70 bg-slate-50/92 p-4 shadow-[0_16px_30px_-26px_rgba(15,23,42,0.22)] dark:border-border-dark/70 dark:bg-[#141b24] dark:shadow-[0_18px_32px_-26px_rgba(2,6,23,0.68)]">
                   <MarkdownRenderer content={activeFile.content} className="text-[14px]" />
                 </div>
               </div>
@@ -181,7 +181,7 @@ export default function AgentContextViewer({
           </div>
 
           {context?.timestamp ? (
-            <div className="flex items-center justify-end gap-1.5 border-t border-border/70 px-5 py-3 text-[11px] text-text/45 dark:border-border-dark/70 dark:text-text-inv/45">
+            <div className="flex items-center justify-end gap-1.5 border-t border-border/70 px-5 py-3 text-[11px] text-slate-500 dark:border-border-dark/70 dark:text-slate-400">
               <Clock3 size={12} />
               <span>Snapshot: {new Date(context.timestamp).toLocaleTimeString()}</span>
             </div>

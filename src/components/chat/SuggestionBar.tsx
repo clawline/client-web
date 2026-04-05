@@ -165,7 +165,7 @@ function SuggestionBarInner({
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={fetchAiSuggestions}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-primary/70 hover:text-primary hover:bg-primary/8 active:bg-primary/15 transition-colors border border-primary/20"
+                  className="flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/6 px-2.5 py-1 text-[11px] font-medium text-primary/80 transition-colors hover:bg-primary/10 hover:text-primary active:bg-primary/15"
                   title={lang === 'zh' ? 'AI 智能建议' : 'AI suggestions'}
                 >
                   <Sparkles size={12} />
@@ -175,9 +175,9 @@ function SuggestionBarInner({
 
               {/* Loading state */}
               {loading && aiSuggestions.length === 0 && (
-                <span className="flex items-center gap-1 text-[11px] text-text/30 dark:text-text-inv/25 px-2">
+                <span className="flex items-center gap-1 px-2 text-[11px] text-slate-400 dark:text-slate-500">
                   <Sparkles size={11} className="animate-pulse text-primary/50" />
-                  <span className="text-text/40 dark:text-text-inv/35">{lang === 'zh' ? '生成中…' : 'Thinking…'}</span>
+                  <span>{lang === 'zh' ? '生成中…' : 'Thinking…'}</span>
                 </span>
               )}
 
@@ -197,7 +197,7 @@ function SuggestionBarInner({
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={fetchAiSuggestions}
-                  className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full text-primary/40 hover:text-primary/70 hover:bg-primary/8 active:bg-primary/15 transition-colors"
+                  className="flex-shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full text-primary/40 transition-colors hover:bg-primary/8 hover:text-primary/70 active:bg-primary/15"
                   title={lang === 'zh' ? '换一批' : 'Refresh'}
                 >
                   <Sparkles size={11} />
@@ -229,9 +229,9 @@ function SuggestionBarInner({
                   onClick={() => {
                     onQuickSend(`进度怎么样了？上次我说的是："${lastMsg?.text?.slice(0, 50) || ''}"`);
                   }}
-                  className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-full text-[12px] font-medium text-amber-600 dark:text-amber-400 active:bg-amber-100 transition-colors animate-pulse"
+                  className="status-breathe flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-100/85 px-3 py-1.5 text-[12px] font-medium text-amber-700 transition-colors active:bg-amber-100 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-300"
                 >
-                  <span>👋</span>
+                  <span className="text-[12px]">👋</span>
                   催一下
                 </motion.button>
               )}
@@ -265,7 +265,7 @@ function SuggestionPill({ text, delay = 0, onTap, onLongPress }: {
       transition={{ delay }}
       whileTap={{ scale: 0.95 }}
       {...lp}
-      className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors border border-transparent hover:border-border/30 dark:hover:border-border-dark/30 select-none"
+      className="flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-transparent px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-border/40 hover:bg-slate-100 dark:text-slate-300 dark:hover:border-border-dark/40 dark:hover:bg-white/[0.06] select-none"
     >
       {text}
     </motion.button>
@@ -281,9 +281,9 @@ function QuickCommandPill({ emoji, label, onTap, onLongPress }: {
     <motion.button
       whileTap={{ scale: 0.95 }}
       {...lp}
-      className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-text/60 dark:text-text-inv/55 hover:bg-text/5 dark:hover:bg-text-inv/5 active:bg-text/10 transition-colors select-none"
+      className="flex-shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/[0.06] select-none"
     >
-      <span>{emoji}</span>
+      <span className="text-[12px] leading-none">{emoji}</span>
       {label}
     </motion.button>
   );
@@ -299,14 +299,14 @@ function IconButtons({ skillCount, onOpenSlashMenu, onOpenContextViewer }: {
     <>
       <button
         onPointerDown={(e) => { e.stopPropagation(); onOpenSlashMenu(); }}
-        className="flex-shrink-0 inline-flex items-center gap-1 w-9 h-9 justify-center bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20 active:scale-95"
+        className="flex-shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full border border-primary/20 bg-primary/12 text-primary transition-colors active:scale-95 active:bg-primary/20"
         title={`Skills (${skillCount})`}
       >
         <Puzzle size={15} />
       </button>
       <button
         onPointerDown={(e) => { e.stopPropagation(); onOpenContextViewer(); }}
-        className="flex-shrink-0 inline-flex items-center justify-center w-9 h-9 bg-primary/12 border border-primary/20 rounded-full text-primary transition-colors active:bg-primary/20 active:scale-95"
+        className="flex-shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full border border-primary/20 bg-primary/12 text-primary transition-colors active:scale-95 active:bg-primary/20"
         title="Context"
       >
         <FileText size={15} />

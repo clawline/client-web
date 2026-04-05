@@ -359,7 +359,7 @@ function AppShell() {
           if (splitActive && splitConnectionId && splitAgentId && splitRuntimeConnectionId) {
             return (
               <div className="flex h-full min-w-0 bg-surface dark:bg-surface-dark">
-                <div className="min-w-[400px] flex-1 overflow-hidden border-r border-border/60 dark:border-border-dark/60">
+                <div className="min-w-[400px] flex-1 overflow-hidden shadow-[18px_0_36px_-30px_rgba(15,23,42,0.18)] dark:shadow-[18px_0_36px_-30px_rgba(2,6,23,0.55)]">
                   <ChatRoom
                     agentId={activeAgentId}
                     chatId={activeChatId}
@@ -445,7 +445,7 @@ function AppShell() {
       <div className="flex flex-col w-full h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-surface dark:bg-surface-dark text-text dark:text-text-inv overflow-hidden font-sans">
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
-        <div style={{ width: sidebarWidth }} className="h-full flex flex-col border-r border-border/60 dark:border-border-dark/60 bg-surface dark:bg-surface-dark flex-shrink-0 relative">
+        <div style={{ width: sidebarWidth }} className="sidebar-surface h-full flex flex-col flex-shrink-0 relative">
           {/* Sidebar content: ChatList */}
           <div className="flex-1 overflow-y-auto">
             <ChatList
@@ -462,7 +462,7 @@ function AppShell() {
           </div>
 
           {/* Sidebar nav — bottom */}
-          <div className="flex items-center gap-0.5 px-2 py-2 border-t border-border/60 dark:border-border-dark/60 min-h-[48px]">
+          <div className="flex items-center gap-1 px-2 py-2 min-h-[52px] shadow-[inset_0_1px_0_rgba(148,163,184,0.14)] dark:shadow-[inset_0_1px_0_rgba(71,85,105,0.36)]">
             {SIDEBAR_NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive = item.id === 'chats'
@@ -473,8 +473,10 @@ function AppShell() {
                   key={item.id}
                   onClick={() => navigate(item.id as Screen)}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-medium transition-all',
-                    isActive ? 'bg-primary text-white' : 'text-text/40 dark:text-text-inv/30 hover:text-text/60 dark:hover:text-text-inv/50 hover:bg-text/[0.03] dark:hover:bg-text-inv/[0.03]'
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all',
+                    isActive
+                      ? 'bg-primary text-white shadow-[0_12px_24px_-18px_rgba(239,90,35,0.95)]'
+                      : 'bg-white/68 text-text/55 shadow-sm hover:bg-white hover:text-text dark:bg-white/[0.06] dark:text-text-inv/55 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'
                   )}
                 >
                   <Icon size={15} />
@@ -492,7 +494,7 @@ function AppShell() {
         </div>
 
         {/* Main content */}
-        <div className="flex-1 h-full relative overflow-hidden">
+        <div className="main-panel-surface flex-1 h-full relative overflow-hidden">
           <UpdateBanner isVisible={updateAvailable} onUpdate={applyUpdate} onDismiss={dismissUpdate} />
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.div

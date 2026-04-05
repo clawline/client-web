@@ -1331,24 +1331,51 @@ export default function ChatRoom({
   };
 
   return (
-    <div className="flex flex-col h-full bg-surface dark:bg-surface-dark relative">
+    <div className="relative flex h-full flex-col bg-white dark:bg-[#11161d]">
       {/* Header */}
-      <div className="px-4 py-2 sticky top-0 bg-white/80 dark:bg-card-alt/80 backdrop-blur-[20px] border-b border-border dark:border-border-dark z-20 flex items-center justify-between min-h-[48px]">
+      <div className="sticky top-0 z-20 flex min-h-[56px] items-center justify-between bg-white/92 px-4 py-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.4)] backdrop-blur-[20px] dark:bg-card-alt/92 dark:shadow-[0_16px_32px_-24px_rgba(2,6,23,0.8)]">
         {!isDesktop && (
-          <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="p-2 -ml-2 text-text dark:text-text-inv" aria-label="Go back">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="ml-[-4px] rounded-xl bg-slate-900/[0.04] p-2 text-text shadow-sm transition-colors hover:bg-slate-900/[0.07] dark:bg-white/[0.06] dark:text-text-inv dark:hover:bg-white/[0.1]" aria-label="Go back">
             <ChevronLeft size={28} />
           </motion.button>
         )}
         <div className={`flex flex-col ${isDesktop ? 'items-start ml-2' : 'items-center'}`}>
-          <h2 className="font-semibold text-[17px] text-text dark:text-text-inv leading-tight truncate max-w-[200px] md:max-w-none">
+          <h2 className="max-w-[200px] truncate text-[17px] font-semibold leading-tight text-text dark:text-text-inv md:max-w-none">
             {agentInfo ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}` : agentId || 'OpenClaw Bot'}
           </h2>
-          <p className="text-[11px] text-text/40 dark:text-text-inv/35 truncate max-w-[200px] md:max-w-none flex items-center gap-1">
-            {getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}{agentInfo?.model ? ` · ${agentInfo.model.split('/').pop()}` : ''}
-            {wsStatus === 'connected' && <><span className="mx-0.5">·</span><span className={`inline-flex items-center gap-0.5 ${agentPresence?.status === 'offline' ? 'text-text/30 dark:text-text-inv/25' : 'text-primary'}`}><span className={`inline-block w-1.5 h-1.5 rounded-full ${agentPresence?.status === 'offline' ? 'bg-gray-400' : 'bg-primary'}`} />{agentPresence?.status === 'offline' ? formatLastSeen(agentPresence.lastSeen) || 'offline' : 'online'}</span></>}
-            {(wsStatus === 'connecting' || wsStatus === 'reconnecting') && <><span className="mx-0.5">·</span><span className="inline-flex items-center gap-0.5 text-amber-500"><Loader2 size={9} className="animate-spin" />{wsStatus === 'connecting' ? 'connecting' : 'reconnecting'}</span></>}
-            {wsStatus === 'disconnected' && <><span className="mx-0.5">·</span><button onClick={() => channel.reconnect(runtimeConnId)} className="inline-flex items-center gap-0.5 text-red-400 hover:opacity-80 transition-opacity" aria-label="Tap to reconnect"><RefreshCw size={9} />reconnect</button></>}
-          </p>
+          <div className="mt-1 flex max-w-[220px] flex-wrap items-center gap-1.5 md:max-w-none">
+            <span className="inline-flex items-center rounded-full border border-slate-300/75 bg-slate-900/[0.035] px-2.5 py-1 text-[10px] font-medium text-slate-600 shadow-sm dark:border-slate-700/75 dark:bg-white/[0.06] dark:text-slate-300">
+              {getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}
+            </span>
+            {agentInfo?.model && (
+              <span className="inline-flex items-center rounded-full border border-slate-300/75 bg-slate-900/[0.035] px-2.5 py-1 text-[10px] font-medium text-slate-600 shadow-sm dark:border-slate-700/75 dark:bg-white/[0.06] dark:text-slate-300">
+                {agentInfo.model.split('/').pop()}
+              </span>
+            )}
+            {wsStatus === 'connected' && (
+              <span className={cn(
+                'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold shadow-sm',
+                agentPresence?.status === 'offline'
+                  ? 'border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-300'
+                  : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              )}>
+                <span className={cn('inline-block h-1.5 w-1.5 rounded-full', agentPresence?.status === 'offline' ? 'bg-rose-500' : 'bg-emerald-500 status-breathe')} />
+                {agentPresence?.status === 'offline' ? formatLastSeen(agentPresence.lastSeen) || 'offline' : 'online'}
+              </span>
+            )}
+            {(wsStatus === 'connecting' || wsStatus === 'reconnecting') && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/12 px-2.5 py-1 text-[10px] font-semibold text-amber-600 shadow-sm dark:text-amber-300">
+                <Loader2 size={10} className="animate-spin" />
+                {wsStatus === 'connecting' ? 'connecting' : 'reconnecting'}
+              </span>
+            )}
+            {wsStatus === 'disconnected' && (
+              <button onClick={() => channel.reconnect(runtimeConnId)} className="inline-flex items-center gap-1 rounded-full border border-rose-500/20 bg-rose-500/10 px-2.5 py-1 text-[10px] font-semibold text-rose-600 shadow-sm transition-colors hover:bg-rose-500/15 dark:text-rose-300" aria-label="Tap to reconnect">
+                <RefreshCw size={10} />
+                reconnect
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1">
           {!isSplitPane && showSplitButton && agentId && onToggleSplit && (
@@ -1356,10 +1383,10 @@ export default function ChatRoom({
               whileTap={{ scale: 0.96 }}
               onClick={onToggleSplit}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors',
+                'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[12px] font-medium shadow-sm transition-colors',
                 splitActive
                   ? 'border-primary/30 bg-primary/10 text-primary'
-                  : 'border-border/70 bg-white/75 text-text/65 hover:border-primary/25 hover:text-primary dark:border-border-dark/70 dark:bg-card-alt/75 dark:text-text-inv/65'
+                  : 'border-slate-300/75 bg-slate-900/[0.035] text-slate-600 hover:border-primary/25 hover:bg-white hover:text-text dark:border-slate-700/75 dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'
               )}
               aria-label="Toggle split view"
             >
@@ -1373,20 +1400,20 @@ export default function ChatRoom({
               const newChatId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
               onOpenConversation(newChatId);
             }}
-            className="p-2.5 text-text dark:text-text-inv rounded-full active:bg-text/5 dark:active:bg-text-inv/5 transition-colors"
+            className="rounded-xl bg-slate-900/[0.04] p-2.5 text-slate-600 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
             aria-label="New conversation"
           >
             <Plus size={20} />
           </motion.button>
-          <motion.button whileTap={{ scale: 0.9 }} onClick={openHistoryDrawer} className="p-2.5 text-text dark:text-text-inv rounded-full active:bg-text/5 dark:active:bg-text-inv/5 transition-colors" aria-label="Open history drawer">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={openHistoryDrawer} className="rounded-xl bg-slate-900/[0.04] p-2.5 text-slate-600 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv" aria-label="Open history drawer">
             <MessageSquare size={20} />
           </motion.button>
           {isSplitPane && onCloseSplit && (
-            <motion.button whileTap={{ scale: 0.9 }} onClick={onCloseSplit} className="p-2.5 text-text dark:text-text-inv rounded-full active:bg-text/5 dark:active:bg-text-inv/5 transition-colors" aria-label="Close split view">
+            <motion.button whileTap={{ scale: 0.9 }} onClick={onCloseSplit} className="rounded-xl bg-slate-900/[0.04] p-2.5 text-slate-600 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv" aria-label="Close split view">
               <X size={20} />
             </motion.button>
           )}
-          <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2.5 -mr-2 text-text dark:text-text-inv rounded-full active:bg-text/5 dark:active:bg-text-inv/5 transition-colors" aria-label="More options">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="mr-[-8px] rounded-xl bg-slate-900/[0.04] p-2.5 text-slate-600 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv" aria-label="More options">
             <MoreHorizontal size={24} />
           </motion.button>
         </div>
@@ -1482,7 +1509,7 @@ export default function ChatRoom({
       </AnimatePresence>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 pb-4 flex flex-col overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div ref={scrollContainerRef} className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-white px-4 py-6 pb-4 overscroll-contain dark:bg-[#11161d]" style={{ WebkitOverflowScrolling: 'touch' }}>
         {/* Load more indicator */}
         {loadingMoreHistory && (
           <div className="flex justify-center py-3">
@@ -1571,8 +1598,8 @@ export default function ChatRoom({
         ))}
         {/* Typing indicator */}
         {peerTyping && !isThinking && (
-          <div className="flex items-center gap-2 px-2 text-[12px] text-text/55 dark:text-text-inv/55">
-            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+          <div className="flex items-center gap-2 px-2 text-[12px] text-slate-500 dark:text-slate-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-sky-500 status-breathe" />
             {agentInfo?.name || 'Bot'} is typing…
           </div>
         )}
@@ -1584,18 +1611,19 @@ export default function ChatRoom({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -5 }}
-              className="flex gap-3 px-2 py-0.5 mt-3"
+              className="mt-3 flex gap-3 rounded-[22px] border border-primary/12 bg-primary/6 px-3 py-3 shadow-[0_16px_32px_-28px_rgba(239,90,35,0.45)] dark:border-primary/16 dark:bg-primary/8"
             >
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary-deep flex-shrink-0 flex items-center justify-center text-white shadow-sm text-sm">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-deep text-sm text-white shadow-sm">
                 {agentInfo?.identityEmoji || '🤖'}
               </div>
-              <div className="pt-2 min-w-0 flex-1">
+              <div className="min-w-0 flex-1 pt-1.5">
                 {/* Current tool or thinking phase — single line */}
                 {(() => {
                   const latestActive = activeToolCalls[activeToolCalls.length - 1];
                   const argSnippet = latestActive ? formatToolArgSnippet(latestActive.args) : '';
                   return (
-                    <span className="text-[13px] text-primary font-medium animate-pulse truncate block">
+                    <span className="flex items-center gap-1.5 truncate text-[13px] font-semibold text-primary">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary status-breathe" />
                       {latestActive
                         ? `🔧 ${formatToolName(latestActive.toolName)}${argSnippet ? ` · ${argSnippet}` : ''}`
                         : (thinkingPhase || 'Thinking')}
@@ -1605,34 +1633,34 @@ export default function ChatRoom({
 
                 {/* Expandable tool call history */}
                 {(toolCallHistory.length > 0 || activeToolCalls.length > 1) && (
-                  <div className="mt-1">
+                  <div className="mt-2 rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-2 shadow-sm dark:border-slate-700/70 dark:bg-card-alt/75">
                     <button
                       onClick={() => setToolHistoryExpanded((v) => !v)}
-                      className="text-[11px] text-text/40 dark:text-text-inv/40 hover:text-text/60 dark:hover:text-text-inv/60 transition-colors flex items-center gap-1"
+                      className="flex items-center gap-1 text-[11px] text-slate-500 transition-colors hover:text-text dark:text-slate-400 dark:hover:text-text-inv"
                     >
                       <span className="inline-block transition-transform" style={{ transform: toolHistoryExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▸</span>
                       {toolCallHistory.length + activeToolCalls.length} tool call{toolCallHistory.length + activeToolCalls.length !== 1 ? 's' : ''}
                     </button>
                     {toolHistoryExpanded && (
-                      <div className="mt-1 flex flex-col gap-0.5 text-[11px] text-text/45 dark:text-text-inv/45 max-h-40 overflow-y-auto">
+                      <div className="mt-1 flex max-h-40 flex-col gap-1 overflow-y-auto text-[11px] text-slate-600 dark:text-slate-400">
                         {toolCallHistory.map((tc) => (
                           <div key={tc.toolCallId} className="flex items-center gap-1 truncate">
-                            <span className="text-green-500/70">✓</span>
+                            <span className="text-emerald-500">✓</span>
                             <span className="font-medium">{formatToolName(tc.toolName)}</span>
                             {tc.resultSummary && (
-                              <span className="text-text/30 dark:text-text-inv/30 truncate" title={tc.resultSummary}>
+                              <span className="truncate text-slate-400 dark:text-slate-500" title={tc.resultSummary}>
                                 — {formatResultSummary(tc.resultSummary)}
                               </span>
                             )}
-                            <span className="text-text/25 dark:text-text-inv/25 flex-shrink-0">{tc.endTime - tc.startTime}ms</span>
+                            <span className="flex-shrink-0 text-slate-400 dark:text-slate-500">{tc.endTime - tc.startTime}ms</span>
                           </div>
                         ))}
                         {activeToolCalls.map((tc) => (
-                          <div key={tc.toolCallId} className="flex items-center gap-1 truncate animate-pulse">
+                          <div key={tc.toolCallId} className="flex items-center gap-1 truncate">
                             <span className="text-primary">⟳</span>
                             <span className="font-medium">{formatToolName(tc.toolName)}</span>
                             {formatToolArgSnippet(tc.args) && (
-                              <span className="text-text/30 dark:text-text-inv/30 truncate">
+                              <span className="truncate text-slate-400 dark:text-slate-500">
                                 {formatToolArgSnippet(tc.args)}
                               </span>
                             )}
@@ -1663,7 +1691,7 @@ export default function ChatRoom({
       />
 
       {/* Input Area */}
-      <div className="px-2 pt-2 pb-1 bg-white/60 dark:bg-card-alt/60 backdrop-blur-md border-t border-border/50 dark:border-border-dark/50 z-30 flex-shrink-0 relative safe-area-bottom flex flex-col gap-2.5">
+      <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-2.5 bg-white/92 px-2 pt-2 pb-1 shadow-[0_-12px_30px_-24px_rgba(15,23,42,0.24)] backdrop-blur-md dark:bg-card-alt/92 dark:shadow-[0_-16px_30px_-24px_rgba(2,6,23,0.68)]">
         <AnimatePresence>
           {showSlashMenu && (
             <>
@@ -1677,7 +1705,7 @@ export default function ChatRoom({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.15 }}
-                className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-xl z-50 max-h-[50vh] overflow-y-auto overflow-x-hidden"
+                className="absolute bottom-full left-0 right-0 z-50 mb-1 max-h-[50vh] overflow-y-auto overflow-x-hidden rounded-[20px] border border-border/75 bg-white/96 shadow-[0_24px_48px_-26px_rgba(15,23,42,0.36)] dark:border-border-dark/75 dark:bg-card-alt/96 dark:shadow-[0_24px_48px_-26px_rgba(2,6,23,0.76)]"
               >
                 {/* System commands by section */}
                 {(() => {
@@ -1697,19 +1725,19 @@ export default function ChatRoom({
                   }
                   return sections.map(sec => (
                     <div key={sec.name}>
-                      <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-text/35 dark:text-text-inv/30 uppercase tracking-wider sticky top-0 bg-white dark:bg-card-alt">{sec.name}</div>
+                      <div className="sticky top-0 bg-white/96 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:bg-card-alt/96 dark:text-slate-500">{sec.name}</div>
                       {sec.items.map(cmd => (
                         <button
                           key={cmd.id}
                           onClick={() => handleCommandSelect(cmd.label)}
-                          className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.05]"
                         >
-                          <div className="w-7 h-7 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.06] flex items-center justify-center text-text/50 dark:text-text-inv/45 shrink-0">
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-900/[0.04] text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">
                             <cmd.icon size={14} />
                           </div>
                           <div className="min-w-0 flex-1">
                             <span className="text-[13px] font-medium text-text dark:text-text-inv">{cmd.label}</span>
-                            <span className="ml-2 text-[11px] text-text/35 dark:text-text-inv/30 truncate">{cmd.desc}</span>
+                            <span className="ml-2 truncate text-[11px] text-slate-400 dark:text-slate-500">{cmd.desc}</span>
                           </div>
                         </button>
                       ))}
@@ -1741,7 +1769,7 @@ export default function ChatRoom({
                       {/* Loaded skills — always visible */}
                       {filteredLoaded.length > 0 && (
                         <>
-                          <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-text/35 dark:text-text-inv/30 uppercase tracking-wider sticky top-0 bg-white dark:bg-card-alt flex items-center gap-1.5">
+                          <div className="sticky top-0 flex items-center gap-1.5 bg-white/96 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400 dark:bg-card-alt/96 dark:text-slate-500">
                             <Puzzle size={10} className="text-primary" />
                             Skills ({filteredLoaded.length})
                           </div>
@@ -1749,7 +1777,7 @@ export default function ChatRoom({
                             <button
                               key={`skill-${skillName}`}
                               onClick={() => handleCommandSelect(`/use ${skillName}`)}
-                              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                              className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.05]"
                             >
                               <div className="w-7 h-7 rounded-lg bg-primary/8 flex items-center justify-center text-primary shrink-0">
                                 <Puzzle size={14} />
@@ -1768,7 +1796,7 @@ export default function ChatRoom({
                           <button
                             type="button"
                             onClick={() => setShowBuiltinSkills(prev => !prev)}
-                            className="w-full px-3 pt-2 pb-1 text-[10px] font-semibold text-text/25 dark:text-text-inv/20 uppercase tracking-wider sticky top-0 bg-white dark:bg-card-alt flex items-center gap-1.5 hover:text-text/40 dark:hover:text-text-inv/35 transition-colors"
+                            className="sticky top-0 flex w-full items-center gap-1.5 bg-white/96 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-300 transition-colors hover:text-slate-500 dark:bg-card-alt/96 dark:text-slate-600 dark:hover:text-slate-400"
                           >
                             {showBuiltinSkills ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                             Built-in ({filteredBuiltin.length})
@@ -1777,13 +1805,13 @@ export default function ChatRoom({
                             <button
                               key={`builtin-${skillName}`}
                               onClick={() => handleCommandSelect(`/use ${skillName}`)}
-                              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface dark:hover:bg-surface-dark transition-colors opacity-50"
+                              className="flex w-full items-center gap-2.5 px-3 py-2 text-left opacity-55 transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.05]"
                             >
-                              <div className="w-7 h-7 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] flex items-center justify-center text-text/30 dark:text-text-inv/25 shrink-0">
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-900/[0.03] text-slate-400 dark:bg-white/[0.04] dark:text-slate-500">
                                 <Puzzle size={14} />
                               </div>
                               <div className="min-w-0 flex-1">
-                                <span className="text-[13px] text-text/50 dark:text-text-inv/40">{skillName}</span>
+                                <span className="text-[13px] italic text-slate-400 dark:text-slate-500">{skillName}</span>
                               </div>
                             </button>
                           ))}
@@ -1797,7 +1825,7 @@ export default function ChatRoom({
                 {slashCommands.filter(cmd => cmd.label.startsWith(inputValue) || inputValue === '/').length === 0
                   && !(skills.length > 0 && (inputValue.startsWith('/use ')))
                   && (
-                  <div className="px-3 py-4 text-center text-[12px] text-text/35 dark:text-text-inv/30">
+                  <div className="px-3 py-4 text-center text-[12px] text-slate-400 dark:text-slate-500">
                     No matching commands
                   </div>
                 )}
@@ -1816,14 +1844,14 @@ export default function ChatRoom({
                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute bottom-full left-0 right-0 mb-2 bg-white/95 dark:bg-card-alt/95 backdrop-blur-[20px] border border-border/50 dark:border-border-dark/50 shadow-2xl rounded-[24px] p-4 flex flex-wrap gap-2 justify-center z-50"
+                className="absolute bottom-full left-0 right-0 z-50 mb-2 flex flex-wrap justify-center gap-2 rounded-[24px] border border-border/65 bg-white/96 p-4 shadow-[0_24px_48px_-26px_rgba(15,23,42,0.36)] backdrop-blur-[20px] dark:border-border-dark/65 dark:bg-card-alt/96 dark:shadow-[0_24px_48px_-26px_rgba(2,6,23,0.78)]"
               >
                 {EMOJI_LIST.map((emoji) => (
                   <motion.button
                     key={emoji}
                     whileTap={{ scale: 0.8 }}
                     onClick={() => handleEmojiSelect(emoji)}
-                    className="w-10 h-10 text-2xl flex items-center justify-center hover:bg-white/50 dark:hover:bg-border-dark/50 rounded-full transition-colors"
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-xl transition-colors hover:bg-slate-100 dark:hover:bg-white/[0.06]"
                   >
                     {emoji}
                   </motion.button>
@@ -1886,12 +1914,12 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
-        <div className="bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-full p-0.5 flex items-center gap-0.5 shadow-lg shadow-black/5 relative">
+        <div className="pressable-inset relative flex items-center gap-1 rounded-[24px] border border-slate-300/80 bg-white/96 p-1.5 dark:border-slate-700/80 dark:bg-card-alt/96">
           {/* Action menu toggle (+ button) */}
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowMoreIcons(!showMoreIcons)}
-            className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/55 dark:text-text-inv/55 hover:text-text dark:hover:text-text-inv'}`}
+            className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'bg-slate-900/[0.04] text-slate-600 hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'}`}
             aria-label="Attach"
           >
             <Plus size={20} />
@@ -1910,25 +1938,25 @@ export default function ChatRoom({
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute bottom-full left-0 mb-2 z-30 bg-white dark:bg-card-alt border border-border dark:border-border-dark rounded-2xl shadow-xl p-2 flex flex-col gap-1 min-w-[140px]"
+                  className="absolute bottom-full left-0 z-30 mb-2 flex min-w-[140px] flex-col gap-1 rounded-2xl border border-border/70 bg-white/96 p-2 shadow-[0_24px_48px_-26px_rgba(15,23,42,0.36)] dark:border-border-dark/70 dark:bg-card-alt/96 dark:shadow-[0_24px_48px_-26px_rgba(2,6,23,0.78)]"
                 >
                   <button
                     onClick={() => { handleImagePick(); setShowMoreIcons(false); }}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-text transition-colors hover:bg-slate-50 dark:text-text-inv dark:hover:bg-white/[0.05]"
                   >
                     <Image size={18} />
                     Image
                   </button>
                   <button
                     onClick={() => { handleFilePick(); setShowMoreIcons(false); }}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-text transition-colors hover:bg-slate-50 dark:text-text-inv dark:hover:bg-white/[0.05]"
                   >
                     <Paperclip size={18} />
                     File
                   </button>
                   <button
                     onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowMoreIcons(false); }}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-text dark:text-text-inv hover:bg-surface dark:hover:bg-surface-dark transition-colors"
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-text transition-colors hover:bg-slate-50 dark:text-text-inv dark:hover:bg-white/[0.05]"
                   >
                     <Smile size={18} />
                     Emoji
@@ -1948,7 +1976,7 @@ export default function ChatRoom({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
-                className="absolute bottom-full left-0 right-0 mb-3 mx-1 rounded-[16px] bg-white/95 dark:bg-card-alt/95 p-3 border border-border/50 dark:border-border-dark/50 shadow-xl z-20"
+                className="absolute bottom-full left-0 right-0 z-20 mx-1 mb-3 rounded-[18px] border border-border/60 bg-white/96 p-3 shadow-[0_24px_48px_-26px_rgba(15,23,42,0.32)] dark:border-border-dark/60 dark:bg-card-alt/96 dark:shadow-[0_24px_48px_-26px_rgba(2,6,23,0.7)]"
               >
                 <div className="flex items-start gap-3">
                   {pendingFile.isImage ? (
@@ -1971,13 +1999,13 @@ export default function ChatRoom({
                       onChange={(e) => setFileCaption(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSendPendingFile()}
                       placeholder="Add a caption..."
-                      className="w-full bg-transparent text-[12px] outline-none text-text/70 dark:text-text-inv/70 placeholder:text-text/45 dark:placeholder:text-text-inv/40"
+                      className="w-full bg-transparent text-[12px] text-slate-600 outline-none placeholder:text-slate-400 dark:text-slate-300 dark:placeholder:text-slate-500"
                       autoFocus
                     />
                   </div>
                   <button
                     onClick={handleSendPendingFile}
-                    className="self-center p-2 bg-primary text-white rounded-full shadow-md hover:shadow-lg hover:scale-105 transition-all"
+                    className="self-center rounded-full bg-primary p-2 text-white shadow-md transition-all hover:scale-105 hover:shadow-lg"
                   >
                     <Send size={14} />
                   </button>
@@ -1996,7 +2024,7 @@ export default function ChatRoom({
             placeholder={agentReady ? "Message..." : "Switching agent..."}
             disabled={!agentReady}
             aria-label="Type a message"
-            className="flex-1 bg-transparent border-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-md text-[14px] py-1.5 px-2 text-text dark:text-text-inv placeholder:text-text/45 dark:placeholder:text-text-inv/45 disabled:opacity-50"
+            className="flex-1 bg-transparent border-none px-2 py-1.5 text-[14px] text-text placeholder:text-slate-400 focus:outline-none focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-primary dark:text-text-inv dark:placeholder:text-slate-500 disabled:text-slate-400 disabled:italic disabled:opacity-90"
           />
 
           {/* Voice button when no text, Send button when has text */}
@@ -2009,7 +2037,7 @@ export default function ChatRoom({
               onClick={handleSend}
               disabled={!agentReady}
               aria-label="Send message"
-              className="w-9 h-9 rounded-full flex items-center justify-center bg-primary text-white shadow-md shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-md shadow-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Send size={18} />
             </motion.button>
@@ -2018,7 +2046,7 @@ export default function ChatRoom({
               <motion.div
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
-                className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-full"
+                className="flex items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 dark:bg-red-900/20"
               >
                 <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                 <span className="text-[13px] text-red-500 font-semibold tabular-nums min-w-[36px]">
@@ -2029,7 +2057,7 @@ export default function ChatRoom({
                 whileTap={{ scale: 0.85 }}
                 onClick={toggleRecording}
                 aria-label="Stop recording and send"
-                className="w-9 h-9 rounded-full flex items-center justify-center bg-red-500 text-white shadow-lg shadow-red-500/30"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/30"
               >
                 <Send size={18} />
               </motion.button>
@@ -2039,7 +2067,7 @@ export default function ChatRoom({
               whileTap={{ scale: 0.9 }}
               onClick={toggleRecording}
               aria-label="Start voice recording"
-              className="w-9 h-9 rounded-full flex items-center justify-center bg-border dark:bg-border-dark text-text/55 dark:text-text-inv/55 hover:text-primary hover:bg-primary/10 transition-colors"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/[0.05] text-slate-600 transition-colors hover:bg-primary/10 hover:text-primary dark:bg-white/[0.06] dark:text-slate-300"
             >
               <Mic size={18} />
             </motion.button>

@@ -38,7 +38,7 @@ function HistoryDrawerInner({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-30 bg-black/25"
+            className="fixed inset-0 z-30 bg-black/25 backdrop-blur-[2px]"
             onClick={onClose}
           />
           <motion.div
@@ -47,27 +47,27 @@ function HistoryDrawerInner({
             exit={isDesktop ? { opacity: 0, x: 32 } : { opacity: 0, y: 32 }}
             transition={{ type: 'spring', stiffness: 320, damping: 30 }}
             className={cn(
-              'fixed z-40 bg-white dark:bg-card-alt shadow-2xl border border-border dark:border-border-dark',
+              'fixed z-40 border border-border/75 bg-white/96 shadow-[0_30px_60px_-28px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-border-dark/75 dark:bg-card-alt/96 dark:shadow-[0_30px_60px_-28px_rgba(2,6,23,0.82)]',
               isDesktop
                 ? 'top-0 right-0 h-full w-[360px] max-w-[88vw] rounded-l-[28px]'
                 : 'left-0 right-0 bottom-0 max-h-[78vh] rounded-t-[28px]'
             )}
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border dark:border-border-dark">
+            <div className="flex items-center justify-between border-b border-border/70 px-5 py-4 dark:border-border-dark/70">
               <div>
-                <h3 className="text-[15px] font-semibold">Conversation History</h3>
-                <p className="text-[12px] text-text/45 dark:text-text-inv/45">{agentName || 'Agent'}</p>
+                <h3 className="text-[15px] font-semibold text-text dark:text-text-inv">Conversation History</h3>
+                <p className="text-[12px] text-slate-500 dark:text-slate-400">{agentName || 'Agent'}</p>
               </div>
               <div className="flex items-center gap-1">
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={onNewConversation}
-                  className="p-2 text-primary hover:bg-primary/10 rounded-full"
+                  className="rounded-xl bg-primary/10 p-2 text-primary shadow-sm transition-colors hover:bg-primary/15"
                   title="New conversation"
                 >
                   <Plus size={18} />
                 </motion.button>
-                <motion.button whileTap={{ scale: 0.9 }} onClick={onClose} className="p-2 text-text/55 dark:text-text-inv/55">
+                <motion.button whileTap={{ scale: 0.9 }} onClick={onClose} className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 shadow-sm transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv">
                   <X size={18} />
                 </motion.button>
               </div>
@@ -85,21 +85,21 @@ function HistoryDrawerInner({
                   type="button"
                   onClick={() => onSwitchConversation(conversation.chatId)}
                   className={cn(
-                    'w-full text-left rounded-[20px] border px-4 py-3 transition-colors',
+                    'w-full rounded-[20px] border px-4 py-3 text-left shadow-[0_16px_28px_-26px_rgba(15,23,42,0.28)] transition-colors',
                     currentChatId === conversation.chatId
-                      ? 'border-primary bg-primary/5 dark:bg-primary/10'
-                      : 'border-border/70 dark:border-border-dark/70 hover:border-primary/30'
+                      ? 'border-primary/25 bg-primary/7 dark:bg-primary/10'
+                      : 'border-border/70 bg-white/78 hover:border-primary/20 hover:bg-white dark:border-border-dark/70 dark:bg-white/[0.04] dark:hover:bg-white/[0.07]'
                   )}
                 >
                   <div className="flex items-center justify-between gap-3 mb-1">
-                    <p className="font-medium text-[14px] truncate">{conversation.title || conversation.lastMessage || conversation.lastContent || conversation.chatId}</p>
+                    <p className="truncate text-[14px] font-medium text-text dark:text-text-inv">{conversation.title || conversation.lastMessage || conversation.lastContent || conversation.chatId}</p>
                     {(conversation.timestamp || conversation.lastTimestamp) && (
-                      <span className="text-[11px] text-text/40 dark:text-text-inv/40 shrink-0">
+                      <span className="shrink-0 text-[11px] font-normal text-slate-400 dark:text-slate-500">
                         {formatRelativeTime((conversation.timestamp || conversation.lastTimestamp)!)}
                       </span>
                     )}
                   </div>
-                  <p className="text-[12px] text-text/45 dark:text-text-inv/45 line-clamp-2">
+                  <p className="line-clamp-2 text-[12px] text-slate-500 dark:text-slate-400">
                     {conversation.lastMessage || conversation.lastContent || 'No messages yet'}
                   </p>
                 </button>

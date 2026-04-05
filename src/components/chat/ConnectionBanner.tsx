@@ -19,8 +19,8 @@ function ConnectionBannerInner({ wsStatus, showReconnected, onReconnect }: Conne
             exit={{ opacity: 0, height: 0 }}
             className={`w-full z-20 px-4 py-2 flex items-center justify-center gap-2 text-[13px] font-medium ${
               wsStatus === 'reconnecting'
-                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-b border-amber-200 dark:border-amber-800/40'
-                : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 border-b border-red-200 dark:border-red-800/40'
+                ? 'bg-amber-50/95 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 shadow-[0_12px_24px_-20px_rgba(245,158,11,0.45)]'
+                : 'bg-red-50/95 dark:bg-red-900/20 text-red-600 dark:text-red-300 shadow-[0_12px_24px_-20px_rgba(239,68,68,0.4)]'
             }`}
           >
             {wsStatus === 'reconnecting' ? (

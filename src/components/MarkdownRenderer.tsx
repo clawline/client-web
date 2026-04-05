@@ -160,15 +160,15 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
 
           // Tables (restored via remarkGfm)
           table: ({ children }) => (
-            <div className="my-3 overflow-x-auto rounded border border-border dark:border-border-dark">
+            <div className="my-3 overflow-x-auto rounded-[18px] border border-border/80 shadow-[0_16px_30px_-26px_rgba(15,23,42,0.24)] dark:border-border-dark/80 dark:shadow-[0_18px_32px_-26px_rgba(2,6,23,0.68)]">
               <table className="w-full text-left text-sm">{children}</table>
             </div>
           ),
-          thead: ({ children }) => <thead className="bg-muted/50 dark:bg-card-alt border-b border-border dark:border-border-dark">{children}</thead>,
-          tbody: ({ children }) => <tbody className="divide-y divide-border dark:divide-border-dark">{children}</tbody>,
-          tr: ({ children }) => <tr className="hover:bg-muted/20 transition-colors">{children}</tr>,
-          th: ({ children }) => <th className="px-3 py-2 font-semibold text-text dark:text-text-inv">{children}</th>,
-          td: ({ children }) => <td className="px-3 py-2 align-top">{children}</td>,
+          thead: ({ children }) => <thead className="border-b border-border/80 bg-slate-100/90 dark:border-border-dark/80 dark:bg-[#202938]">{children}</thead>,
+          tbody: ({ children }) => <tbody className="[&_tr:nth-child(odd)]:bg-white [&_tr:nth-child(even)]:bg-slate-50/85 dark:[&_tr:nth-child(odd)]:bg-[#141b24] dark:[&_tr:nth-child(even)]:bg-[#101720]">{children}</tbody>,
+          tr: ({ children }) => <tr className="transition-colors hover:bg-primary/4 dark:hover:bg-primary/6">{children}</tr>,
+          th: ({ children }) => <th className="px-3 py-2.5 text-[13px] font-bold text-text dark:text-text-inv">{children}</th>,
+          td: ({ children }) => <td className="px-3 py-2.5 align-top text-slate-700 dark:text-slate-300">{children}</td>,
 
           // Formatting
           strong: ({ children }) => <strong className="font-bold text-text dark:text-text-inv">{children}</strong>,
