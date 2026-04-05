@@ -572,6 +572,14 @@ export default function ChatRoom({
         // Clear thinking indicator on final message delivery
         setIsThinking(false);
         if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+        // Safety: clear any lingering streaming/streamingDone flags
+        setTimeout(() => {
+          setMessages((prev) => {
+            const hasStale = prev.some((m) => m.isStreaming || m.streamingDone);
+            if (!hasStale) return prev;
+            return prev.filter((m) => !m.streamingDone).map((m) => m.isStreaming ? { ...m, isStreaming: false } : m);
+          });
+        }, 300);
         // S1: Mark ALL pending/sent user messages as delivered (bot responded = all prior msgs received)
         setActiveToolCalls([]); // S3: Clear stale tool calls on final message
         setToolCallHistory([]);
