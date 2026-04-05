@@ -1026,6 +1026,24 @@ export default function ChatRoom({
 
   const handleFilePick = () => fileInputRef2.current?.click();
 
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file') {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const dataUrl = await fileToDataUrl(file);
+        const isImage = file.type.startsWith('image/');
+        setPendingFile({ file, dataUrl, isImage });
+        setFileCaption(inputValue.trim());
+        return;
+      }
+    }
+  }, [inputValue]);
+
   const handleFileSelected2 = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2128,6 +2146,7 @@ export default function ChatRoom({
             type="text"
             value={inputValue}
             onChange={handleInputChange}
+            onPaste={handlePaste}
             onFocus={() => { setShowEmojiPicker(false); }}
             onBlur={() => { window.scrollTo(0, 0); }}
             onKeyDown={(e) => {

@@ -443,7 +443,7 @@ function AppShell() {
             if (isGrid) {
               // 2x2 grid (田字形)
               return (
-                <div className="grid grid-cols-2 grid-rows-2 h-full min-w-0 bg-surface dark:bg-surface-dark divide-x divide-y divide-border/20 dark:divide-border-dark/20">
+                <div className="grid grid-cols-2 grid-rows-2 h-full min-w-0 bg-surface dark:bg-surface-dark divide-x divide-y divide-border/40 dark:divide-border-dark/40">
                   <div className="overflow-hidden">
                     <ChatRoom
                       agentId={activeAgentId}
@@ -470,7 +470,7 @@ function AppShell() {
               // Main left, 2 splits stacked right
               return (
                 <div className="flex h-full min-w-0 bg-surface dark:bg-surface-dark">
-                  <div className="min-w-[400px] flex-1 overflow-hidden shadow-[18px_0_36px_-30px_rgba(15,23,42,0.18)] dark:shadow-[18px_0_36px_-30px_rgba(2,6,23,0.55)]">
+                  <div className="min-w-[400px] flex-1 overflow-hidden border-r border-border/40 dark:border-border-dark/40">
                     <ChatRoom
                       agentId={activeAgentId}
                       chatId={activeChatId}
@@ -483,7 +483,7 @@ function AppShell() {
                       onToggleSplit={toggleSplitView}
                     />
                   </div>
-                  <div className="min-w-[400px] flex-1 flex flex-col divide-y divide-border/20 dark:divide-border-dark/20">
+                  <div className="min-w-[400px] flex-1 flex flex-col divide-y divide-border/40 dark:divide-border-dark/40">
                     {splitPanes.slice(0, 2).map((pane, idx) => (
                       <div key={idx} className="flex-1 overflow-hidden">
                         {renderSplitPane(pane, idx)}
@@ -497,7 +497,7 @@ function AppShell() {
             // 2 panes: side-by-side
             return (
               <div className="flex h-full min-w-0 bg-surface dark:bg-surface-dark">
-                <div className="min-w-[400px] flex-1 overflow-hidden shadow-[18px_0_36px_-30px_rgba(15,23,42,0.18)] dark:shadow-[18px_0_36px_-30px_rgba(2,6,23,0.55)]">
+                <div className="min-w-[400px] flex-1 overflow-hidden border-r border-border/40 dark:border-border-dark/40">
                   <ChatRoom
                     agentId={activeAgentId}
                     chatId={activeChatId}
