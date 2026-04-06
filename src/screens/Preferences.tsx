@@ -26,7 +26,7 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
     <div className="flex flex-col h-full bg-surface dark:bg-surface-dark">
       {/* Header */}
       <div className="px-4 py-4 sticky top-0 bg-surface/80 dark:bg-surface-dark/80 backdrop-blur-xl z-20 flex items-center justify-between">
-        <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2 text-text dark:text-text-inv">
+        <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} aria-label="Go back" title="Go back" className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2 text-text dark:text-text-inv">
           <ChevronLeft size={28} />
         </motion.button>
         <h2 className="font-semibold text-[17px]">Preferences</h2>

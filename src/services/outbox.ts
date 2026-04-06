@@ -90,8 +90,16 @@ export async function enqueue(entry: OutboxEntry): Promise<void> {
           const tsIndex = store.index('timestamp');
           const cursor = tsIndex.openCursor();
           cursor.onsuccess = () => {
-            if (cursor.result) cursor.result.delete();
+            if (cursor.result) {
+              const deleteReq = cursor.result.delete();
+              deleteReq.onsuccess = () => { store.put(entry); };
+              deleteReq.onerror = () => reject(deleteReq.error);
+            } else {
+              store.put(entry);
+            }
           };
+          cursor.onerror = () => reject(cursor.error);
+          return;
         }
         store.put(entry);
       };
