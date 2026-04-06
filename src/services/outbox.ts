@@ -70,13 +70,14 @@ export async function enqueue(entry: OutboxEntry): Promise<void> {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
 
+    let didDrop = false;
+    let totalCount = 0;
+
     const countReq = store.count();
     countReq.onsuccess = () => {
-      if (countReq.result >= MAX_PENDING) {
-        // Warn user that oldest message was dropped
-        window.dispatchEvent(new CustomEvent(OUTBOX_OVERFLOW_EVENT, {
-          detail: { dropped: 1, total: countReq.result },
-        }));
+      totalCount = countReq.result;
+      if (totalCount >= MAX_PENDING) {
+        didDrop = true;
         // Delete oldest entry by cursor
         const cursor = store.openCursor();
         cursor.onsuccess = () => {
@@ -86,7 +87,15 @@ export async function enqueue(entry: OutboxEntry): Promise<void> {
       store.put(entry);
     };
 
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      // Only notify after transaction successfully committed
+      if (didDrop) {
+        window.dispatchEvent(new CustomEvent(OUTBOX_OVERFLOW_EVENT, {
+          detail: { dropped: 1, total: totalCount },
+        }));
+      }
+      resolve();
+    };
     tx.onerror = () => reject(tx.error);
   });
 }

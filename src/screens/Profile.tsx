@@ -15,6 +15,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ServerConnection | null>(null);
   const [editForm, setEditForm] = useState({ name: '', displayName: '', serverUrl: '', token: '', chatId: '', senderId: '' });
+  const [statusMap, setStatusMap] = useState<Record<string, string>>({});
   const [darkMode, setDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
   const [pushNotif, setPushNotif] = useState(() => localStorage.getItem('openclaw.pushNotif') !== '0');
   const [inAppNotif, setInAppNotif] = useState(() => localStorage.getItem('openclaw.inAppNotif') !== '0');
@@ -37,6 +38,21 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
       if (claims) setUserClaims(claims);
     });
   }, [getIdTokenClaims]);
+
+  // Reactive connection status — subscribe to each connection's status changes
+  useEffect(() => {
+    const initial: Record<string, string> = {};
+    const unsubs: (() => void)[] = [];
+    for (const conn of connections) {
+      initial[conn.id] = channel.getStatus(conn.id);
+      const connId = conn.id;
+      unsubs.push(channel.onStatus((status) => {
+        setStatusMap((prev) => ({ ...prev, [connId]: status }));
+      }, connId));
+    }
+    setStatusMap(initial);
+    return () => unsubs.forEach((u) => u());
+  }, [connections]);
 
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
@@ -134,7 +150,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
                     <p className="font-medium text-[15px] truncate">{conn.displayName || conn.name}</p>
                     <p className="text-[11px] mt-0.5 flex items-center gap-1.5">
                       {(() => {
-                        const status = channel.getStatus(conn.id);
+                        const status = statusMap[conn.id] || 'disconnected';
                         if (status === 'connected') return <><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /><span className="text-emerald-600 dark:text-emerald-400">Connected</span></>;
                         if (status === 'connecting' || status === 'reconnecting') return <><span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse inline-block" /><span className="text-amber-600 dark:text-amber-400">{status === 'connecting' ? 'Connecting' : 'Reconnecting'}</span></>;
                         return <><span className="w-1.5 h-1.5 rounded-full bg-text/20 dark:bg-text-inv/20 inline-block" /><span className="text-text/35 dark:text-text-inv/30">Disconnected</span></>;
