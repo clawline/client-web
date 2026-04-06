@@ -17,7 +17,15 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
   const [editing, setEditing] = useState<ServerConnection | null>(null);
   const [editForm, setEditForm] = useState({ name: '', displayName: '', serverUrl: '', token: '', chatId: '', senderId: '' });
   const [statusMap, setStatusMap] = useState<Record<string, ChannelStatus>>({});
-  const [darkMode, setDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
+  type DarkModeState = 'auto' | 'dark' | 'light';
+  const [darkMode, setDarkModeState] = useState<DarkModeState>(() => {
+    const v = localStorage.getItem('openclaw.darkMode');
+    if (v === '1') return 'dark';
+    if (v === '0') return 'light';
+    return 'auto';
+  });
+  const darkModeLabel = darkMode === 'auto' ? '自动 (CST)' : darkMode === 'dark' ? '始终深色' : '始终浅色';
+  const darkModeActive = darkMode !== 'light';
   const [pushNotif, setPushNotif] = useState(() => localStorage.getItem('openclaw.pushNotif') !== '0');
   const [inAppNotif, setInAppNotif] = useState(() => localStorage.getItem('openclaw.inAppNotif') !== '0');
 
@@ -203,11 +211,17 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
 
         {/* Settings */}
         <Card className="overflow-hidden">
-          <SettingItem icon={Moon} label="Dark Mode" hasToggle active={darkMode} onClick={() => {
-            const next = !darkMode;
-            setDarkMode(next);
-            document.documentElement.classList.toggle('dark', next);
-            localStorage.setItem('openclaw.darkMode', next ? '1' : '0');
+          <SettingItem icon={Moon} label={`主题：${darkModeLabel}`} hasToggle active={darkModeActive} onClick={() => {
+            const next: DarkModeState = darkMode === 'auto' ? 'dark' : darkMode === 'dark' ? 'light' : 'auto';
+            setDarkModeState(next);
+            if (next === 'auto') {
+              localStorage.removeItem('openclaw.darkMode');
+              const h = (new Date().getUTCHours() + 8) % 24;
+              document.documentElement.classList.toggle('dark', h >= 18 || h < 6);
+            } else {
+              localStorage.setItem('openclaw.darkMode', next === 'dark' ? '1' : '0');
+              document.documentElement.classList.toggle('dark', next === 'dark');
+            }
           }} />
           <div className="h-[1px] bg-border dark:bg-border-dark ml-14" />
           <SettingItem icon={Bell} label="Push Notifications" hasToggle active={pushNotif} onClick={async () => {

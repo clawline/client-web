@@ -5,10 +5,26 @@ import SafeLogtoProvider from './components/SafeLogtoProvider.tsx';
 import App from './App.tsx';
 import './index.css';
 
-// Dark mode persistence
-if (localStorage.getItem('openclaw.darkMode') === '1') {
-  document.documentElement.classList.add('dark');
+// Dark mode: 'auto' (CST 18:00-06:00 = dark) | '1' = always dark | '0' = always light
+function getCSTHour() {
+  return (new Date().getUTCHours() + 8) % 24;
 }
+function isCSTPeakDark() {
+  const h = getCSTHour();
+  return h >= 18 || h < 6;
+}
+(function applyDarkMode() {
+  const stored = localStorage.getItem('openclaw.darkMode');
+  const isDark = stored === '1' ? true : stored === '0' ? false : isCSTPeakDark();
+  document.documentElement.classList.toggle('dark', isDark);
+})();
+// Re-evaluate every minute when in auto mode
+setInterval(() => {
+  if (localStorage.getItem('openclaw.darkMode') === null ||
+      localStorage.getItem('openclaw.darkMode') === 'auto') {
+    document.documentElement.classList.toggle('dark', isCSTPeakDark());
+  }
+}, 60_000);
 
 // Console easter egg for devs
 if (typeof console !== 'undefined') {
