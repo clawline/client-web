@@ -386,11 +386,12 @@ function AppShell() {
       splitPanesClearedRef.current = true;
       return;
     }
-    if (!isSplitViewport || currentScreen !== 'chat_room') {
-      // Don't persist 'off' when screen changes or viewport shrinks
+    // Only clear panes when viewport becomes too small for split
+    // Screen navigation should NOT clear panes (they'll restore when back in chat_room)
+    if (!isSplitViewport) {
       setSplitPanes([]);
     }
-  }, [currentScreen, isSplitViewport]);
+  }, [isSplitViewport]);
 
   // ── Conditional returns AFTER all hooks ──
 
