@@ -267,6 +267,37 @@ async function loadByScope(connectionId: string, scopeId: string, limit = DEFAUL
   });
 }
 
+async function loadByAgent(connectionId: string, agentId: string, limit = DEFAULT_LOAD_LIMIT) {
+  if (!connectionId || !agentId || !hasIndexedDBSupport()) {
+    return [];
+  }
+
+  return withStore('readonly', async (store) => {
+    const index = store.index(INDEX_BY_AGENT_TIMESTAMP);
+    const range = IDBKeyRange.bound(
+      [connectionId, agentId, Number.MIN_SAFE_INTEGER],
+      [connectionId, agentId, Number.MAX_SAFE_INTEGER],
+    );
+    const request = index.openCursor(range, 'prev');
+
+    return new Promise<MessageRecord[]>((resolve, reject) => {
+      const rows: StoredMessageRecord[] = [];
+
+      request.onerror = () => reject(request.error ?? new Error('Failed to load messages.'));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor || rows.length >= limit) {
+          resolve(rows.reverse().map(toPublicMessage));
+          return;
+        }
+
+        rows.push(cursor.value as StoredMessageRecord);
+        cursor.continue();
+      };
+    });
+  });
+}
+
 async function clearByScope(connectionId: string, scopeId: string) {
   if (!connectionId || !scopeId || !hasIndexedDBSupport()) {
     return;
@@ -326,7 +357,12 @@ export async function loadConversationMessages(
     return [];
   }
 
-  return loadByScope(connectionId, buildScopeId(agentId, options?.chatId), options?.limit ?? DEFAULT_LOAD_LIMIT);
+  // When chatId is provided, use scope-based lookup (exact match)
+  // When chatId is omitted, use agent-based lookup (finds messages across all scopes)
+  if (options?.chatId) {
+    return loadByScope(connectionId, buildScopeId(agentId, options.chatId), options?.limit ?? DEFAULT_LOAD_LIMIT);
+  }
+  return loadByAgent(connectionId, agentId, options?.limit ?? DEFAULT_LOAD_LIMIT);
 }
 
 export async function loadMessages(connectionId: string, agentId: string, limit = DEFAULT_LOAD_LIMIT) {
