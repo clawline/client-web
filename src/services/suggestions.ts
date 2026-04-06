@@ -198,3 +198,44 @@ export async function refineVoiceText(
     return text;
   }
 }
+
+// ── Message Sync API (pull missed messages from DB) ──
+
+export type SyncMessage = {
+  id: string;
+  channel_id: string;
+  sender_id: string | null;
+  agent_id: string | null;
+  message_id: string | null;
+  content: string | null;
+  content_type: string;
+  direction: string;
+  media_url: string | null;
+  meta: string | null;
+  timestamp: number;
+};
+
+export async function syncMissedMessages(
+  channelId: string,
+  afterTimestamp: number,
+  limit = 100,
+): Promise<SyncMessage[]> {
+  const baseUrl = getGatewayHttpUrl();
+  if (!baseUrl) return [];
+
+  try {
+    const params = new URLSearchParams({
+      channelId,
+      after: String(afterTimestamp),
+      limit: String(limit),
+    });
+    const res = await fetch(`${baseUrl}/api/messages/sync?${params}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.messages) ? data.messages : [];
+  } catch {
+    return [];
+  }
+}

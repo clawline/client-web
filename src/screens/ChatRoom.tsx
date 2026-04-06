@@ -15,7 +15,7 @@ import MemorySheet from '../components/MemorySheet';
 import FileGallery from '../components/FileGallery';
 import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
 import * as outbox from '../services/outbox';
-import { refineVoiceText } from '../services/suggestions';
+import { refineVoiceText, syncMissedMessages } from '../services/suggestions';
 import {
   type DeliveryStatus, type Message, type AgentInfo,
   QUICK_COMMANDS, EMOJI_LIST,
@@ -900,6 +900,32 @@ export default function ChatRoom({
             }
           }
         }).catch(() => {});
+
+        // Sync missed messages from DB (for multi-client scenarios)
+        if (chatId && activeConn?.channelId) {
+          const lastTs = messages.length > 0 ? Math.max(...messages.map(m => m.timestamp || 0)) : 0;
+          if (lastTs > 0) {
+            syncMissedMessages(activeConn.channelId, lastTs).then((missed) => {
+              if (missed.length === 0) return;
+              const newMsgs: Message[] = missed
+                .filter(m => !messages.some(existing => existing.id === m.message_id))
+                .map(m => ({
+                  id: m.message_id || m.id,
+                  sender: m.direction === 'inbound' ? 'user' : 'ai',
+                  text: m.content || '',
+                  timestamp: m.timestamp,
+                  deliveryStatus: 'delivered' as DeliveryStatus,
+                }));
+              if (newMsgs.length > 0) {
+                setMessages(prev => {
+                  const ids = new Set(prev.map(p => p.id));
+                  const unique = newMsgs.filter(m => !ids.has(m.id));
+                  return unique.length > 0 ? [...prev, ...unique].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)) : prev;
+                });
+              }
+            }).catch(() => {});
+          }
+        }
       }
       prevWsStatusRef.current = status;
       setWsStatus(status);
