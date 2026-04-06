@@ -601,7 +601,7 @@ function AppShell() {
 
   if (isDesktop) {
     return (
-      <div className="flex flex-col w-full h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-surface dark:bg-surface-dark text-text dark:text-text-inv overflow-hidden font-sans">
+      <div className="flex flex-col w-full h-full bg-surface dark:bg-surface-dark text-text dark:text-text-inv overflow-hidden font-sans">
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
         <div style={{ width: sidebarWidth }} className="sidebar-surface h-full flex flex-col flex-shrink-0 relative">
