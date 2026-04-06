@@ -1,4 +1,6 @@
 import { motion } from 'motion/react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 /**
  * Generic slash-command response card renderer.
@@ -6,7 +8,8 @@ import { motion } from 'motion/react';
  * Detects messages that look like structured command output:
  *   - Multiple "emoji Key: value" rows (e.g. /status, /context, /whoami)
  *
- * When detected, renders as a clean card instead of raw text.
+ * Short values → horizontal layout (label | value side by side)
+ * Long/markdown values → vertical layout (label on top, markdown body below)
  */
 
 type CardRow = {
@@ -80,6 +83,20 @@ function findLabelColon(s: string): number {
   return -1;
 }
 
+/** Determine if a value should use vertical (block) layout */
+function isBlockValue(value: string): boolean {
+  return (
+    value.length > 80 ||
+    value.includes('\n') ||
+    /\*\*|__|\#{1,3}\s|```|\-\s/.test(value)
+  );
+}
+
+// Clean up trailing ### markers used as separators in some formats
+function cleanValue(value: string): string {
+  return value.replace(/\s*###\s*$/, '').trim();
+}
+
 // Highlight badges like "100%", "4%", version strings, model names
 function formatValue(value: string) {
   const parts = value.split(/([·•])/g);
@@ -125,20 +142,69 @@ export default function SlashResponseCard({ text }: Props) {
         </div>
       )}
       <div className="divide-y divide-border/30 dark:divide-border-dark/30">
-        {parsed.rows.map((row, i) => (
-          <div
-            key={i}
-            className={`flex items-center gap-2 px-3 py-1 ${!parsed.title && i === 0 ? 'pt-2.5' : ''} ${i === parsed.rows.length - 1 ? 'pb-2.5' : ''}`}
-          >
-            <span className="w-4 shrink-0 text-center text-[13px]">{row.emoji}</span>
-            <span className="text-[11px] font-medium text-text/40 dark:text-text-inv/35 whitespace-nowrap">
-              {row.label}
-            </span>
-            <span className="min-w-0 flex-1 break-words text-[12px] leading-snug text-text dark:text-text-inv">
-              {formatValue(row.value)}
-            </span>
-          </div>
-        ))}
+        {parsed.rows.map((row, i) => {
+          const isFirst = !parsed.title && i === 0;
+          const isLast = i === parsed.rows.length - 1;
+          const cleaned = cleanValue(row.value);
+          const block = isBlockValue(cleaned);
+
+          if (block) {
+            // Vertical layout: label row + markdown body
+            return (
+              <div
+                key={i}
+                className={`px-3 ${isFirst ? 'pt-2.5' : 'pt-2'} ${isLast ? 'pb-2.5' : 'pb-2'}`}
+              >
+                {/* Label row */}
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="w-4 shrink-0 text-center text-[13px]">{row.emoji}</span>
+                  <span className="text-[11px] font-semibold text-text/50 dark:text-text-inv/40 uppercase tracking-wide">
+                    {row.label}
+                  </span>
+                </div>
+                {/* Markdown value */}
+                <div className="pl-6 text-[13px] leading-relaxed text-text dark:text-text-inv prose-sm">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => <p className="mb-1 last:mb-0 break-words">{children}</p>,
+                      strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                      ul: ({ children }) => <ul className="mb-1 list-disc pl-4 space-y-0.5">{children}</ul>,
+                      ol: ({ children }) => <ol className="mb-1 list-decimal pl-4 space-y-0.5">{children}</ol>,
+                      li: ({ children }) => <li className="pl-0.5">{children}</li>,
+                      h1: ({ children }) => <h1 className="font-bold text-[14px] mb-1">{children}</h1>,
+                      h2: ({ children }) => <h2 className="font-bold text-[13px] mb-1">{children}</h2>,
+                      h3: ({ children }) => <h3 className="font-semibold text-[12px] mb-0.5">{children}</h3>,
+                      code: ({ children }) => (
+                        <code className="rounded bg-black/10 dark:bg-white/10 px-1 py-0.5 text-[12px] font-mono">
+                          {children}
+                        </code>
+                      ),
+                    }}
+                  >
+                    {cleaned}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            );
+          }
+
+          // Horizontal layout (original): label | value side by side
+          return (
+            <div
+              key={i}
+              className={`flex items-center gap-2 px-3 py-1 ${isFirst ? 'pt-2.5' : ''} ${isLast ? 'pb-2.5' : ''}`}
+            >
+              <span className="w-4 shrink-0 text-center text-[13px]">{row.emoji}</span>
+              <span className="text-[11px] font-medium text-text/40 dark:text-text-inv/35 whitespace-nowrap">
+                {row.label}
+              </span>
+              <span className="min-w-0 flex-1 break-words text-[12px] leading-snug text-text dark:text-text-inv">
+                {formatValue(cleaned)}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </motion.div>
   );
