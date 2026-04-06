@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { ChevronLeft, User, Sliders, Sparkles, Mic, Bell } from 'lucide-react';
+import { ChevronLeft, User, Sliders, Sparkles, Mic, Bell, Download, Upload, Check } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
 import { getUserName, setUserName } from '../App';
@@ -51,6 +51,88 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
   const handleVoiceRefinePromptChange = (value: string) => {
     setVoiceRefinePromptVal(value);
     setVoiceRefineCustomPrompt(value);
+  };
+
+  // ── Config export / import ──────────────────────────────────────
+  const CONFIG_VERSION = 1;
+  const EXPORT_KEYS = [
+    'openclaw.connections',
+    'openclaw.userName',
+    'openclaw.darkMode',
+    'openclaw.streaming.enabled',
+    'openclaw.suggestions.enabled',
+    'openclaw.suggestions.prompt',
+    'openclaw.voiceRefine.enabled',
+    'openclaw.voiceRefine.prompt',
+    'clawline.agentNames',
+    'clawline.agentFavorites',
+    'openclaw.chatlist.viewMode',
+    'openclaw.chatlist.expandedIds',
+    'openclaw.sidebar.width',
+    'openclaw.inAppNotif',
+    'openclaw.pushNotif',
+    'clawline:voiceMode',
+    'volcASR.config',
+    'openclaw.agentAvatars',
+  ];
+
+  const [importStatus, setImportStatus] = useState<'idle' | 'ok' | 'error'>('idle');
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = () => {
+    const data: Record<string, unknown> = { _version: CONFIG_VERSION };
+    // Fixed keys
+    for (const key of EXPORT_KEYS) {
+      const val = localStorage.getItem(key);
+      if (val !== null) data[key] = val;
+    }
+    // Dynamic prefix keys (agent order per connection)
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)!;
+      if (k.startsWith('clawline.agentOrder.') || k.startsWith('openclaw.split')) {
+        data[k] = localStorage.getItem(k);
+      }
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `clawline-config-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        if (!data || typeof data !== 'object') throw new Error('Invalid format');
+        let count = 0;
+        for (const [key, val] of Object.entries(data)) {
+          if (key === '_version') continue;
+          if (typeof val === 'string') {
+            localStorage.setItem(key, val);
+            count++;
+          }
+        }
+        setImportStatus('ok');
+        setTimeout(() => {
+          setImportStatus('idle');
+          // Reload to apply all settings
+          window.location.reload();
+        }, 1200);
+        void count;
+      } catch {
+        setImportStatus('error');
+        setTimeout(() => setImportStatus('idle'), 2500);
+      }
+      // Reset input so same file can be re-selected
+      if (importInputRef.current) importInputRef.current.value = '';
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -235,6 +317,62 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
                   }`} />
                 </button>
               )}
+            </div>
+          </Card>
+        </section>
+
+        {/* ── Config import / export ── */}
+        <section>
+          <h2 className="text-[11px] font-semibold uppercase tracking-widest text-text/40 dark:text-text-inv/40 mb-3">数据备份</h2>
+          <Card className="p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-medium text-text dark:text-text-inv">导出配置</p>
+                <p className="text-[12px] text-text/50 dark:text-text-inv/40 mt-0.5">将服务器列表、名字、收藏、偏好等全部设置导出为 JSON 文件</p>
+              </div>
+              <motion.button
+                whileTap={{ scale: 0.93 }}
+                onClick={handleExport}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium bg-primary/10 text-primary dark:bg-primary/15 hover:bg-primary/20 transition-colors shrink-0"
+              >
+                <Download size={14} />
+                导出
+              </motion.button>
+            </div>
+
+            <div className="h-px bg-border/40 dark:bg-border-dark/40" />
+
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-medium text-text dark:text-text-inv">导入配置</p>
+                <p className="text-[12px] text-text/50 dark:text-text-inv/40 mt-0.5">从之前导出的 JSON 文件恢复所有设置，导入后页面将自动刷新</p>
+              </div>
+              <motion.button
+                whileTap={{ scale: 0.93 }}
+                onClick={() => importInputRef.current?.click()}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium shrink-0 transition-colors ${
+                  importStatus === 'ok'
+                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                    : importStatus === 'error'
+                    ? 'bg-red-500/10 text-red-500'
+                    : 'bg-text/[0.06] dark:bg-text-inv/[0.06] text-text dark:text-text-inv hover:bg-text/[0.1] dark:hover:bg-text-inv/[0.1]'
+                }`}
+              >
+                {importStatus === 'ok' ? (
+                  <><Check size={14} />已导入</>
+                ) : importStatus === 'error' ? (
+                  <>格式错误</>
+                ) : (
+                  <><Upload size={14} />导入</>
+                )}
+              </motion.button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={handleImportFile}
+              />
             </div>
           </Card>
         </section>
