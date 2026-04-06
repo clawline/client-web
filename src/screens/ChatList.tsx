@@ -28,12 +28,12 @@ type PendingOpen = { agentId: string; target: 'primary' | 'split' };
 function getCustomAvatars(): Record<string, string> {
   try { const raw = localStorage.getItem(AGENT_AVATAR_KEY); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
 }
-function setCustomAvatar(agentId: string, url: string) {
-  const avatars = getCustomAvatars(); avatars[agentId] = url;
+function setCustomAvatar(connId: string, agentId: string, url: string) {
+  const avatars = getCustomAvatars(); avatars[`${connId}:${agentId}`] = url;
   localStorage.setItem(AGENT_AVATAR_KEY, JSON.stringify(avatars));
 }
-function removeCustomAvatar(agentId: string) {
-  const avatars = getCustomAvatars(); delete avatars[agentId];
+function removeCustomAvatar(connId: string, agentId: string) {
+  const avatars = getCustomAvatars(); delete avatars[`${connId}:${agentId}`];
   localStorage.setItem(AGENT_AVATAR_KEY, JSON.stringify(avatars));
 }
 function getCustomNames(): Record<string, string> {
@@ -347,7 +347,7 @@ export default function ChatList({
   const [customAvatars, setCustomAvatarsState] = useState<Record<string, string>>(() => getCustomAvatars());
   const [customNames, setCustomNamesState] = useState<Record<string, string>>(() => getCustomNames());
   const [favorites, setFavoritesState] = useState<Set<string>>(() => getFavorites());
-  const [avatarMenuAgent, setAvatarMenuAgent] = useState<{ agentId: string; x: number; y: number } | null>(null);
+  const [avatarMenuAgent, setAvatarMenuAgent] = useState<{ agentId: string; connectionId: string; x: number; y: number } | null>(null);
   const [avatarUploadAgent, setAvatarUploadAgent] = useState<string | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
 
@@ -367,24 +367,25 @@ export default function ChatList({
 
   // ── Avatar context menu ──
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleAvatarContextMenu = (e: React.MouseEvent, agentId: string) => {
+  const handleAvatarContextMenu = (e: React.MouseEvent, connectionId: string, agentId: string) => {
     e.preventDefault(); e.stopPropagation();
-    setAvatarMenuAgent({ agentId, x: e.clientX, y: e.clientY });
+    setAvatarMenuAgent({ agentId, connectionId, x: e.clientX, y: e.clientY });
   };
-  const handleAvatarTouchStart = (e: React.TouchEvent, agentId: string) => {
+  const handleAvatarTouchStart = (e: React.TouchEvent, connectionId: string, agentId: string) => {
     const t = e.touches[0];
-    longPressTimerRef.current = setTimeout(() => setAvatarMenuAgent({ agentId, x: t.clientX, y: t.clientY }), 500);
+    longPressTimerRef.current = setTimeout(() => setAvatarMenuAgent({ agentId, connectionId, x: t.clientX, y: t.clientY }), 500);
   };
   const handleAvatarTouchEnd = () => {
     if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
   };
-  const handleSetCustomAvatar = (agentId: string) => { setAvatarMenuAgent(null); setAvatarUploadAgent(agentId); };
+  const handleSetCustomAvatar = (connectionId: string, agentId: string) => { setAvatarMenuAgent(null); setAvatarUploadAgent(`${connectionId}:${agentId}`); };
   const handleAvatarSave = (dataUrl: string) => {
     if (!avatarUploadAgent) return;
-    setCustomAvatar(avatarUploadAgent, dataUrl); setCustomAvatarsState(getCustomAvatars());
+    setCustomAvatar(avatarUploadAgent.split(':')[0], avatarUploadAgent.split(':').slice(1).join(':'), dataUrl);
+    setCustomAvatarsState(getCustomAvatars());
   };
-  const handleRemoveCustomAvatar = (agentId: string) => {
-    removeCustomAvatar(agentId); setCustomAvatarsState(getCustomAvatars()); setAvatarMenuAgent(null);
+  const handleRemoveCustomAvatar = (connectionId: string, agentId: string) => {
+    removeCustomAvatar(connectionId, agentId); setCustomAvatarsState(getCustomAvatars()); setAvatarMenuAgent(null);
   };
   useEffect(() => {
     if (!avatarMenuAgent) return;
@@ -676,12 +677,13 @@ export default function ChatList({
   }, [agentMap]);
 
   // ── Shared avatar renderer ──
-  const renderAvatar = (agent: AgentInfo, size: 'sm' | 'md' | 'lg' | 'xl') => {
+  const renderAvatar = (agent: AgentInfo, size: 'sm' | 'md' | 'lg' | 'xl', connectionId?: string) => {
     const palette = getAgentPalette(agent.id);
     const initials = agent.name.slice(0, 2).toUpperCase();
     const sizeClasses = size === 'sm' ? 'w-8 h-8 text-[11px] rounded-lg' : size === 'md' ? 'w-10 h-10 text-[13px] rounded-xl' : size === 'lg' ? 'w-12 h-12 text-base rounded-2xl' : 'w-14 h-14 text-lg rounded-2xl';
-    if (customAvatars[agent.id]) {
-      return <img src={customAvatars[agent.id]} alt={agent.name} className={cn('object-cover', sizeClasses)} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />;
+    const avatarKey = connectionId ? `${connectionId}:${agent.id}` : agent.id;
+    if (customAvatars[avatarKey]) {
+      return <img src={customAvatars[avatarKey]} alt={agent.name} className={cn('object-cover', sizeClasses)} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />;
     }
     return (
       <div className={cn('flex items-center justify-center text-white font-semibold shadow-sm', sizeClasses)}
@@ -732,9 +734,9 @@ export default function ChatList({
                 : 'hover:bg-text/[0.05] dark:hover:bg-text-inv/[0.05] hover:shadow-sm'
             )}>
             {/* Avatar */}
-            <div className="relative flex-shrink-0" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
-              onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
-              {renderAvatar(agent, compact ? 'sm' : 'md')}
+            <div className="relative flex-shrink-0" onContextMenu={e => handleAvatarContextMenu(e, connection.id, agent.id)}
+              onTouchStart={e => handleAvatarTouchStart(e, connection.id, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
+              {renderAvatar(agent, compact ? 'sm' : 'md', connection.id)}
               {agent.isDefault && (
                 <span className={cn('absolute -top-1 -right-1 flex items-center justify-center rounded-full bg-amber-400 border-[1.5px] border-white dark:border-surface-dark shadow-sm', compact ? 'w-3.5 h-3.5' : 'w-4 h-4')}>
                   <Crown size={compact ? 7 : 8} className="text-white" strokeWidth={2.5} />
@@ -822,9 +824,9 @@ export default function ChatList({
                 : isSplitActive ? 'ring-2 ring-info/25 bg-info/6 dark:bg-info/10'
                 : 'hover:bg-text/[0.03] dark:hover:bg-text-inv/[0.03] hover:shadow-md hover:-translate-y-0.5'
             )}>
-            <div className="relative mb-2" onContextMenu={e => handleAvatarContextMenu(e, agent.id)}
-              onTouchStart={e => handleAvatarTouchStart(e, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
-              {renderAvatar(agent, 'lg')}
+            <div className="relative mb-2" onContextMenu={e => handleAvatarContextMenu(e, connection.id, agent.id)}
+              onTouchStart={e => handleAvatarTouchStart(e, connection.id, agent.id)} onTouchEnd={handleAvatarTouchEnd} onTouchMove={handleAvatarTouchEnd}>
+              {renderAvatar(agent, 'lg', connection.id)}
               {agent.isDefault && (
                 <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 border-[1.5px] border-white dark:border-card-alt shadow-sm">
                   <Crown size={8} className="text-white" strokeWidth={2.5} />
@@ -878,9 +880,9 @@ export default function ChatList({
         displayName={displayName}
         isFav={isFav}
         compact={compact}
-        renderAvatar={renderAvatar}
+        renderAvatar={(a, s) => renderAvatar(a, s, connectionId)}
         onFavToggle={() => { setFavoriteStorage(connectionId, agent.id, !isFav); setFavoritesState(getFavorites()); }}
-        onAvatarClick={() => setAvatarUploadAgent(agent.id)}
+        onAvatarClick={() => setAvatarUploadAgent(`${connectionId}:${agent.id}`)}
         onNameSave={(name) => { setCustomName(connectionId, agent.id, name); setCustomNamesState(getCustomNames()); }}
       />
     );
@@ -896,9 +898,9 @@ export default function ChatList({
         agent={agent}
         displayName={displayName}
         isFav={isFav}
-        renderAvatar={renderAvatar}
+        renderAvatar={(a, s) => renderAvatar(a, s, connectionId)}
         onFavToggle={() => { setFavoriteStorage(connectionId, agent.id, !isFav); setFavoritesState(getFavorites()); }}
-        onAvatarClick={() => setAvatarUploadAgent(agent.id)}
+        onAvatarClick={() => setAvatarUploadAgent(`${connectionId}:${agent.id}`)}
         onNameSave={(name) => { setCustomName(connectionId, agent.id, name); setCustomNamesState(getCustomNames()); }}
       />
     );
@@ -1105,12 +1107,12 @@ export default function ChatList({
         <div className="fixed z-50 bg-white dark:bg-card-alt rounded-lg shadow-lg border border-border/60 dark:border-border-dark/60 py-1 min-w-[140px]"
           style={{ left: avatarMenuAgent.x, top: avatarMenuAgent.y }} onClick={e => e.stopPropagation()}>
           <button className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-text/[0.04] dark:hover:bg-text-inv/[0.04] transition-colors"
-            onClick={() => handleSetCustomAvatar(avatarMenuAgent.agentId)}>
-            {customAvatars[avatarMenuAgent.agentId] ? 'Change avatar' : 'Set custom avatar'}
+            onClick={() => handleSetCustomAvatar(avatarMenuAgent.connectionId, avatarMenuAgent.agentId)}>
+            {customAvatars[`${avatarMenuAgent.connectionId}:${avatarMenuAgent.agentId}`] ? 'Change avatar' : 'Set custom avatar'}
           </button>
-          {customAvatars[avatarMenuAgent.agentId] && (
+          {customAvatars[`${avatarMenuAgent.connectionId}:${avatarMenuAgent.agentId}`] && (
             <button className="w-full text-left px-3 py-1.5 text-[12px] text-red-500 hover:bg-text/[0.04] dark:hover:bg-text-inv/[0.04] transition-colors"
-              onClick={() => handleRemoveCustomAvatar(avatarMenuAgent.agentId)}>
+              onClick={() => handleRemoveCustomAvatar(avatarMenuAgent.connectionId, avatarMenuAgent.agentId)}>
               Remove avatar
             </button>
           )}
