@@ -177,7 +177,7 @@ export async function refineVoiceText(
 
   const conversationMsgs = (messages || [])
     .filter(m => m.text && m.text.length > 0)
-    .slice(-4)
+    .slice(-20)
     .map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', text: m.text!.slice(0, 300) }));
 
   try {
