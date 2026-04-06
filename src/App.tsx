@@ -424,9 +424,7 @@ function AppShell() {
         case 'chat_room':
           if (splitOpen) {
             const totalPanes = 1 + splitPanes.length; // main + splits
-            // Layout: 2 = side-by-side, 3 = left + right stacked, 4 = 2x2 grid
-            const isGrid = totalPanes >= 4;
-            const isTriple = totalPanes === 3;
+            // Layout: always horizontal columns
 
             const renderSplitPane = (pane: SplitPane, idx: number) => {
               const paneHasAgent = pane.agentId !== EMPTY_SPLIT_VALUE && pane.connectionId !== EMPTY_SPLIT_VALUE;
@@ -469,64 +467,10 @@ function AppShell() {
               );
             };
 
-            if (isGrid) {
-              // 2x2 grid (田字形)
-              return (
-                <div className="grid grid-cols-2 grid-rows-2 h-full min-w-0 bg-surface dark:bg-surface-dark divide-x divide-y divide-border/40 dark:divide-border-dark/40">
-                  <div className="overflow-hidden">
-                    <ChatRoom
-                      agentId={activeAgentId}
-                      chatId={activeChatId}
-                      connectionId={activeConnectionId}
-                      onBack={() => navigate('chats')}
-                      onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)}
-                      isDesktop
-                      showSplitButton={isSplitViewport}
-                      splitActive={splitOpen}
-                      onToggleSplit={toggleSplitView}
-                    />
-                  </div>
-                  {splitPanes.slice(0, 3).map((pane, idx) => (
-                    <div key={idx} className="overflow-hidden">
-                      {renderSplitPane(pane, idx)}
-                    </div>
-                  ))}
-                </div>
-              );
-            }
-
-            if (isTriple) {
-              // Main left, 2 splits stacked right
-              return (
-                <div className="flex h-full min-w-0 bg-surface dark:bg-surface-dark">
-                  <div className="min-w-[400px] flex-1 overflow-hidden border-r border-border/40 dark:border-border-dark/40">
-                    <ChatRoom
-                      agentId={activeAgentId}
-                      chatId={activeChatId}
-                      connectionId={activeConnectionId}
-                      onBack={() => navigate('chats')}
-                      onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)}
-                      isDesktop
-                      showSplitButton={isSplitViewport}
-                      splitActive={splitOpen}
-                      onToggleSplit={toggleSplitView}
-                    />
-                  </div>
-                  <div className="min-w-[400px] flex-1 flex flex-col divide-y divide-border/40 dark:divide-border-dark/40">
-                    {splitPanes.slice(0, 2).map((pane, idx) => (
-                      <div key={idx} className="flex-1 overflow-hidden">
-                        {renderSplitPane(pane, idx)}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            }
-
-            // 2 panes: side-by-side
+            // All panes: horizontal columns
             return (
-              <div className="flex h-full min-w-0 bg-surface dark:bg-surface-dark">
-                <div className="min-w-[400px] flex-1 overflow-hidden border-r border-border/40 dark:border-border-dark/40">
+              <div className="flex h-full min-w-0 bg-surface dark:bg-surface-dark divide-x divide-border/40 dark:divide-border-dark/40">
+                <div className="min-w-[320px] flex-1 overflow-hidden">
                   <ChatRoom
                     agentId={activeAgentId}
                     chatId={activeChatId}
@@ -539,9 +483,11 @@ function AppShell() {
                     onToggleSplit={toggleSplitView}
                   />
                 </div>
-                <div className="min-w-[400px] flex-1 overflow-hidden">
-                  {renderSplitPane(splitPanes[0], 0)}
-                </div>
+                {splitPanes.map((pane, idx) => (
+                  <div key={idx} className="min-w-[320px] flex-1 overflow-hidden">
+                    {renderSplitPane(pane, idx)}
+                  </div>
+                ))}
               </div>
             );
           }
