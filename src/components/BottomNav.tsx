@@ -1,8 +1,10 @@
-import { MessageCircle, LayoutDashboard, Search, User } from 'lucide-react';
+import { MessageCircle, LayoutDashboard, Search, User, Inbox } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { Screen } from '../App';
 import { motion } from 'motion/react';
 import { GlassCard } from './ui/card';
 import { cn } from '../lib/utils';
+import { getUnreadTotal, onInboxUpdate } from '../services/agentInbox';
 
 interface BottomNavProps {
   currentScreen: Screen;
@@ -11,8 +13,17 @@ interface BottomNavProps {
 }
 
 export default function BottomNav({ currentScreen, onNavigate, unreadChats = 0 }: BottomNavProps) {
+  const [inboxBadge, setInboxBadge] = useState(() => getUnreadTotal());
+
+  useEffect(() => {
+    const refresh = () => setInboxBadge(getUnreadTotal());
+    const unsub = onInboxUpdate(refresh);
+    return unsub;
+  }, []);
+
   const navItems = [
     { id: 'chats', icon: MessageCircle, label: 'Chats', badge: unreadChats },
+    { id: 'inbox', icon: Inbox, label: 'Inbox', badge: inboxBadge },
     { id: 'dashboard', icon: LayoutDashboard, label: 'Resources', badge: 0 },
     { id: 'search', icon: Search, label: 'Search', badge: 0 },
     { id: 'profile', icon: User, label: 'Profile', badge: 0 },

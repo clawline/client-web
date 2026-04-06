@@ -164,6 +164,38 @@ export function clearSuggestionCache(): void {
   pendingRequest = null;
 }
 
+// ── Draft Reply API (Inbox) ──
+
+export async function draftReply(
+  messages: { sender: string; text?: string }[],
+): Promise<string> {
+  const baseUrl = getGatewayHttpUrl();
+  if (!baseUrl) return '';
+
+  const conversationMsgs = messages
+    .filter((m) => m.text)
+    .slice(-10)
+    .map((m) => ({
+      role: m.sender === 'user' ? 'user' : 'assistant',
+      text: m.text!.slice(0, 300),
+    }));
+
+  if (conversationMsgs.length === 0) return '';
+
+  try {
+    const res = await fetch(`${baseUrl}/api/suggestions`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ mode: 'reply', messages: conversationMsgs }),
+    });
+    if (!res.ok) return '';
+    const data = await res.json();
+    return typeof data.reply === 'string' ? data.reply : '';
+  } catch {
+    return '';
+  }
+}
+
 // ── Voice Refine API ──
 
 export async function refineVoiceText(

@@ -28,8 +28,9 @@ import { useSwipeBack } from './hooks/useSwipeBack';
 import { usePWAUpdate } from './hooks/usePWAUpdate';
 import { useIOSPWA } from './hooks/useIOSPWA';
 import { cn } from './lib/utils';
-import { MessageCircle, LayoutDashboard, Search as SearchIcon, User } from 'lucide-react';
+import { MessageCircle, LayoutDashboard, Search as SearchIcon, User, Inbox as InboxIcon } from 'lucide-react';
 import { migrateFromLocalStorage } from './services/messageDB';
+import { initInbox } from './services/agentInbox';
 
 // Lazy-loaded heavy screens
 const ChatRoom = lazy(() => import('./screens/ChatRoom'));
@@ -38,8 +39,9 @@ const Profile = lazy(() => import('./screens/Profile'));
 const Search = lazy(() => import('./screens/Search'));
 const Preferences = lazy(() => import('./screens/Preferences'));
 const Pairing = lazy(() => import('./screens/Pairing'));
+const AgentInbox = lazy(() => import('./screens/AgentInbox'));
 
-export type Screen = 'onboarding' | 'callback' | 'chats' | 'chat_room' | 'dashboard' | 'profile' | 'search' | 'preferences' | 'pairing';
+export type Screen = 'onboarding' | 'callback' | 'chats' | 'chat_room' | 'dashboard' | 'inbox' | 'profile' | 'search' | 'preferences' | 'pairing';
 
 function ScreenLoading() {
   return (
@@ -83,6 +85,7 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   chats: '/chats',
   chat_room: '/chat',  // + /:agentId?chatId=...
   dashboard: '/dashboard',
+  inbox: '/inbox',
   profile: '/profile',
   search: '/search',
   preferences: '/preferences',
@@ -152,6 +155,7 @@ function useIsSplitViewport() {
 
 const SIDEBAR_NAV_ITEMS = [
   { id: 'chats', icon: MessageCircle, label: 'Chats' },
+  { id: 'inbox', icon: InboxIcon, label: 'Inbox' },
   { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { id: 'search', icon: SearchIcon, label: 'Search' },
   { id: 'profile', icon: User, label: 'Profile' },
@@ -396,6 +400,8 @@ function AppShell() {
           return <ChatRoom agentId={activeAgentId} chatId={activeChatId} connectionId={activeConnectionId} onBack={() => navigate('chats')} onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)} />;
         case 'dashboard':
           return <Dashboard />;
+        case 'inbox':
+          return <AgentInbox />;
         case 'profile':
           return <Profile onNavigate={navigate} />;
         case 'search':
@@ -555,6 +561,8 @@ function AppShell() {
           );
         case 'dashboard':
           return <Dashboard />;
+        case 'inbox':
+          return <AgentInbox />;
         case 'profile':
           return <Profile onNavigate={navigate} />;
         case 'search':
@@ -579,7 +587,7 @@ function AppShell() {
     return <Suspense fallback={<ScreenLoading />}>{content}</Suspense>;
   };
 
-  const showBottomNav = ['chats', 'dashboard', 'profile', 'search'].includes(currentScreen);
+  const showBottomNav = ['chats', 'dashboard', 'inbox', 'profile', 'search'].includes(currentScreen);
 
   // ---- Desktop layout: sidebar + main ----
   // Onboarding gets a special full-width desktop layout without sidebar
@@ -728,6 +736,11 @@ export default function App() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Initialize the agent inbox service on app mount
+  useEffect(() => {
+    void initInbox();
   }, []);
 
   return (
