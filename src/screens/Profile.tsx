@@ -24,8 +24,8 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
     if (v === '0') return 'light';
     return 'auto';
   });
-  const darkModeLabel = darkMode === 'auto' ? '自动 (CST)' : darkMode === 'dark' ? '始终深色' : '始终浅色';
-  const darkModeActive = darkMode !== 'light';
+  const darkModeLabel = darkMode === 'auto' ? '跟随系统' : darkMode === 'dark' ? '始终深色' : '始终浅色';
+  const darkModeActive = darkMode === 'dark' || (darkMode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const [pushNotif, setPushNotif] = useState(() => localStorage.getItem('openclaw.pushNotif') !== '0');
   const [inAppNotif, setInAppNotif] = useState(() => localStorage.getItem('openclaw.inAppNotif') !== '0');
 
@@ -216,8 +216,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
             setDarkModeState(next);
             if (next === 'auto') {
               localStorage.removeItem('openclaw.darkMode');
-              const h = (new Date().getUTCHours() + 8) % 24;
-              document.documentElement.classList.toggle('dark', h >= 18 || h < 6);
+              document.documentElement.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);
             } else {
               localStorage.setItem('openclaw.darkMode', next === 'dark' ? '1' : '0');
               document.documentElement.classList.toggle('dark', next === 'dark');
