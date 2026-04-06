@@ -24,8 +24,7 @@ import {
   getConnectionDisplayName, getSkillDescription,
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
-import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, FloatingNavButtons, AgentHeaderCard, AgentDetailSheet } from '../components/chat';
-import { useScrollVisibility } from '../hooks/useScrollVisibility';
+import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet } from '../components/chat';
 
 function getAgentInfo(agentId: string | null | undefined, connectionId: string): AgentInfo | null {
   const list = channel.loadCachedAgents(connectionId);
@@ -196,7 +195,6 @@ export default function ChatRoom({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { opacity: navOpacity, transitionMs: navTransitionMs, onScroll: onNavScroll, onContainerClick: onNavContainerClick } = useScrollVisibility(scrollContainerRef);
 
   const skills = agentInfo?.skills ?? [];
   const configuredSkills = agentInfo?.configuredSkills ?? [];
@@ -1506,10 +1504,13 @@ export default function ChatRoom({
   return (
     <div className="relative flex h-full flex-col bg-white dark:bg-[#11161d]">
       {/* Header */}
-      {/* Floating nav buttons — overlaid above message list */}
-      <FloatingNavButtons
-        opacity={navOpacity}
-        transitionMs={navTransitionMs}
+      {/* Chat header — sticky, always visible, same bg as page */}
+      <ChatHeader
+        agentInfo={agentInfo}
+        agentId={agentId}
+        connectionName={getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}
+        wsStatus={wsStatus as 'connected' | 'connecting' | 'reconnecting' | 'disconnected'}
+        presence={agentPresence}
         isDesktop={isDesktop}
         isSplitPane={isSplitPane}
         splitActive={splitActive}
@@ -1518,6 +1519,8 @@ export default function ChatRoom({
         onMenuOpen={() => setShowHeaderMenu(true)}
         onToggleSplit={onToggleSplit}
         onCloseSplit={onCloseSplit}
+        onAvatarClick={() => setShowAgentDetail(true)}
+        onReconnect={() => channel.reconnect(runtimeConnId)}
       />
 
       {/* Header context menu */}
@@ -1618,21 +1621,9 @@ export default function ChatRoom({
       {/* Messages */}
       <div
         ref={scrollContainerRef}
-        className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-white px-4 py-6 pb-4 overscroll-contain dark:bg-[#11161d]"
+        className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-white px-4 pt-4 pb-4 overscroll-contain dark:bg-[#11161d]"
         style={{ WebkitOverflowScrolling: 'touch' }}
-        onScroll={onNavScroll}
-        onClick={onNavContainerClick}
       >
-        {/* Agent header card — top of message stream */}
-        <AgentHeaderCard
-          agentInfo={agentInfo}
-          agentId={agentId}
-          connectionName={getConnectionDisplayName(activeConn?.name, activeConn?.displayName)}
-          wsStatus={wsStatus as 'connected' | 'connecting' | 'reconnecting' | 'disconnected'}
-          presence={agentPresence}
-          onAvatarClick={() => setShowAgentDetail(true)}
-          onReconnect={() => channel.reconnect(runtimeConnId)}
-        />
         {/* Load more indicator */}
         {loadingMoreHistory && (
           <div className="flex justify-center py-3">
