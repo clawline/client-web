@@ -145,6 +145,11 @@ body {
   animation: status-breathe 1.8s ease-in-out infinite;
 }
 
+@keyframes longpress {
+  from { clip-path: inset(0 100% 0 0 round 9999px); }
+  to { clip-path: inset(0 0 0 0 round 9999px); }
+}
+
 /* Overlay-style thin scrollbar on all screens */
 ::-webkit-scrollbar {
   width: 4px;

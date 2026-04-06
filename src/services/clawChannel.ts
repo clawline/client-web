@@ -1114,6 +1114,13 @@ class ChannelManager {
     return this.get(connectionId)?.currentStatus || 'disconnected';
   }
 
+  getReconnectInfo(connectionId?: string): { attempt: number; maxAttempts: number; delayMs: number } {
+    const instance = this.get(connectionId);
+    if (!instance) return { attempt: 0, maxAttempts: MAX_RECONNECT_ATTEMPTS, delayMs: 0 };
+    const delay = instance.reconnectAttempts > 0 ? Math.min(1000 * 2 ** (instance.reconnectAttempts - 1), 15000) : 0;
+    return { attempt: instance.reconnectAttempts, maxAttempts: MAX_RECONNECT_ATTEMPTS, delayMs: delay };
+  }
+
   getChatId(connectionId?: string) {
     return this.get(connectionId)?.currentChatId || '';
   }
@@ -1343,6 +1350,10 @@ export function onError(fn: ErrorListener) {
 
 export function getStatus(connectionId?: string) {
   return manager.getStatus(connectionId);
+}
+
+export function getReconnectInfo(connectionId?: string) {
+  return manager.getReconnectInfo(connectionId);
 }
 
 export function getChatId(connectionId?: string) {

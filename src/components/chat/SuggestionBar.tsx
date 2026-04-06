@@ -6,22 +6,30 @@ import { requestSuggestions } from '../../services/clawChannel';
 import { getSuggestions, isSuggestionServiceAvailable, clearSuggestionCache } from '../../services/suggestions';
 import type { Message } from './types';
 
-/** Hook for long-press detection (800ms) */
+/** Hook for long-press detection (800ms) with visual progress */
 function useLongPress(onLongPress: () => void, onClick: () => void, ms = 800) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firedRef = useRef(false);
+  const [pressing, setPressing] = useState(false);
   const onStart = useCallback(() => {
     firedRef.current = false;
-    timerRef.current = setTimeout(() => { firedRef.current = true; onLongPress(); }, ms);
+    setPressing(true);
+    timerRef.current = setTimeout(() => { firedRef.current = true; setPressing(false); onLongPress(); }, ms);
   }, [onLongPress, ms]);
   const onEnd = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    setPressing(false);
     if (!firedRef.current) onClick();
   }, [onClick]);
   const onCancel = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    setPressing(false);
   }, []);
-  return { onTouchStart: onStart, onTouchEnd: onEnd, onTouchCancel: onCancel, onMouseDown: onStart, onMouseUp: onEnd, onMouseLeave: onCancel };
+  // Clean up timeout on unmount to prevent firing on unmounted component
+  useEffect(() => {
+    return () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
+  }, []);
+  return { onTouchStart: onStart, onTouchEnd: onEnd, onTouchCancel: onCancel, onMouseDown: onStart, onMouseUp: onEnd, onMouseLeave: onCancel, pressing };
 }
 
 interface SuggestionBarProps {
@@ -274,7 +282,7 @@ function SuggestionBarInner({
 function SuggestionPill({ text, delay = 0, onTap, onLongPress }: {
   text: string; delay?: number; onTap: () => void; onLongPress: () => void;
 }) {
-  const lp = useLongPress(onLongPress, onTap);
+  const { pressing, ...lp } = useLongPress(onLongPress, onTap);
   return (
     <motion.button
       initial={{ opacity: 0, scale: 0.9 }}
@@ -282,8 +290,13 @@ function SuggestionPill({ text, delay = 0, onTap, onLongPress }: {
       transition={{ delay }}
       whileTap={{ scale: 0.95 }}
       {...lp}
-      className="flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-transparent px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-border/40 hover:bg-slate-100 dark:text-slate-300 dark:hover:border-border-dark/40 dark:hover:bg-white/[0.06] select-none"
+      className={`flex-shrink-0 inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-all hover:border-border/40 hover:bg-slate-100 dark:text-slate-300 dark:hover:border-border-dark/40 dark:hover:bg-white/[0.06] select-none relative overflow-hidden ${
+        pressing ? 'border-primary/40 bg-primary/8 dark:border-primary/30 dark:bg-primary/12' : 'border-transparent'
+      }`}
     >
+      {pressing && (
+        <span className="absolute inset-0 rounded-full border-2 border-primary/50 animate-[longpress_0.8s_linear_forwards]" />
+      )}
       {text}
     </motion.button>
   );
@@ -293,7 +306,7 @@ function SuggestionPill({ text, delay = 0, onTap, onLongPress }: {
 function QuickCommandPill({ emoji, label, onTap, onLongPress }: {
   emoji: string; label: string; onTap: () => void; onLongPress: () => void;
 }) {
-  const lp = useLongPress(onLongPress, onTap);
+  const { pressing: _, ...lp } = useLongPress(onLongPress, onTap);
   return (
     <motion.button
       whileTap={{ scale: 0.95 }}

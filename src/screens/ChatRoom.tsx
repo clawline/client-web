@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronDown, ChevronRight, Smile, Mic, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, Copy, Check, Shield, Keyboard } from 'lucide-react';
+import { ChevronDown, ChevronRight, Smile, Mic, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, Copy, Check, Shield, Keyboard, ArrowDown } from 'lucide-react';
 import { SpeechRecognitionSession } from '../services/volcASR';
 import { cn } from '../lib/utils';
 import * as channel from '../services/clawChannel';
@@ -70,6 +70,8 @@ const slashCommands = [
 ];
 
 type ThinkLevel = 'off' | 'low' | 'medium' | 'high';
+
+const isChinese = typeof navigator !== 'undefined' && /^zh\b/i.test(navigator.language);
 
 export default function ChatRoom({
   agentId,
@@ -141,6 +143,9 @@ export default function ChatRoom({
   const [voiceSwipeY, setVoiceSwipeY] = useState(0);
   const voiceSessionRef = useRef<SpeechRecognitionSession | null>(null);
   const voiceTouchStartRef = useRef<{ y: number; time: number } | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [reconnectInfo, setReconnectInfo] = useState({ attempt: 0, maxAttempts: 6, delayMs: 0 });
 
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -853,6 +858,10 @@ export default function ChatRoom({
         // Give a short grace period for agent.selected to arrive, then force-ready
         agentReadyTimeoutRef.current = setTimeout(() => setAgentReady(true), 800);
       }
+      // Update reconnect info for ConnectionBanner
+      if (status === 'reconnecting') {
+        setReconnectInfo(channel.getReconnectInfo(runtimeConnId));
+      }
       // Detect reconnect: was disconnected/reconnecting → now connected
       if (status === 'connected' && prevWsStatusRef.current !== 'connected' && prevWsStatusRef.current !== 'connecting') {
         setShowReconnected(true);
@@ -967,6 +976,7 @@ export default function ChatRoom({
     channel.requestHistory(chatId, agentId, runtimeConnId, { limit: 20, before: oldest.timestamp });
   }, [loadingMoreHistory, hasMoreHistory, chatId, agentId, runtimeConnId, messages]);
 
+  const scrollBtnRafRef = useRef<number>(0);
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -974,9 +984,15 @@ export default function ChatRoom({
       if (container.scrollTop < 80 && hasMoreHistory && !loadingMoreHistory) {
         loadMoreHistory();
       }
+      // Throttle scroll-to-bottom detection with rAF to avoid jank
+      cancelAnimationFrame(scrollBtnRafRef.current);
+      scrollBtnRafRef.current = requestAnimationFrame(() => {
+        const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+        setShowScrollToBottom(distFromBottom > 300);
+      });
     };
     container.addEventListener('scroll', handleScroll, { passive: true });
-    return () => container.removeEventListener('scroll', handleScroll);
+    return () => { container.removeEventListener('scroll', handleScroll); cancelAnimationFrame(scrollBtnRafRef.current); };
   }, [hasMoreHistory, loadingMoreHistory, loadMoreHistory]);
 
   // Preserve scroll position when prepending older messages
@@ -1028,10 +1044,15 @@ export default function ChatRoom({
     setInputValue('');
   };
 
-  // Delete message
+  // Delete message — with confirmation
   const handleDeleteMessage = (msgId: string) => {
-    channel.deleteMessage(msgId, runtimeConnId);
-    setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    setDeleteConfirmId(msgId);
+  };
+  const confirmDelete = () => {
+    if (!deleteConfirmId) return;
+    channel.deleteMessage(deleteConfirmId, runtimeConnId);
+    setMessages((prev) => prev.filter((m) => m.id !== deleteConfirmId));
+    setDeleteConfirmId(null);
   };
 
   // File picker — now stages file for preview before sending
@@ -1578,6 +1599,9 @@ export default function ChatRoom({
         wsStatus={wsStatus}
         showReconnected={showReconnected}
         onReconnect={() => channel.reconnect(runtimeConnId)}
+        reconnectAttempt={reconnectInfo.attempt}
+        reconnectMaxAttempts={reconnectInfo.maxAttempts}
+        reconnectDelayMs={reconnectInfo.delayMs}
       />
 
       {/* Error toast */}
@@ -1619,6 +1643,7 @@ export default function ChatRoom({
       </AnimatePresence>
 
       {/* Messages */}
+      <div className="relative flex flex-1 flex-col min-h-0">
       <div
         ref={scrollContainerRef}
         className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-white px-4 pt-4 pb-4 overscroll-contain dark:bg-[#11161d]"
@@ -1785,11 +1810,97 @@ export default function ChatRoom({
                   </div>
                 )}
               </div>
+              {/* Cancel thinking button */}
+              <button
+                onClick={() => {
+                  setIsThinking(false);
+                  setActiveToolCalls([]);
+                  setToolCallHistory([]);
+                  setThinkingPhase('');
+                  if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+                  // Mark any streaming messages as complete
+                  setMessages((prev) => prev.map((m) => m.isStreaming ? { ...m, isStreaming: false, text: m.text + '\n\n*[cancelled]*' } : m));
+                }}
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-primary/50 transition-colors hover:bg-primary/10 hover:text-primary self-start mt-0.5"
+                title="Cancel"
+                aria-label="Cancel AI response"
+              >
+                <X size={16} />
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
         <div ref={messagesEndRef} />
       </div>
+
+        {/* Scroll to bottom floating button */}
+        <AnimatePresence>
+          {showScrollToBottom && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              onClick={() => {
+                const container = scrollContainerRef.current;
+                if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+              }}
+              className="absolute bottom-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-border/50 bg-white/95 text-text/60 shadow-lg transition-colors hover:bg-slate-50 hover:text-text focus-visible:ring-2 focus-visible:ring-primary/50 dark:border-border-dark/50 dark:bg-card-alt/95 dark:text-text-inv/60 dark:hover:bg-card-alt dark:hover:text-text-inv"
+              aria-label="Scroll to bottom"
+            >
+              <ArrowDown size={18} />
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Delete confirmation dialog */}
+      <AnimatePresence>
+        {deleteConfirmId && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[70]"
+              onClick={() => setDeleteConfirmId(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+              className="fixed inset-x-4 bottom-0 z-[70] md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[320px]"
+            >
+              <div
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="delete-confirm-title"
+                aria-describedby="delete-confirm-desc"
+                tabIndex={-1}
+                ref={(el) => el?.focus()}
+                onKeyDown={(e) => { if (e.key === 'Escape') setDeleteConfirmId(null); }}
+                className="bg-white dark:bg-[#1f2c34] rounded-t-2xl md:rounded-2xl shadow-2xl safe-area-bottom border-t border-border/30 dark:border-transparent p-6 outline-none"
+              >
+                <p id="delete-confirm-title" className="text-[16px] font-semibold text-text dark:text-text-inv mb-1">Delete message?</p>
+                <p id="delete-confirm-desc" className="text-[14px] text-text/60 dark:text-text-inv/50 mb-5">This action cannot be undone.</p>
+                <div className="flex gap-3">
+                  <button
+                    autoFocus
+                    onClick={() => setDeleteConfirmId(null)}
+                    className="flex-1 rounded-xl py-2.5 text-[15px] font-medium text-text/70 dark:text-text-inv/70 bg-slate-100 dark:bg-white/[0.06] transition-colors hover:bg-slate-200 dark:hover:bg-white/[0.1]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    className="flex-1 rounded-xl py-2.5 text-[15px] font-medium text-white bg-red-500 transition-colors hover:bg-red-600 shadow-sm"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* WhatsApp-style long-press action sheet — MUST be outside scroll container for iOS z-index */}
       <ActionSheet
@@ -2101,12 +2212,12 @@ export default function ChatRoom({
                         />
                       ))}
                     </div>
-                    <span className="text-[14px] text-primary font-medium">正在听...</span>
+                    <span className="text-[14px] text-primary font-medium">{isChinese ? '正在听...' : 'Listening...'}</span>
                   </>
                 ) : (
                   <>
                     <Mic size={18} className="text-slate-500 dark:text-slate-400" />
-                    <span className="text-[14px] text-slate-500 dark:text-slate-400">点击说话</span>
+                    <span className="text-[14px] text-slate-500 dark:text-slate-400">{isChinese ? '点击说话' : 'Tap to speak'}</span>
                   </>
                 )}
                 {/* Swipe-up overlay */}
@@ -2118,7 +2229,7 @@ export default function ChatRoom({
                       exit={{ opacity: 0 }}
                       className="absolute inset-0 flex items-center justify-center bg-primary/15 dark:bg-primary/25 rounded-full"
                     >
-                      <span className="text-[13px] text-primary font-semibold">↑ 松开发送</span>
+                      <span className="text-[13px] text-primary font-semibold">{isChinese ? '↑ 松开发送' : '↑ Release to send'}</span>
                     </motion.div>
                   )}
                 </AnimatePresence>
