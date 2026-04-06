@@ -10,6 +10,7 @@ import { getConnections, type ServerConnection } from './connectionStore';
 import * as channel from './clawChannel';
 import type { AgentInfo } from './clawChannel';
 import { loadConversationMessages } from './messageDB';
+import { getUserId, getUserName } from '../App';
 
 // ── Types ──
 
@@ -56,15 +57,18 @@ function getLastReadTimestamp(connectionId: string, agentId: string): number {
   }
 }
 
-function getCustomAgentName(connectionId: string, agentId: string): string | null {
+function getCustomAgentNames(): Record<string, string> {
   try {
     const raw = localStorage.getItem(AGENT_NAMES_KEY);
-    if (!raw) return null;
-    const names = JSON.parse(raw);
-    return names[`${connectionId}:${agentId}`] || null;
+    return raw ? JSON.parse(raw) : {};
   } catch {
-    return null;
+    return {};
   }
+}
+
+function getDisplayName(connectionId: string, agentId: string, fallbackName: string): string {
+  const names = getCustomAgentNames();
+  return names[`${connectionId}:${agentId}`] || fallbackName;
 }
 
 function persistCache() {
@@ -145,8 +149,7 @@ async function populateAgentFromMessages(
   agent: AgentInfo,
 ) {
   const agentId = agent.id;
-  const customName = getCustomAgentName(connectionId, agentId);
-  const agentName = customName || agent.identityName || agent.name || agentId;
+  const agentName = getDisplayName(connectionId, agentId, agent.name || agentId);
   const agentEmoji = agent.identityEmoji || '';
   const item = getOrCreateItem(connectionId, connectionName, agentId, agentName, agentEmoji);
 
@@ -211,8 +214,7 @@ function setupConnectionListeners(conn: ServerConnection) {
     // Resolve agent info from cache
     const cachedAgents = channel.loadCachedAgents(connectionId);
     const agentInfo = cachedAgents.find((a) => a.id === agentId);
-    const customName = getCustomAgentName(connectionId, agentId);
-    const agentName = customName || agentInfo?.identityName || agentInfo?.name || agentId;
+    const agentName = getDisplayName(connectionId, agentId, agentInfo?.name || agentId);
     const agentEmoji = agentInfo?.identityEmoji || '';
 
     const item = getOrCreateItem(connectionId, connectionName, agentId, agentName, agentEmoji);
@@ -252,6 +254,13 @@ function setupConnectionListeners(conn: ServerConnection) {
       const senderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
       // Only transition to idle if user (not another agent) sent the message
       if (senderId) {
+        const content = typeof packet.data.content === 'string' ? packet.data.content : '';
+        const messageId = typeof packet.data.messageId === 'string' ? packet.data.messageId : '';
+        const timestamp = typeof packet.data.timestamp === 'number' ? packet.data.timestamp : Date.now();
+
+        if (content) {
+          item.lastMessage = { text: content, timestamp, messageId };
+        }
         item.status = 'idle';
         item.unreadCount = 0;
         item.suggestedReply = undefined;
@@ -261,15 +270,18 @@ function setupConnectionListeners(conn: ServerConnection) {
       return;
     }
 
-    // Agent list updated — refresh names/emojis
+    // Agent list updated — refresh names/emojis, create new items for discovered agents
     if (packet.type === 'agent.list') {
       const agents = (packet.data as { agents?: AgentInfo[] })?.agents ?? [];
       for (const a of agents) {
         const key = itemKey(connectionId, a.id);
         const existing = items.get(key);
         if (existing) {
-          existing.agentName = a.identityName || a.name || a.id;
+          existing.agentName = getDisplayName(connectionId, a.id, a.name || a.id);
           existing.agentEmoji = a.identityEmoji || '';
+        } else {
+          // New agent discovered — create inbox item and populate from messages
+          void populateAgentFromMessages(connectionId, connectionName, a).then(emitUpdate);
         }
       }
       emitUpdate();
@@ -296,6 +308,10 @@ function setupConnectionListeners(conn: ServerConnection) {
         }
       }
     }
+    // Request agent list when connection comes alive to discover new agents
+    if (status === 'connected') {
+      try { channel.requestAgentList(connectionId); } catch { /* ignore */ }
+    }
     if (changed) emitUpdate();
   }, connectionId);
 
@@ -308,7 +324,26 @@ export async function initInbox() {
   if (initialized) return;
   initialized = true;
 
+  // Listen for agent name changes from ChatList
+  window.addEventListener('storage', (e) => {
+    if (e.key === AGENT_NAMES_KEY) refreshDisplayNames();
+  });
+  // Also listen for same-tab updates via custom event
+  window.addEventListener('openclaw:agent-names-updated', refreshDisplayNames);
+
   await refreshInbox();
+}
+
+function refreshDisplayNames() {
+  let changed = false;
+  for (const [, item] of items) {
+    const newName = getDisplayName(item.connectionId, item.agentId, item.agentName);
+    if (newName !== item.agentName) {
+      item.agentName = newName;
+      changed = true;
+    }
+  }
+  if (changed) emitUpdate();
 }
 
 export async function refreshInbox() {
@@ -320,6 +355,21 @@ export async function refreshInbox() {
   loadCache();
 
   const connections = getConnections();
+
+  // Auto-connect all disconnected connections
+  for (const conn of connections) {
+    const status = channel.getStatus(conn.id);
+    if (status !== 'connected' && status !== 'connecting') {
+      channel.connect({
+        connectionId: conn.id,
+        chatId: conn.chatId,
+        senderId: conn.senderId || getUserId(),
+        senderName: conn.displayName || getUserName(),
+        serverUrl: conn.serverUrl,
+        token: conn.token,
+      });
+    }
+  }
 
   // Set up listeners for all connections
   for (const conn of connections) {
@@ -342,14 +392,13 @@ export async function refreshInbox() {
 
 export function getInboxItems(): InboxItem[] {
   return [...items.values()].sort((a, b) => {
-    // Primary sort: status priority
-    const priorityDiff = statusPriority(a.status) - statusPriority(b.status);
-    if (priorityDiff !== 0) return priorityDiff;
-
-    // Secondary sort: most recent message first
+    // Primary sort: most recent message first
     const aTime = a.lastMessage?.timestamp ?? 0;
     const bTime = b.lastMessage?.timestamp ?? 0;
-    return bTime - aTime;
+    if (aTime !== bTime) return bTime - aTime;
+
+    // Secondary sort: status priority (pending > thinking > idle > offline)
+    return statusPriority(a.status) - statusPriority(b.status);
   });
 }
 
@@ -371,6 +420,19 @@ export function markAsRead(connectionId: string, agentId: string) {
     if (item.status === 'pending_reply') {
       item.status = 'idle';
     }
+    setLastReadTimestamp(connectionId, agentId, Date.now());
+    emitUpdate();
+  }
+}
+
+export function recordUserMessage(connectionId: string, agentId: string, text: string) {
+  const key = itemKey(connectionId, agentId);
+  const item = items.get(key);
+  if (item) {
+    item.lastMessage = { text, timestamp: Date.now(), messageId: '' };
+    item.status = 'idle';
+    item.unreadCount = 0;
+    item.suggestedReply = undefined;
     setLastReadTimestamp(connectionId, agentId, Date.now());
     emitUpdate();
   }

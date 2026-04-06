@@ -42,6 +42,7 @@ function getCustomNames(): Record<string, string> {
 function setCustomName(connId: string, agentId: string, name: string) {
   const names = getCustomNames(); names[`${connId}:${agentId}`] = name;
   localStorage.setItem(AGENT_NAMES_KEY, JSON.stringify(names));
+  window.dispatchEvent(new CustomEvent('openclaw:agent-names-updated'));
 }
 function getFavorites(): Set<string> {
   try { const raw = localStorage.getItem(AGENT_FAVORITES_KEY); return new Set(raw ? JSON.parse(raw) : []); } catch { return new Set(); }

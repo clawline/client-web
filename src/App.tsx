@@ -31,7 +31,7 @@ import { useIOSPWA } from './hooks/useIOSPWA';
 import { cn } from './lib/utils';
 import { MessageCircle, LayoutDashboard, Search as SearchIcon, User, Inbox as InboxIcon } from 'lucide-react';
 import { migrateFromLocalStorage } from './services/messageDB';
-import { initInbox } from './services/agentInbox';
+import { initInbox, getUnreadTotal, onInboxUpdate } from './services/agentInbox';
 
 // Lazy-loaded heavy screens
 const ChatRoom = lazy(() => import('./screens/ChatRoom'));
@@ -199,9 +199,16 @@ function AppShell() {
 
   // Unread message badge for BottomNav
   const [unreadChats, setUnreadChats] = useState(0);
+  const [inboxBadge, setInboxBadge] = useState(() => getUnreadTotal());
   const unreadAgentsRef = useRef(new Set<string>());
   const currentScreenRef = useRef(currentScreen);
   currentScreenRef.current = currentScreen;
+
+  useEffect(() => {
+    const refresh = () => setInboxBadge(getUnreadTotal());
+    const unsub = onInboxUpdate(refresh);
+    return unsub;
+  }, []);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -599,18 +606,26 @@ function AppShell() {
               const isActive = item.id === 'chats'
                 ? (currentScreen === 'chats' || currentScreen === 'chat_room')
                 : currentScreen === item.id;
+              const badge = item.id === 'inbox' ? inboxBadge : 0;
               return (
                 <button
                   key={item.id}
                   onClick={() => navigate(item.id as Screen)}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all',
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all relative',
                     isActive
                       ? 'bg-primary text-white shadow-[0_12px_24px_-18px_rgba(239,90,35,0.95)]'
                       : 'bg-white/68 text-text/55 shadow-sm hover:bg-white hover:text-text dark:bg-white/[0.06] dark:text-text-inv/55 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'
                   )}
                 >
-                  <Icon size={15} />
+                  <div className="relative">
+                    <Icon size={15} />
+                    {badge > 0 && !isActive && (
+                      <span className="absolute -top-1.5 -right-2 min-w-[14px] h-3.5 flex items-center justify-center rounded-full bg-primary text-white text-[8px] font-bold px-0.5 shadow-sm">
+                        {badge > 99 ? '99+' : badge}
+                      </span>
+                    )}
+                  </div>
                   <span className="hidden xl:inline">{item.label}</span>
                 </button>
               );

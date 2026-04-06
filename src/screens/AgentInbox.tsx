@@ -6,8 +6,8 @@ import { cn } from '../lib/utils';
 import { Card } from '../components/ui/card';
 import {
   getInboxItems,
-  getUnreadTotal,
   markAsRead,
+  recordUserMessage,
   onInboxUpdate,
   refreshInbox,
   type InboxItem,
@@ -268,7 +268,7 @@ function InboxItemCard({
   const handleSend = useCallback((text: string) => {
     try {
       channel.sendText(text, item.agentId, item.connectionId);
-      markAsRead(item.connectionId, item.agentId);
+      recordUserMessage(item.connectionId, item.agentId, text);
     } catch {
       // Connection might not be ready
     }
