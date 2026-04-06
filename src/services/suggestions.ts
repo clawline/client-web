@@ -5,7 +5,7 @@
  * Fallback: Local LLM API if configured in localStorage
  */
 
-import { getActiveConnection } from './connectionStore';
+import { getActiveConnection, getConnectionById } from './connectionStore';
 
 let lastContextHash = '';
 let lastSuggestions: string[] = [];
@@ -52,8 +52,8 @@ export function setVoiceRefineCustomPrompt(prompt: string): void {
 
 // ── Gateway URL derivation ──
 
-function getGatewayHttpUrl(): string | null {
-  const conn = getActiveConnection();
+function getGatewayHttpUrl(connectionId?: string): string | null {
+  const conn = connectionId ? getConnectionById(connectionId) : getActiveConnection();
   if (!conn?.serverUrl) return null;
 
   try {
@@ -67,8 +67,8 @@ function getGatewayHttpUrl(): string | null {
   }
 }
 
-function getAuthHeaders(): Record<string, string> {
-  const conn = getActiveConnection();
+function getAuthHeaders(connectionId?: string): Record<string, string> {
+  const conn = connectionId ? getConnectionById(connectionId) : getActiveConnection();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (conn?.token) {
     headers['Authorization'] = `Bearer ${conn.token}`;
@@ -168,8 +168,9 @@ export function clearSuggestionCache(): void {
 
 export async function draftReply(
   messages: { sender: string; text?: string }[],
+  connectionId?: string,
 ): Promise<string> {
-  const baseUrl = getGatewayHttpUrl();
+  const baseUrl = getGatewayHttpUrl(connectionId);
   if (!baseUrl) return '';
 
   const conversationMsgs = messages
@@ -185,7 +186,7 @@ export async function draftReply(
   try {
     const res = await fetch(`${baseUrl}/api/suggestions`, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: getAuthHeaders(connectionId),
       body: JSON.stringify({ mode: 'reply', messages: conversationMsgs }),
     });
     if (!res.ok) return '';

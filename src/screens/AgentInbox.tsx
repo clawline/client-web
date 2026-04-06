@@ -38,12 +38,12 @@ function truncateText(text: string, maxLen: number): string {
   return text.slice(0, maxLen).trimEnd() + '...';
 }
 
-function statusConfig(status: AgentStatus): { color: string; dotClass: string; label: string } {
+function statusConfig(status: AgentStatus): { color: string; dotClass: string; label: string; animate?: boolean } {
   switch (status) {
     case 'pending_reply':
-      return { color: 'text-orange-600 dark:text-orange-400', dotClass: 'bg-orange-500', label: 'Pending' };
+      return { color: 'text-orange-600 dark:text-orange-400', dotClass: 'bg-orange-500', label: 'Awaiting Reply', animate: true };
     case 'thinking':
-      return { color: 'text-cyan-600 dark:text-cyan-400', dotClass: 'bg-cyan-500', label: 'Thinking' };
+      return { color: 'text-cyan-600 dark:text-cyan-400', dotClass: 'bg-cyan-500', label: 'Thinking', animate: true };
     case 'idle':
       return { color: 'text-slate-500 dark:text-slate-400', dotClass: 'bg-slate-400 dark:bg-slate-500', label: 'Idle' };
     case 'offline':
@@ -137,7 +137,7 @@ function InboxItemDetail({
     try {
       const messages = await loadConversationMessages(item.connectionId, item.agentId, { limit: 20 });
       const mapped = messages.map((m) => ({ sender: m.sender === 'user' ? 'user' : 'ai', text: m.text }));
-      const reply = await draftReply(mapped);
+      const reply = await draftReply(mapped, item.connectionId);
       if (reply) {
         setSuggestedReply(reply);
         setReplyText(reply);
@@ -311,10 +311,13 @@ function InboxItemCard({
               </span>
               {/* Status badge */}
               <span className={cn('flex items-center gap-1 text-[11px] font-medium shrink-0', config.color)}>
-                <span className={cn('w-1.5 h-1.5 rounded-full', config.dotClass,
-                  item.status === 'thinking' && 'animate-pulse'
+                <span className={cn('w-2 h-2 rounded-full', config.dotClass,
+                  config.animate && 'animate-pulse'
                 )} />
                 {config.label}
+                {item.status === 'pending_reply' && item.unreadCount > 0 && (
+                  <span className="ml-0.5 px-1.5 py-0.5 bg-orange-500 text-white text-[9px] font-bold rounded-full leading-none">{item.unreadCount}</span>
+                )}
               </span>
             </div>
             <div className="text-[11px] text-text/40 dark:text-text-inv/40 truncate mt-0.5">

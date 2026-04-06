@@ -31,6 +31,8 @@ export type InboxItem = {
 
 const INBOX_UPDATED_EVENT = 'openclaw:inbox-updated';
 const LAST_READ_PREFIX = 'openclaw.inbox.lastRead.';
+const INBOX_CACHE_KEY = 'openclaw.inbox.cache';
+const AGENT_NAMES_KEY = 'clawline.agentNames';
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 // ── State ──
@@ -54,6 +56,41 @@ function getLastReadTimestamp(connectionId: string, agentId: string): number {
   }
 }
 
+function getCustomAgentName(connectionId: string, agentId: string): string | null {
+  try {
+    const raw = localStorage.getItem(AGENT_NAMES_KEY);
+    if (!raw) return null;
+    const names = JSON.parse(raw);
+    return names[`${connectionId}:${agentId}`] || null;
+  } catch {
+    return null;
+  }
+}
+
+function persistCache() {
+  try {
+    const data = [...items.values()].map(item => ({
+      ...item,
+      suggestedReply: undefined, // don't cache suggestions
+    }));
+    localStorage.setItem(INBOX_CACHE_KEY, JSON.stringify(data));
+  } catch { /* ignore */ }
+}
+
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(INBOX_CACHE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw) as InboxItem[];
+    for (const item of data) {
+      const key = itemKey(item.connectionId, item.agentId);
+      if (!items.has(key)) {
+        items.set(key, item);
+      }
+    }
+  } catch { /* ignore */ }
+}
+
 function setLastReadTimestamp(connectionId: string, agentId: string, timestamp: number) {
   try {
     localStorage.setItem(`${LAST_READ_PREFIX}${connectionId}.${agentId}`, String(timestamp));
@@ -63,6 +100,7 @@ function setLastReadTimestamp(connectionId: string, agentId: string, timestamp: 
 }
 
 function emitUpdate() {
+  persistCache();
   window.dispatchEvent(new CustomEvent(INBOX_UPDATED_EVENT));
 }
 
@@ -107,7 +145,8 @@ async function populateAgentFromMessages(
   agent: AgentInfo,
 ) {
   const agentId = agent.id;
-  const agentName = agent.identityName || agent.name || agentId;
+  const customName = getCustomAgentName(connectionId, agentId);
+  const agentName = customName || agent.identityName || agent.name || agentId;
   const agentEmoji = agent.identityEmoji || '';
   const item = getOrCreateItem(connectionId, connectionName, agentId, agentName, agentEmoji);
 
@@ -172,7 +211,8 @@ function setupConnectionListeners(conn: ServerConnection) {
     // Resolve agent info from cache
     const cachedAgents = channel.loadCachedAgents(connectionId);
     const agentInfo = cachedAgents.find((a) => a.id === agentId);
-    const agentName = agentInfo?.identityName || agentInfo?.name || agentId;
+    const customName = getCustomAgentName(connectionId, agentId);
+    const agentName = customName || agentInfo?.identityName || agentInfo?.name || agentId;
     const agentEmoji = agentInfo?.identityEmoji || '';
 
     const item = getOrCreateItem(connectionId, connectionName, agentId, agentName, agentEmoji);
@@ -275,6 +315,9 @@ export async function refreshInbox() {
   // Clean up existing listeners
   unsubscribers.forEach((unsub) => unsub());
   unsubscribers.length = 0;
+
+  // Load cached state first (survives page refresh)
+  loadCache();
 
   const connections = getConnections();
 
