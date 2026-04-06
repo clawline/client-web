@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { ChevronLeft, User, Sliders, Sparkles, Mic } from 'lucide-react';
+import { ChevronLeft, User, Sliders, Sparkles, Mic, Bell } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
 import { getUserName, setUserName } from '../App';
@@ -8,6 +8,7 @@ import {
   isSuggestionsEnabled, setSuggestionsEnabled, getSuggestionCustomPrompt, setSuggestionCustomPrompt,
   isVoiceRefineEnabled, setVoiceRefineEnabled, getVoiceRefineCustomPrompt, setVoiceRefineCustomPrompt,
 } from '../services/suggestions';
+import { useNotificationPermission } from '../hooks/useNotificationPermission';
 
 const STREAMING_OUTPUT_KEY = 'openclaw.streaming.enabled';
 
@@ -25,6 +26,7 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
   const [suggestionPrompt, setSuggestionPromptVal] = useState(() => getSuggestionCustomPrompt());
   const [voiceRefineOn, setVoiceRefineOn] = useState(() => isVoiceRefineEnabled());
   const [voiceRefinePrompt, setVoiceRefinePromptVal] = useState(() => getVoiceRefineCustomPrompt());
+  const { permission, active, requestPermission, optOut, optIn } = useNotificationPermission();
 
   const handleStreamingToggle = (checked: boolean) => {
     setStreamingEnabled(checked);
@@ -195,6 +197,45 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
                 </p>
               </motion.div>
             )}
+          </Card>
+        </section>
+
+        {/* Notifications */}
+        <section>
+          <h3 className="text-sm font-semibold text-text/50 dark:text-text-inv/50 mb-4 uppercase tracking-wider flex items-center gap-2">
+            <Bell size={16} /> Notifications
+          </h3>
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-[15px] font-medium text-text dark:text-text-inv">Push Notifications</p>
+                <p className="text-[12px] text-text/50 dark:text-text-inv/50 mt-0.5">
+                  {permission === 'denied'
+                    ? 'Blocked by browser — enable in browser settings'
+                    : permission === 'unsupported'
+                    ? 'Not supported in this browser'
+                    : active
+                    ? 'On — notified when a message arrives in background'
+                    : 'Off — tap to enable'}
+                </p>
+              </div>
+              {permission === 'denied' || permission === 'unsupported' ? (
+                <div className="w-12 h-6 rounded-full bg-text/10 dark:bg-text-inv/10 flex-shrink-0" />
+              ) : (
+                <button
+                  role="switch"
+                  aria-checked={active}
+                  onClick={() => { if (active) { optOut(); } else { void optIn(); } }}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                    active ? 'bg-primary' : 'bg-text/20 dark:bg-text-inv/20'
+                  }`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    active ? 'translate-x-5' : 'translate-x-0'
+                  }`} />
+                </button>
+              )}
+            </div>
           </Card>
         </section>
 
