@@ -119,11 +119,12 @@ function InboxItemDetail({
   // Load full last message
   useEffect(() => {
     let cancelled = false;
-    void loadConversationMessages(item.connectionId, item.agentId, { limit: 20 }).then((messages) => {
+    void loadConversationMessages(item.connectionId, item.agentId, { limit: 20 }).then((allMessages) => {
       if (cancelled) return;
+      const messages = allMessages.filter(m => m.text?.trim() && !m.isStreaming);
       // Find last AI message
       for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].sender === 'ai' && messages[i].text) {
+        if (messages[i].sender === 'ai') {
           setFullMessage(messages[i].text);
           return;
         }
@@ -137,7 +138,8 @@ function InboxItemDetail({
     setSuggesting(true);
     setSuggestError('');
     try {
-      const messages = await loadConversationMessages(item.connectionId, item.agentId, { limit: 20 });
+      const allMessages = await loadConversationMessages(item.connectionId, item.agentId, { limit: 20 });
+      const messages = allMessages.filter(m => m.text?.trim() && !m.isStreaming);
       if (messages.length === 0) {
         setSuggestError('No messages to draft from');
         return;

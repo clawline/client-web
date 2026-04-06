@@ -44,6 +44,10 @@ let initialized = false;
 
 // ── Helpers ──
 
+function isContentMessage(m: { text: string; isStreaming?: boolean }): boolean {
+  return !!m.text?.trim() && !m.isStreaming;
+}
+
 function itemKey(connectionId: string, agentId: string): string {
   return `${connectionId}:${agentId}`;
 }
@@ -155,7 +159,8 @@ async function populateAgentFromMessages(
 
   // Load recent messages to determine last message and unread count
   try {
-    const messages = await loadConversationMessages(connectionId, agentId, { limit: 50 });
+    const allMessages = await loadConversationMessages(connectionId, agentId, { limit: 50 });
+    const messages = allMessages.filter(isContentMessage);
     if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
       item.lastMessage = {
