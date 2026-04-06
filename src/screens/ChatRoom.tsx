@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
-import { useNotificationPermission } from '../hooks/useNotificationPermission';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, ChevronRight, Smile, Mic, Send, ArrowUp, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, Copy, Check, Shield, Keyboard, ArrowDown } from 'lucide-react';
 import { SpeechRecognitionSession } from '../services/volcASR';
@@ -106,15 +105,6 @@ export default function ChatRoom({
   const connId = activeConn?.id || '';
   const runtimeConnId = channelConnectionId || connId;
   const [messages, setMessages] = useState<Message[]>([]);
-  const { requestPermission } = useNotificationPermission();
-
-  // Auto-request notification permission once per session after 3s (non-intrusive)
-  useEffect(() => {
-    if (!('Notification' in window) || Notification.permission !== 'default') return;
-    const t = setTimeout(() => { void requestPermission(); }, 3000);
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Tick every 30s so "follow up" pill can appear after 2min without re-render trigger
   const [, setTick] = useState(0);
