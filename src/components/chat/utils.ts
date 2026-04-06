@@ -133,6 +133,7 @@ export function humanizeError(error: { code: string; message: string }): { title
   if (code === 'TOKEN_LIMIT') return { title: 'Message too long', body: 'Try shortening your message.' };
   if (code === 'AUTH_FAILED') return { title: 'Auth error', body: 'Please reconnect.' };
   if (code === 'CONNECTION_FAILED') return { title: 'Cannot reach server', body: 'Please check your network or try again later.' };
+  if (code === 'OUTBOX_FULL') return { title: 'Offline queue full', body: 'Oldest queued message was removed to make room.' };
   if (code === 'NETWORK_ERROR' || message?.includes('fetch')) return { title: 'Network issue', body: 'Check your connection and try again.' };
   if (code === 'SERVER_ERROR' || message?.includes('500')) return { title: 'Server error', body: 'The server encountered an issue. Try again later.' };
   return { title: 'Something went wrong', body: message || 'Please try again.' };

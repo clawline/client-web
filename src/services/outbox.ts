@@ -7,7 +7,7 @@
  */
 
 const DB_NAME = 'clawline-outbox';
-const DB_VERSION = 2; // v2: added connectionId index
+const DB_VERSION = 3; // v3: added timestamp index for ordered eviction
 const STORE_NAME = 'pending';
 const MAX_PENDING = 200; // soft cap to prevent unbounded growth
 
@@ -38,12 +38,15 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
         store.createIndex('connectionId', 'connectionId', { unique: false });
+        store.createIndex('timestamp', 'timestamp', { unique: false });
       } else {
-        // v2 migration: add index if missing
         const tx = req.transaction!;
         const store = tx.objectStore(STORE_NAME);
         if (!store.indexNames.contains('connectionId')) {
           store.createIndex('connectionId', 'connectionId', { unique: false });
+        }
+        if (!store.indexNames.contains('timestamp')) {
+          store.createIndex('timestamp', 'timestamp', { unique: false });
         }
       }
     };
@@ -62,26 +65,55 @@ function openDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
+export const OUTBOX_OVERFLOW_EVENT = 'openclaw:outbox-overflow';
+
 export async function enqueue(entry: OutboxEntry): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
 
-    // Nit: enforce soft cap — evict oldest if over limit
-    const countReq = store.count();
-    countReq.onsuccess = () => {
-      if (countReq.result >= MAX_PENDING) {
-        // Delete oldest entry by cursor
-        const cursor = store.openCursor();
-        cursor.onsuccess = () => {
-          if (cursor.result) cursor.result.delete();
-        };
-      }
-      store.put(entry);
+    let didDrop = false;
+    let totalCount = 0;
+
+    // Check if this entry already exists (retry case) — skip eviction if so
+    const existsReq = store.count(entry.id);
+    existsReq.onsuccess = () => {
+      const alreadyExists = existsReq.result > 0;
+
+      const countReq = store.count();
+      countReq.onsuccess = () => {
+        totalCount = countReq.result;
+        if (!alreadyExists && totalCount >= MAX_PENDING) {
+          didDrop = true;
+          // Evict oldest by timestamp index (deterministic ordering)
+          const tsIndex = store.index('timestamp');
+          const cursor = tsIndex.openCursor();
+          cursor.onsuccess = () => {
+            if (cursor.result) {
+              const deleteReq = cursor.result.delete();
+              deleteReq.onsuccess = () => { store.put(entry); };
+              deleteReq.onerror = () => reject(deleteReq.error);
+            } else {
+              store.put(entry);
+            }
+          };
+          cursor.onerror = () => reject(cursor.error);
+          return;
+        }
+        store.put(entry);
+      };
     };
 
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      // Only notify after transaction successfully committed
+      if (didDrop) {
+        window.dispatchEvent(new CustomEvent(OUTBOX_OVERFLOW_EVENT, {
+          detail: { dropped: 1, total: totalCount, connectionId: entry.connectionId, agentId: entry.agentId },
+        }));
+      }
+      resolve();
+    };
     tx.onerror = () => reject(tx.error);
   });
 }

@@ -7,6 +7,7 @@ import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
 import { CONNECTIONS_UPDATED_EVENT, getConnections, moveConnection, removeConnection, updateConnection, getActiveConnectionId, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
 import * as channel from '../services/clawChannel';
+import type { ChannelStatus } from '../services/clawChannel';
 
 export default function Profile({ onNavigate }: { onNavigate: (screen: string) => void }) {
   const { signOut, getIdTokenClaims } = useLogto();
@@ -15,6 +16,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ServerConnection | null>(null);
   const [editForm, setEditForm] = useState({ name: '', displayName: '', serverUrl: '', token: '', chatId: '', senderId: '' });
+  const [statusMap, setStatusMap] = useState<Record<string, ChannelStatus>>({});
   const [darkMode, setDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
   const [pushNotif, setPushNotif] = useState(() => localStorage.getItem('openclaw.pushNotif') !== '0');
   const [inAppNotif, setInAppNotif] = useState(() => localStorage.getItem('openclaw.inAppNotif') !== '0');
@@ -37,6 +39,21 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
       if (claims) setUserClaims(claims);
     });
   }, [getIdTokenClaims]);
+
+  // Reactive connection status — subscribe to each connection's status changes
+  useEffect(() => {
+    const initial: Record<string, ChannelStatus> = {};
+    const unsubs: (() => void)[] = [];
+    for (const conn of connections) {
+      initial[conn.id] = channel.getStatus(conn.id);
+      const connId = conn.id;
+      unsubs.push(channel.onStatus((status) => {
+        setStatusMap((prev) => ({ ...prev, [connId]: status }));
+      }, connId));
+    }
+    setStatusMap(initial);
+    return () => unsubs.forEach((u) => u());
+  }, [connections]);
 
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
@@ -132,6 +149,14 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-[15px] truncate">{conn.displayName || conn.name}</p>
+                    <p className="text-[11px] mt-0.5 flex items-center gap-1.5">
+                      {(() => {
+                        const status = statusMap[conn.id] || 'disconnected';
+                        if (status === 'connected') return <><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /><span className="text-emerald-600 dark:text-emerald-400">Connected</span></>;
+                        if (status === 'connecting' || status === 'reconnecting') return <><span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse inline-block" /><span className="text-amber-600 dark:text-amber-400">{status === 'connecting' ? 'Connecting' : 'Reconnecting'}</span></>;
+                        return <><span className="w-1.5 h-1.5 rounded-full bg-text/20 dark:bg-text-inv/20 inline-block" /><span className="text-text/35 dark:text-text-inv/30">Disconnected</span></>;
+                      })()}
+                    </p>
                   </div>
                   <div className="flex items-center gap-0.5 flex-shrink-0">
                     <motion.button
@@ -290,10 +315,13 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.92 }}
               transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-dialog-title"
               className="w-full max-w-sm rounded-2xl bg-white dark:bg-card-alt p-6 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-[17px] font-semibold text-text dark:text-text-inv mb-2">Remove Server</h3>
+              <h3 id="delete-dialog-title" className="text-[17px] font-semibold text-text dark:text-text-inv mb-2">Remove Server</h3>
               <p className="text-[14px] text-text/60 dark:text-text-inv/50 mb-5">
                 This will disconnect and remove <span className="font-medium text-text dark:text-text-inv">{connections.find(c => c.id === pendingDeleteId)?.displayName || 'this server'}</span>. Chat history will be preserved locally.
               </p>

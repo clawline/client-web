@@ -128,6 +128,11 @@ export default function Pairing({ onBack, onPaired }: { onBack: () => void; onPa
   // --- QR code scan ---
   const startScan = async () => {
     setError('');
+    // Check BarcodeDetector before requesting camera
+    if (!('BarcodeDetector' in window)) {
+      setError('QR scanning is not supported in this browser. Please use the URL tab to paste a connection link, or try Chrome/Edge.');
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       setScanning(true);
@@ -135,11 +140,10 @@ export default function Pairing({ onBack, onPaired }: { onBack: () => void; onPa
         videoRef.current.srcObject = stream;
         videoRef.current.play();
       }
-      // Use BarcodeDetector if available
-      const detector = 'BarcodeDetector' in window ? new (window as any).BarcodeDetector({ formats: ['qr_code'] }) : null;
+      const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
 
       scanIntervalRef.current = setInterval(async () => {
-        if (!videoRef.current || !canvasRef.current || !detector) return;
+        if (!videoRef.current || !canvasRef.current) return;
         const video = videoRef.current;
         const canvas = canvasRef.current;
         canvas.width = video.videoWidth;
@@ -348,7 +352,9 @@ export default function Pairing({ onBack, onPaired }: { onBack: () => void; onPa
               <Button variant="outline" className="w-full" onClick={stopScan}>Stop Scanning</Button>
             )}
             <p className="text-[11px] text-text/30 dark:text-text-inv/30 text-center">
-              {'BarcodeDetector' in window ? 'QR detection supported' : '⚠️ BarcodeDetector not available in this browser. Try Chrome or Edge.'}
+              {'BarcodeDetector' in window
+                ? 'Point your camera at a QR code to connect'
+                : 'QR scanning requires Chrome or Edge. Use the URL tab to paste a link instead.'}
             </p>
           </motion.div>
         )}
