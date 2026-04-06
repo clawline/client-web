@@ -7,6 +7,7 @@ import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
 import { CONNECTIONS_UPDATED_EVENT, getConnections, moveConnection, removeConnection, updateConnection, getActiveConnectionId, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
 import * as channel from '../services/clawChannel';
+import type { ChannelStatus } from '../services/clawChannel';
 
 export default function Profile({ onNavigate }: { onNavigate: (screen: string) => void }) {
   const { signOut, getIdTokenClaims } = useLogto();
@@ -15,7 +16,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ServerConnection | null>(null);
   const [editForm, setEditForm] = useState({ name: '', displayName: '', serverUrl: '', token: '', chatId: '', senderId: '' });
-  const [statusMap, setStatusMap] = useState<Record<string, string>>({});
+  const [statusMap, setStatusMap] = useState<Record<string, ChannelStatus>>({});
   const [darkMode, setDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
   const [pushNotif, setPushNotif] = useState(() => localStorage.getItem('openclaw.pushNotif') !== '0');
   const [inAppNotif, setInAppNotif] = useState(() => localStorage.getItem('openclaw.inAppNotif') !== '0');
@@ -41,7 +42,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
 
   // Reactive connection status — subscribe to each connection's status changes
   useEffect(() => {
-    const initial: Record<string, string> = {};
+    const initial: Record<string, ChannelStatus> = {};
     const unsubs: (() => void)[] = [];
     for (const conn of connections) {
       initial[conn.id] = channel.getStatus(conn.id);

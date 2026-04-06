@@ -7,7 +7,7 @@
  */
 
 const DB_NAME = 'clawline-outbox';
-const DB_VERSION = 2; // v2: added connectionId index
+const DB_VERSION = 3; // v3: added timestamp index for ordered eviction
 const STORE_NAME = 'pending';
 const MAX_PENDING = 200; // soft cap to prevent unbounded growth
 
@@ -38,12 +38,15 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
         store.createIndex('connectionId', 'connectionId', { unique: false });
+        store.createIndex('timestamp', 'timestamp', { unique: false });
       } else {
-        // v2 migration: add index if missing
         const tx = req.transaction!;
         const store = tx.objectStore(STORE_NAME);
         if (!store.indexNames.contains('connectionId')) {
           store.createIndex('connectionId', 'connectionId', { unique: false });
+        }
+        if (!store.indexNames.contains('timestamp')) {
+          store.createIndex('timestamp', 'timestamp', { unique: false });
         }
       }
     };
@@ -73,18 +76,25 @@ export async function enqueue(entry: OutboxEntry): Promise<void> {
     let didDrop = false;
     let totalCount = 0;
 
-    const countReq = store.count();
-    countReq.onsuccess = () => {
-      totalCount = countReq.result;
-      if (totalCount >= MAX_PENDING) {
-        didDrop = true;
-        // Delete oldest entry by cursor
-        const cursor = store.openCursor();
-        cursor.onsuccess = () => {
-          if (cursor.result) cursor.result.delete();
-        };
-      }
-      store.put(entry);
+    // Check if this entry already exists (retry case) — skip eviction if so
+    const existsReq = store.count(entry.id);
+    existsReq.onsuccess = () => {
+      const alreadyExists = existsReq.result > 0;
+
+      const countReq = store.count();
+      countReq.onsuccess = () => {
+        totalCount = countReq.result;
+        if (!alreadyExists && totalCount >= MAX_PENDING) {
+          didDrop = true;
+          // Evict oldest by timestamp index (deterministic ordering)
+          const tsIndex = store.index('timestamp');
+          const cursor = tsIndex.openCursor();
+          cursor.onsuccess = () => {
+            if (cursor.result) cursor.result.delete();
+          };
+        }
+        store.put(entry);
+      };
     };
 
     tx.oncomplete = () => {
