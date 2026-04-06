@@ -906,7 +906,7 @@ export default function ChatRoom({
         if (chatId && activeConn?.channelId) {
           const lastTs = messages.length > 0 ? Math.max(...messages.map(m => m.timestamp || 0)) : 0;
           if (lastTs > 0) {
-            syncMissedMessages(activeConn.channelId, lastTs).then((missed) => {
+            syncMissedMessages(activeConn.channelId, lastTs, 100, runtimeConnId).then((missed) => {
               if (missed.length === 0) return;
               const newMsgs: Message[] = missed
                 .filter(m => !messages.some(existing => existing.id === m.message_id))
@@ -1372,7 +1372,7 @@ export default function ChatRoom({
     setVoiceRefining(true);
     let text = rawText;
     try {
-      text = await refineVoiceText(rawText, messages);
+      text = await refineVoiceText(rawText, messages, runtimeConnId);
     } catch { /* use raw text */ }
     setVoiceRefining(false);
 

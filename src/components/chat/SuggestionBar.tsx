@@ -107,9 +107,9 @@ function SuggestionBarInner({
     }
 
     // Try 2: Local API key (localStorage config)
-    if (isSuggestionServiceAvailable()) {
+    if (isSuggestionServiceAvailable(connectionId)) {
       try {
-        const localSuggestions = await getSuggestions(messages, controller.signal);
+        const localSuggestions = await getSuggestions(messages, controller.signal, connectionId);
         if (!controller.signal.aborted && localSuggestions.length > 0) {
           setAiSuggestions(localSuggestions);
           setLoading(false);

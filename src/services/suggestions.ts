@@ -97,13 +97,14 @@ function hashContext(text: string): string {
 async function fetchSuggestionsFromGateway(
   messages: Array<{ role: string; text: string }>,
   signal?: AbortSignal,
+  connectionId?: string,
 ): Promise<string[]> {
-  const baseUrl = getGatewayHttpUrl();
+  const baseUrl = getGatewayHttpUrl(connectionId);
   if (!baseUrl) return [];
 
   const res = await fetch(`${baseUrl}/api/suggestions`, {
     method: 'POST',
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders(connectionId),
     body: JSON.stringify({
       messages: messages.slice(-6).map(m => ({ role: m.role, text: m.text.slice(0, 300) })),
       prompt: getSuggestionCustomPrompt() || undefined,
@@ -119,6 +120,7 @@ async function fetchSuggestionsFromGateway(
 export async function getSuggestions(
   messages: { sender: string; text?: string }[],
   signal?: AbortSignal,
+  connectionId?: string,
 ): Promise<string[]> {
   if (!isSuggestionsEnabled()) return [];
 
@@ -140,7 +142,7 @@ export async function getSuggestions(
 
   if (pendingRequest) return pendingRequest;
 
-  pendingRequest = fetchSuggestionsFromGateway(conversationMsgs, signal)
+  pendingRequest = fetchSuggestionsFromGateway(conversationMsgs, signal, connectionId)
     .then(suggestions => {
       if (suggestions.length > 0) {
         lastContextHash = hash;
@@ -154,8 +156,8 @@ export async function getSuggestions(
   return pendingRequest;
 }
 
-export function isSuggestionServiceAvailable(): boolean {
-  return !!getGatewayHttpUrl();
+export function isSuggestionServiceAvailable(connectionId?: string): boolean {
+  return !!getGatewayHttpUrl(connectionId);
 }
 
 export function clearSuggestionCache(): void {
@@ -213,10 +215,11 @@ export async function draftReply(
 export async function refineVoiceText(
   text: string,
   messages?: { sender: string; text?: string }[],
+  connectionId?: string,
 ): Promise<string> {
   if (!isVoiceRefineEnabled() || !text.trim()) return text;
 
-  const baseUrl = getGatewayHttpUrl();
+  const baseUrl = getGatewayHttpUrl(connectionId);
   if (!baseUrl) return text;
 
   const conversationMsgs = (messages || [])
@@ -227,7 +230,7 @@ export async function refineVoiceText(
   try {
     const res = await fetch(`${baseUrl}/api/voice-refine`, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: getAuthHeaders(connectionId),
       body: JSON.stringify({
         text,
         messages: conversationMsgs,
@@ -263,8 +266,9 @@ export async function syncMissedMessages(
   channelId: string,
   afterTimestamp: number,
   limit = 100,
+  connectionId?: string,
 ): Promise<SyncMessage[]> {
-  const baseUrl = getGatewayHttpUrl();
+  const baseUrl = getGatewayHttpUrl(connectionId);
   if (!baseUrl) return [];
 
   try {
@@ -274,7 +278,7 @@ export async function syncMissedMessages(
       limit: String(limit),
     });
     const res = await fetch(`${baseUrl}/api/messages/sync?${params}`, {
-      headers: getAuthHeaders(),
+      headers: getAuthHeaders(connectionId),
     });
     if (!res.ok) return [];
     const data = await res.json();
