@@ -606,7 +606,7 @@ function AppShell() {
           {/* Sidebar */}
         <div style={{ width: sidebarWidth }} className="sidebar-surface h-full flex flex-col flex-shrink-0 relative">
           {/* Sidebar content: ChatList */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-hidden">
             <ChatList
               onOpenChat={(connectionId, agentId, chatId) => navigate('chat_room', agentId, chatId, connectionId)}
               onOpenSplitChat={openSplitChat}
