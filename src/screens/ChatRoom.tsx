@@ -911,17 +911,20 @@ export default function ChatRoom({
       setTimeout(() => setErrorToast(null), 6000);
     });
 
-    const handleOutboxOverflow = () => {
+    const handleOutboxOverflow = (event: Event) => {
+      const detail = (event as CustomEvent<{ connectionId?: string; agentId?: string }>).detail;
+      if (detail?.connectionId && detail.connectionId !== runtimeConnId) return;
+      if (detail?.agentId && detail.agentId !== agentId) return;
       setErrorToast({ code: 'OUTBOX_FULL', message: 'Offline queue is full. Oldest queued message was removed.' });
       setTimeout(() => setErrorToast(null), 6000);
     };
-    window.addEventListener('openclaw:outbox-overflow', handleOutboxOverflow);
+    window.addEventListener(outbox.OUTBOX_OVERFLOW_EVENT, handleOutboxOverflow);
 
     return () => {
       unsubMsg();
       unsubStatus();
       unsubError();
-      window.removeEventListener('openclaw:outbox-overflow', handleOutboxOverflow);
+      window.removeEventListener(outbox.OUTBOX_OVERFLOW_EVENT, handleOutboxOverflow);
       if (agentReadyTimeoutRef.current) {
         clearTimeout(agentReadyTimeoutRef.current);
         agentReadyTimeoutRef.current = null;

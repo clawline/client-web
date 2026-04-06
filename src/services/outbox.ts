@@ -91,7 +91,7 @@ export async function enqueue(entry: OutboxEntry): Promise<void> {
       // Only notify after transaction successfully committed
       if (didDrop) {
         window.dispatchEvent(new CustomEvent(OUTBOX_OVERFLOW_EVENT, {
-          detail: { dropped: 1, total: totalCount },
+          detail: { dropped: 1, total: totalCount, connectionId: entry.connectionId, agentId: entry.agentId },
         }));
       }
       resolve();
