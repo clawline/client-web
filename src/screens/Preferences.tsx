@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { ChevronLeft, User, Sliders } from 'lucide-react';
+import { ChevronLeft, User, Sliders, Sparkles, Mic } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
 import { getUserName, setUserName } from '../App';
+import {
+  isSuggestionsEnabled, setSuggestionsEnabled, getSuggestionCustomPrompt, setSuggestionCustomPrompt,
+  isVoiceRefineEnabled, setVoiceRefineEnabled, getVoiceRefineCustomPrompt, setVoiceRefineCustomPrompt,
+} from '../services/suggestions';
 
 const STREAMING_OUTPUT_KEY = 'openclaw.streaming.enabled';
 
@@ -17,9 +21,34 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
     return stored !== 'false';
   });
 
+  const [suggestionsOn, setSuggestionsOn] = useState(() => isSuggestionsEnabled());
+  const [suggestionPrompt, setSuggestionPromptVal] = useState(() => getSuggestionCustomPrompt());
+  const [voiceRefineOn, setVoiceRefineOn] = useState(() => isVoiceRefineEnabled());
+  const [voiceRefinePrompt, setVoiceRefinePromptVal] = useState(() => getVoiceRefineCustomPrompt());
+
   const handleStreamingToggle = (checked: boolean) => {
     setStreamingEnabled(checked);
     localStorage.setItem(STREAMING_OUTPUT_KEY, checked ? 'true' : 'false');
+  };
+
+  const handleSuggestionsToggle = (checked: boolean) => {
+    setSuggestionsOn(checked);
+    setSuggestionsEnabled(checked);
+  };
+
+  const handleSuggestionPromptChange = (value: string) => {
+    setSuggestionPromptVal(value);
+    setSuggestionCustomPrompt(value);
+  };
+
+  const handleVoiceRefineToggle = (checked: boolean) => {
+    setVoiceRefineOn(checked);
+    setVoiceRefineEnabled(checked);
+  };
+
+  const handleVoiceRefinePromptChange = (value: string) => {
+    setVoiceRefinePromptVal(value);
+    setVoiceRefineCustomPrompt(value);
   };
 
   return (
@@ -78,6 +107,97 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
             </motion.div>
           </Card>
         </section>
+
+        <section>
+          <h3 className="text-sm font-semibold text-text/50 dark:text-text-inv/50 mb-4 uppercase tracking-wider flex items-center gap-2">
+            <Sparkles size={16} /> AI Suggestions
+          </h3>
+          <Card className="p-5 space-y-5">
+            <motion.div
+              layout
+              className="flex items-center justify-between gap-4 rounded-[24px] border border-border dark:border-border-dark bg-surface/80 dark:bg-surface-dark/80 px-4 py-4"
+            >
+              <div className="min-w-0">
+                <label htmlFor="suggestions-toggle" className="block text-[15px] font-semibold text-text dark:text-text-inv">
+                  Smart Suggestions
+                </label>
+                <p className="mt-1 text-[13px] text-text/50 dark:text-text-inv/50">
+                  AI-generated follow-up suggestions after messages
+                </p>
+              </div>
+              <input
+                id="suggestions-toggle"
+                type="checkbox"
+                className="ios-toggle shrink-0"
+                checked={suggestionsOn}
+                onChange={(e) => handleSuggestionsToggle(e.target.checked)}
+                aria-label="Toggle AI suggestions"
+              />
+            </motion.div>
+
+            {suggestionsOn && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+                <label className="block text-[13px] font-medium text-text/70 dark:text-text-inv/70 mb-1.5">Custom Prompt</label>
+                <textarea
+                  rows={3}
+                  value={suggestionPrompt}
+                  onChange={(e) => handleSuggestionPromptChange(e.target.value)}
+                  placeholder="Additional instructions for suggestion generation (appended to global prompt)..."
+                  className="w-full bg-surface dark:bg-surface-dark border border-border dark:border-border-dark rounded-[16px] px-4 py-3 text-[15px] text-text dark:text-text-inv focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none placeholder:text-text/35 dark:placeholder:text-text-inv/35"
+                />
+                <p className="mt-1.5 text-[11px] text-text/40 dark:text-text-inv/40">
+                  This prompt is combined with the server's global prompt, not a replacement.
+                </p>
+              </motion.div>
+            )}
+          </Card>
+        </section>
+
+        <section>
+          <h3 className="text-sm font-semibold text-text/50 dark:text-text-inv/50 mb-4 uppercase tracking-wider flex items-center gap-2">
+            <Mic size={16} /> Voice Refinement
+          </h3>
+          <Card className="p-5 space-y-5">
+            <motion.div
+              layout
+              className="flex items-center justify-between gap-4 rounded-[24px] border border-border dark:border-border-dark bg-surface/80 dark:bg-surface-dark/80 px-4 py-4"
+            >
+              <div className="min-w-0">
+                <label htmlFor="voice-refine-toggle" className="block text-[15px] font-semibold text-text dark:text-text-inv">
+                  Voice Text Refinement
+                </label>
+                <p className="mt-1 text-[13px] text-text/50 dark:text-text-inv/50">
+                  AI cleans up voice input before sending
+                </p>
+              </div>
+              <input
+                id="voice-refine-toggle"
+                type="checkbox"
+                className="ios-toggle shrink-0"
+                checked={voiceRefineOn}
+                onChange={(e) => handleVoiceRefineToggle(e.target.checked)}
+                aria-label="Toggle voice text refinement"
+              />
+            </motion.div>
+
+            {voiceRefineOn && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+                <label className="block text-[13px] font-medium text-text/70 dark:text-text-inv/70 mb-1.5">Custom Prompt</label>
+                <textarea
+                  rows={3}
+                  value={voiceRefinePrompt}
+                  onChange={(e) => handleVoiceRefinePromptChange(e.target.value)}
+                  placeholder="Additional instructions for voice text refinement (appended to global prompt)..."
+                  className="w-full bg-surface dark:bg-surface-dark border border-border dark:border-border-dark rounded-[16px] px-4 py-3 text-[15px] text-text dark:text-text-inv focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none placeholder:text-text/35 dark:placeholder:text-text-inv/35"
+                />
+                <p className="mt-1.5 text-[11px] text-text/40 dark:text-text-inv/40">
+                  This prompt is combined with the server's global prompt, not a replacement.
+                </p>
+              </motion.div>
+            )}
+          </Card>
+        </section>
+
       </div>
     </div>
   );

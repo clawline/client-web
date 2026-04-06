@@ -15,6 +15,7 @@ import MemorySheet from '../components/MemorySheet';
 import FileGallery from '../components/FileGallery';
 import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
 import * as outbox from '../services/outbox';
+import { refineVoiceText } from '../services/suggestions';
 import {
   type DeliveryStatus, type Message, type AgentInfo,
   QUICK_COMMANDS, EMOJI_LIST,
@@ -146,6 +147,7 @@ export default function ChatRoom({
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [reconnectInfo, setReconnectInfo] = useState({ attempt: 0, maxAttempts: 6, delayMs: 0 });
+  const [voiceRefining, setVoiceRefining] = useState(false);
 
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -1334,34 +1336,42 @@ export default function ChatRoom({
     setVoiceListening(false);
   }, []);
 
-  const submitVoiceText = useCallback(() => {
-    const text = (voiceFinalText + voiceInterimText).trim();
+  const submitVoiceText = useCallback(async () => {
+    const rawText = (voiceFinalText + voiceInterimText).trim();
     stopVoiceRecognition();
-    if (text) {
-      setInputValue(text);
-      // Auto-send
-      setTimeout(() => {
-        const trimmed = text.trim();
-        if (!trimmed) return;
-        const msg: Message = { id: Date.now().toString(), sender: 'user', text: trimmed, deliveryStatus: 'pending' };
-        setMessages((prev) => [...prev, msg]);
-        try {
-          if (replyingTo) {
-            channel.sendTextWithParent(trimmed, replyingTo.id, replyingTo.text?.slice(0, 200), agentId || undefined, runtimeConnId);
-          } else {
-            channel.sendText(trimmed, agentId || undefined, runtimeConnId);
-          }
-          setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, deliveryStatus: 'sent' as DeliveryStatus } : m));
-        } catch { /* ignore */ }
-        setInputValue('');
-        setReplyingTo(null);
-        setVoiceFinalText('');
-        setVoiceInterimText('');
-        setVoiceMode(false);  // Exit voice mode after sending
-        setIsThinking(true);
-      }, 50);
-    }
-  }, [voiceFinalText, voiceInterimText, stopVoiceRecognition, agentId, runtimeConnId, replyingTo]);
+    if (!rawText) return;
+
+    // Refine voice text via gateway (async, shows "Refining..." state)
+    setVoiceRefining(true);
+    let text = rawText;
+    try {
+      text = await refineVoiceText(rawText, messages);
+    } catch { /* use raw text */ }
+    setVoiceRefining(false);
+
+    setInputValue(text);
+    // Auto-send
+    setTimeout(() => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const msg: Message = { id: Date.now().toString(), sender: 'user', text: trimmed, deliveryStatus: 'pending' };
+      setMessages((prev) => [...prev, msg]);
+      try {
+        if (replyingTo) {
+          channel.sendTextWithParent(trimmed, replyingTo.id, replyingTo.text?.slice(0, 200), agentId || undefined, runtimeConnId);
+        } else {
+          channel.sendText(trimmed, agentId || undefined, runtimeConnId);
+        }
+        setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, deliveryStatus: 'sent' as DeliveryStatus } : m));
+      } catch { /* ignore */ }
+      setInputValue('');
+      setReplyingTo(null);
+      setVoiceFinalText('');
+      setVoiceInterimText('');
+      setVoiceMode(false);
+      setIsThinking(true);
+    }, 50);
+  }, [voiceFinalText, voiceInterimText, stopVoiceRecognition, agentId, runtimeConnId, replyingTo, messages]);
 
   // Handle voice button touch events for swipe-up-to-send
   const handleVoiceTouchStart = useCallback((e: React.TouchEvent) => {
@@ -2168,6 +2178,19 @@ export default function ChatRoom({
                       {voiceInterimText && (
                         <span className="text-text/40 dark:text-text-inv/40">{voiceInterimText}</span>
                       )}
+                    </p>
+                  </motion.div>
+                )}
+                {voiceRefining && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    className="absolute bottom-full left-0 right-0 z-20 mx-1 mb-2 rounded-2xl border border-primary/30 bg-primary/6 px-4 py-3 shadow-lg dark:border-primary/20 dark:bg-primary/8"
+                  >
+                    <p className="text-[13px] text-primary font-medium flex items-center gap-2">
+                      <Loader2 size={14} className="animate-spin" />
+                      {isChinese ? '正在优化文本...' : 'Refining text...'}
                     </p>
                   </motion.div>
                 )}
