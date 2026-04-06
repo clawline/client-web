@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronDown, ChevronRight, Smile, Mic, Send, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, Copy, Check, Shield, Keyboard, ArrowDown } from 'lucide-react';
+import { ChevronDown, ChevronRight, Smile, Mic, Send, ArrowUp, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, Copy, Check, Shield, Keyboard, ArrowDown } from 'lucide-react';
 import { SpeechRecognitionSession } from '../services/volcASR';
 import { cn } from '../lib/utils';
 import * as channel from '../services/clawChannel';
@@ -1923,7 +1923,7 @@ export default function ChatRoom({
       />
 
       {/* Input Area */}
-      <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-2.5 bg-white/92 px-2 pt-2 pb-1 shadow-[0_-12px_30px_-24px_rgba(15,23,42,0.24)] backdrop-blur-md dark:bg-card-alt/92 dark:shadow-[0_-16px_30px_-24px_rgba(2,6,23,0.68)]">
+      <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-2.5 border-t border-border/40 bg-white px-2 pt-2 pb-1 dark:border-border-dark/40 dark:bg-[#11161d]">
         <AnimatePresence>
           {showSlashMenu && (
             <>
@@ -2148,7 +2148,7 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
-        <div className="pressable-inset relative flex items-center gap-1 rounded-[24px] border border-slate-300/80 bg-white/96 p-1.5 dark:border-slate-700/80 dark:bg-card-alt/96">
+        <div className="relative flex items-center gap-1 rounded-[16px] border border-border/60 bg-surface/70 p-1.5 dark:border-border-dark/60 dark:bg-white/[0.04]">
           {voiceMode ? (
             <>
               {/* Recognized text floating above bar */}
@@ -2182,7 +2182,7 @@ export default function ChatRoom({
                   localStorage.setItem('clawline:voiceMode', 'false');
                   setVoiceMode(false);
                 }}
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/[0.04] text-slate-600 transition-colors hover:bg-primary/10 hover:text-primary dark:bg-white/[0.06] dark:text-slate-300"
+                className="flex h-11 w-11 items-center justify-center rounded-full text-text/40 transition-colors hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60"
                 aria-label="Switch to keyboard"
               >
                 <Keyboard size={20} />
@@ -2251,10 +2251,10 @@ export default function ChatRoom({
                     exit={{ scale: 0.8, opacity: 0 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={submitVoiceText}
-                    className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-md shadow-primary/30"
+                    className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-sm"
                     aria-label="Send voice text"
                   >
-                    <Send size={18} />
+                    <ArrowUp size={20} strokeWidth={2.5} />
                   </motion.button>
                 )}
               </AnimatePresence>
@@ -2265,7 +2265,7 @@ export default function ChatRoom({
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowMoreIcons(!showMoreIcons)}
-            className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'bg-slate-900/[0.04] text-slate-600 hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'}`}
+            className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/40 hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60'}`}
             aria-label="Attach"
           >
             <Plus size={20} />
@@ -2394,16 +2394,16 @@ export default function ChatRoom({
               onClick={handleSend}
               disabled={!agentReady}
               aria-label="Send message"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-md shadow-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Send size={18} />
+              <ArrowUp size={20} strokeWidth={2.5} />
             </motion.button>
           ) : (
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => { localStorage.setItem('clawline:voiceMode', 'true'); setVoiceMode(true); }}
               aria-label="Switch to voice input"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/[0.05] text-slate-600 transition-colors hover:bg-primary/10 hover:text-primary dark:bg-white/[0.06] dark:text-slate-300"
+              className="flex h-11 w-11 items-center justify-center rounded-full text-text/40 transition-colors hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60"
             >
               <Mic size={18} />
             </motion.button>
