@@ -8,6 +8,7 @@ import {
   getInboxItems,
   markAsRead,
   recordUserMessage,
+  isContentMessage,
   onInboxUpdate,
   refreshInbox,
   type InboxItem,
@@ -121,7 +122,7 @@ function InboxItemDetail({
     let cancelled = false;
     void loadConversationMessages(item.connectionId, item.agentId, { limit: 20 }).then((allMessages) => {
       if (cancelled) return;
-      const messages = allMessages.filter(m => m.text?.trim() && !m.isStreaming);
+      const messages = allMessages.filter(isContentMessage);
       // Find last AI message
       for (let i = messages.length - 1; i >= 0; i--) {
         if (messages[i].sender === 'ai') {
@@ -139,7 +140,7 @@ function InboxItemDetail({
     setSuggestError('');
     try {
       const allMessages = await loadConversationMessages(item.connectionId, item.agentId, { limit: 20 });
-      const messages = allMessages.filter(m => m.text?.trim() && !m.isStreaming);
+      const messages = allMessages.filter(isContentMessage);
       if (messages.length === 0) {
         setSuggestError('No messages to draft from');
         return;

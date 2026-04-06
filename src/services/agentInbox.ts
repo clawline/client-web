@@ -44,8 +44,16 @@ let initialized = false;
 
 // ── Helpers ──
 
-function isContentMessage(m: { text: string; isStreaming?: boolean }): boolean {
-  return !!m.text?.trim() && !m.isStreaming;
+export function isContentMessage(m: { sender: string; text: string; isStreaming?: boolean }): boolean {
+  if (m.isStreaming) return false;
+  if (m.sender !== 'user' && m.sender !== 'ai') return false;
+  const t = m.text?.trim();
+  if (!t) return false;
+  // Exclude media-only placeholders and cancelled streams
+  if (t === '[Image]' || t === '[image]') return false;
+  if (t.startsWith('📎')) return false;
+  if (t.endsWith('*[cancelled]*')) return false;
+  return true;
 }
 
 function itemKey(connectionId: string, agentId: string): string {
