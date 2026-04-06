@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { AnimatePresence, motion, Reorder } from 'motion/react';
-import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List, ArrowUpDown, Check, Crown } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { AnimatePresence, motion, Reorder, useDragControls } from 'motion/react';
+import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List, ArrowUpDown, Check, Crown, GripVertical, Star, Pencil } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
 import { CONNECTIONS_UPDATED_EVENT, getConnections, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
@@ -16,6 +16,8 @@ const VIEW_MODE_KEY = 'openclaw.chatlist.viewMode';
 const AGENT_ORDER_KEY_PREFIX = 'clawline.agentOrder.';
 const LEGACY_AGENT_ORDER_KEY = 'openclaw.chatlist.agentOrder';
 const AGENT_AVATAR_KEY = 'openclaw.agentAvatars';
+const AGENT_NAMES_KEY = 'clawline.agentNames';
+const AGENT_FAVORITES_KEY = 'clawline.agentFavorites';
 const MESSAGE_PREVIEW_UPDATED_EVENT = 'openclaw:message-preview-updated';
 
 type ViewMode = 'list' | 'grid';
@@ -33,6 +35,169 @@ function setCustomAvatar(agentId: string, url: string) {
 function removeCustomAvatar(agentId: string) {
   const avatars = getCustomAvatars(); delete avatars[agentId];
   localStorage.setItem(AGENT_AVATAR_KEY, JSON.stringify(avatars));
+}
+function getCustomNames(): Record<string, string> {
+  try { const raw = localStorage.getItem(AGENT_NAMES_KEY); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+}
+function setCustomName(agentId: string, name: string) {
+  const names = getCustomNames(); names[agentId] = name;
+  localStorage.setItem(AGENT_NAMES_KEY, JSON.stringify(names));
+}
+function getFavorites(): Set<string> {
+  try { const raw = localStorage.getItem(AGENT_FAVORITES_KEY); return new Set(raw ? JSON.parse(raw) : []); } catch { return new Set(); }
+}
+function setFavoriteStorage(agentId: string, val: boolean) {
+  const favs = getFavorites();
+  if (val) favs.add(agentId); else favs.delete(agentId);
+  localStorage.setItem(AGENT_FAVORITES_KEY, JSON.stringify([...favs]));
+}
+
+// ── Reorder sub-components (need hooks, must be React components) ──────────
+
+interface ReorderListCardProps {
+  agent: AgentInfo;
+  displayName: string;
+  isFav: boolean;
+  compact: boolean;
+  renderAvatar: (agent: AgentInfo, size: 'sm' | 'md' | 'lg' | 'xl') => React.ReactNode;
+  onFavToggle: () => void;
+  onAvatarClick: () => void;
+  onNameSave: (name: string) => void;
+}
+
+function ReorderListCard({ agent, displayName, isFav, compact, renderAvatar, onFavToggle, onAvatarClick, onNameSave }: ReorderListCardProps) {
+  const controls = useDragControls();
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(displayName);
+  // Keep nameInput in sync if parent updates displayName
+  useEffect(() => { setNameInput(displayName); }, [displayName]);
+
+  return (
+    <Reorder.Item value={agent.id}
+      dragControls={controls}
+      dragListener={false}
+      whileDrag={{ scale: 1.03, boxShadow: '0 8px 28px rgba(0,0,0,0.18)', zIndex: 50 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      style={{ touchAction: 'pan-y' }}>
+      <div className={cn('flex items-center gap-2 rounded-xl border border-border/20 dark:border-border-dark/20', compact ? 'px-2 py-1.5' : 'px-3 py-2', 'bg-surface dark:bg-surface-dark')}>
+        {/* Drag handle — only this triggers drag */}
+        <div
+          className="touch-none cursor-grab active:cursor-grabbing p-1 shrink-0"
+          onPointerDown={e => { e.preventDefault(); controls.start(e); }}
+        >
+          <GripVertical size={15} className="text-text/25 dark:text-text-inv/20" />
+        </div>
+        {/* Avatar (tap to change) */}
+        <button onClick={onAvatarClick} className="shrink-0 rounded-xl overflow-hidden hover:opacity-80 transition-opacity" title="Change avatar">
+          {renderAvatar(agent, compact ? 'sm' : 'md')}
+        </button>
+        {/* Name */}
+        <div className="flex-1 min-w-0">
+          {editingName ? (
+            <input
+              autoFocus
+              value={nameInput}
+              onChange={e => setNameInput(e.target.value)}
+              onBlur={() => {
+                const v = nameInput.trim();
+                if (v) onNameSave(v);
+                setEditingName(false);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') { setNameInput(displayName); setEditingName(false); }
+              }}
+              className={cn('w-full bg-transparent border-b border-primary outline-none font-bold', compact ? 'text-[13px]' : 'text-[15px]')}
+            />
+          ) : (
+            <div className="flex items-center gap-1">
+              <h3 className={cn('font-bold truncate', compact ? 'text-[13px]' : 'text-[15px]')}>{displayName}</h3>
+              <button onClick={() => setEditingName(true)} className="shrink-0 text-text/20 hover:text-text/50 dark:text-text-inv/15 dark:hover:text-text-inv/50">
+                <Pencil size={11} />
+              </button>
+            </div>
+          )}
+        </div>
+        {/* Favorite */}
+        <button
+          onClick={onFavToggle}
+          className={cn('shrink-0 p-1.5 rounded-lg transition-colors', isFav ? 'text-yellow-400' : 'text-text/20 dark:text-text-inv/15 hover:text-yellow-400')}
+        >
+          <Star size={14} fill={isFav ? 'currentColor' : 'none'} />
+        </button>
+      </div>
+    </Reorder.Item>
+  );
+}
+
+interface ReorderGridCardProps {
+  agent: AgentInfo;
+  displayName: string;
+  isFav: boolean;
+  renderAvatar: (agent: AgentInfo, size: 'sm' | 'md' | 'lg' | 'xl') => React.ReactNode;
+  onFavToggle: () => void;
+  onAvatarClick: () => void;
+  onNameSave: (name: string) => void;
+}
+
+function ReorderGridCard({ agent, displayName, isFav, renderAvatar, onFavToggle, onAvatarClick, onNameSave }: ReorderGridCardProps) {
+  const controls = useDragControls();
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(displayName);
+  useEffect(() => { setNameInput(displayName); }, [displayName]);
+
+  return (
+    <Reorder.Item value={agent.id}
+      dragControls={controls}
+      dragListener={false}
+      whileDrag={{ scale: 1.08, boxShadow: '0 12px 36px rgba(0,0,0,0.2)', zIndex: 50 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      style={{ touchAction: 'pan-y' }}>
+      <div className="relative flex flex-col items-center p-3 pb-2 rounded-2xl bg-surface dark:bg-surface-dark">
+        {/* Drag handle top-left */}
+        <div
+          className="absolute top-2 left-2 touch-none cursor-grab active:cursor-grabbing p-0.5"
+          onPointerDown={e => { e.preventDefault(); controls.start(e); }}
+        >
+          <GripVertical size={13} className="text-text/20 dark:text-text-inv/15" />
+        </div>
+        {/* Favorite top-right */}
+        <button
+          onClick={onFavToggle}
+          className={cn('absolute top-2 right-2 p-0.5 rounded transition-colors', isFav ? 'text-yellow-400' : 'text-text/15 dark:text-text-inv/10 hover:text-yellow-400')}
+        >
+          <Star size={12} fill={isFav ? 'currentColor' : 'none'} />
+        </button>
+        {/* Avatar */}
+        <button onClick={onAvatarClick} className="mt-3 rounded-2xl overflow-hidden hover:opacity-80 transition-opacity">
+          {renderAvatar(agent, 'xl')}
+        </button>
+        {/* Name */}
+        {editingName ? (
+          <input
+            autoFocus
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            onBlur={() => {
+              const v = nameInput.trim();
+              if (v) onNameSave(v);
+              setEditingName(false);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') { setNameInput(displayName); setEditingName(false); }
+            }}
+            className="mt-1.5 w-full text-center bg-transparent border-b border-primary outline-none text-[12px] font-semibold"
+          />
+        ) : (
+          <button onClick={() => setEditingName(true)} className="mt-1.5 flex items-center gap-1 hover:opacity-70">
+            <span className="text-[12px] font-semibold truncate max-w-[80px]">{displayName}</span>
+            <Pencil size={9} className="text-text/30 dark:text-text-inv/25 shrink-0" />
+          </button>
+        )}
+      </div>
+    </Reorder.Item>
+  );
 }
 
 function TypingDots() {
@@ -179,6 +344,8 @@ export default function ChatList({
     )
   ));
   const [customAvatars, setCustomAvatarsState] = useState<Record<string, string>>(() => getCustomAvatars());
+  const [customNames, setCustomNamesState] = useState<Record<string, string>>(() => getCustomNames());
+  const [favorites, setFavoritesState] = useState<Set<string>>(() => getFavorites());
   const [avatarMenuAgent, setAvatarMenuAgent] = useState<{ agentId: string; x: number; y: number } | null>(null);
   const [avatarUploadAgent, setAvatarUploadAgent] = useState<string | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
@@ -488,13 +655,20 @@ export default function ChatList({
   const getSortedAgentIds = useCallback((connectionId: string): string[] => {
     const agents = agentMap[connectionId] || [];
     const order = customOrder[connectionId];
-    if (!order) return agents.map(a => a.id);
-    return [...agents].sort((a, b) => {
-      const ai = order.indexOf(a.id); const bi = order.indexOf(b.id);
-      if (ai === -1 && bi === -1) return 0; if (ai === -1) return 1; if (bi === -1) return -1;
-      return ai - bi;
-    }).map(a => a.id);
-  }, [agentMap, customOrder]);
+    const sorted = order
+      ? [...agents].sort((a, b) => {
+          const ai = order.indexOf(a.id); const bi = order.indexOf(b.id);
+          if (ai === -1 && bi === -1) return 0; if (ai === -1) return 1; if (bi === -1) return -1;
+          return ai - bi;
+        }).map(a => a.id)
+      : agents.map(a => a.id);
+    // Favorites float to top
+    return sorted.sort((a, b) => {
+      const af = favorites.has(a); const bf = favorites.has(b);
+      if (af && !bf) return -1; if (!af && bf) return 1;
+      return 0;
+    });
+  }, [agentMap, customOrder, favorites]);
 
   const getAgentById = useCallback((connectionId: string, agentId: string) => {
     return (agentMap[connectionId] || []).find(a => a.id === agentId);
@@ -692,30 +866,40 @@ export default function ChatList({
   // REORDER MODE — Reorder.Item, NO click navigation
   // ══════════════════════════════════════════════════════════════════
 
-  const renderReorderListCard = (agent: AgentInfo) => (
-    <Reorder.Item key={agent.id} value={agent.id}
-      whileDrag={{ scale: 1.04, boxShadow: '0 8px 28px rgba(0,0,0,0.18)', zIndex: 50 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-      style={{ touchAction: 'none' }}>
-      <div className={cn('flex items-center gap-3 rounded-lg border border-transparent', compact ? 'px-2.5 py-2' : 'px-4 py-2.5', 'bg-surface dark:bg-surface-dark cursor-grab active:cursor-grabbing active:border-primary/30')}>
-        <ArrowUpDown size={14} className="text-text/20 dark:text-text-inv/15 shrink-0" />
-        {renderAvatar(agent, compact ? 'sm' : 'md')}
-        <h3 className={cn('font-bold truncate flex-1', compact ? 'text-[14px]' : 'text-[16px]')}>{agent.name}</h3>
-      </div>
-    </Reorder.Item>
-  );
+  const renderReorderListCard = (agent: AgentInfo) => {
+    const displayName = customNames[agent.id] || agent.name;
+    const isFav = favorites.has(agent.id);
+    return (
+      <ReorderListCard
+        key={agent.id}
+        agent={agent}
+        displayName={displayName}
+        isFav={isFav}
+        compact={compact}
+        renderAvatar={renderAvatar}
+        onFavToggle={() => { setFavoriteStorage(agent.id, !isFav); setFavoritesState(getFavorites()); }}
+        onAvatarClick={() => setAvatarUploadAgent(agent.id)}
+        onNameSave={(name) => { setCustomName(agent.id, name); setCustomNamesState(getCustomNames()); }}
+      />
+    );
+  };
 
-  const renderReorderGridCard = (agent: AgentInfo) => (
-    <Reorder.Item key={agent.id} value={agent.id}
-      whileDrag={{ scale: 1.08, boxShadow: '0 12px 36px rgba(0,0,0,0.2)', zIndex: 50 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-      style={{ touchAction: 'none' }}>
-      <div className="flex flex-col items-center p-4 pb-3 rounded-2xl bg-surface dark:bg-surface-dark cursor-grab active:cursor-grabbing active:ring-2 active:ring-primary/30">
-        {renderAvatar(agent, 'xl')}
-        <h3 className="text-[13px] font-semibold truncate w-full text-center mt-2">{agent.name}</h3>
-      </div>
-    </Reorder.Item>
-  );
+  const renderReorderGridCard = (agent: AgentInfo) => {
+    const displayName = customNames[agent.id] || agent.name;
+    const isFav = favorites.has(agent.id);
+    return (
+      <ReorderGridCard
+        key={agent.id}
+        agent={agent}
+        displayName={displayName}
+        isFav={isFav}
+        renderAvatar={renderAvatar}
+        onFavToggle={() => { setFavoriteStorage(agent.id, !isFav); setFavoritesState(getFavorites()); }}
+        onAvatarClick={() => setAvatarUploadAgent(agent.id)}
+        onNameSave={(name) => { setCustomName(agent.id, name); setCustomNamesState(getCustomNames()); }}
+      />
+    );
+  };
 
   // ══════════════════════════════════════════════════════════════════
   // Agent list renderer — switches between modes
