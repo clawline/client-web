@@ -379,7 +379,13 @@ function AppShell() {
     } catch { /* noop */ }
   }, [splitPanes]);
 
+  const splitPanesClearedRef = useRef(false);
   useEffect(() => {
+    // Skip first render — allow restored panes to survive initial mount
+    if (!splitPanesClearedRef.current) {
+      splitPanesClearedRef.current = true;
+      return;
+    }
     if (!isSplitViewport || currentScreen !== 'chat_room') {
       // Don't persist 'off' when screen changes or viewport shrinks
       setSplitPanes([]);
