@@ -700,8 +700,9 @@ class ChannelManager {
       }
     });
 
-    socket.addEventListener('close', () => {
+    socket.addEventListener('close', (ev) => {
       if (instance.connectionToken !== token) return;
+      console.warn(`[ws] connection closed: ${instance.connectionId} code=${ev.code} reason=${ev.reason || 'none'}`);
       instance.ws = null;
       this.clearIdleTimer(instance);
       if (instance.manualClose) {
@@ -711,8 +712,8 @@ class ChannelManager {
       this.scheduleReconnect(instance);
     });
 
-    socket.addEventListener('error', () => {
-      // close event handles recovery
+    socket.addEventListener('error', (ev) => {
+      console.warn(`[ws] connection error: ${instance.connectionId}`, ev);
     });
   }
 
