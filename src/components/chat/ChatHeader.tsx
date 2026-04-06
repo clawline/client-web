@@ -98,7 +98,6 @@ function ChatHeaderInner({
     /* Outer sticky wrapper — background matches page exactly */
     <div
       className="sticky top-0 z-20 bg-white dark:bg-[#11161d]"
-      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
       {/* Content row */}
       <div className="flex items-center gap-1 px-1 py-1">
