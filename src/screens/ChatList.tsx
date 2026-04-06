@@ -39,16 +39,17 @@ function removeCustomAvatar(agentId: string) {
 function getCustomNames(): Record<string, string> {
   try { const raw = localStorage.getItem(AGENT_NAMES_KEY); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
 }
-function setCustomName(agentId: string, name: string) {
-  const names = getCustomNames(); names[agentId] = name;
+function setCustomName(connId: string, agentId: string, name: string) {
+  const names = getCustomNames(); names[`${connId}:${agentId}`] = name;
   localStorage.setItem(AGENT_NAMES_KEY, JSON.stringify(names));
 }
 function getFavorites(): Set<string> {
   try { const raw = localStorage.getItem(AGENT_FAVORITES_KEY); return new Set(raw ? JSON.parse(raw) : []); } catch { return new Set(); }
 }
-function setFavoriteStorage(agentId: string, val: boolean) {
+function setFavoriteStorage(connId: string, agentId: string, val: boolean) {
   const favs = getFavorites();
-  if (val) favs.add(agentId); else favs.delete(agentId);
+  const key = `${connId}:${agentId}`;
+  if (val) favs.add(key); else favs.delete(key);
   localStorage.setItem(AGENT_FAVORITES_KEY, JSON.stringify([...favs]));
 }
 
@@ -664,7 +665,7 @@ export default function ChatList({
       : agents.map(a => a.id);
     // Favorites float to top
     return sorted.sort((a, b) => {
-      const af = favorites.has(a); const bf = favorites.has(b);
+      const af = favorites.has(`${connectionId}:${a}`); const bf = favorites.has(`${connectionId}:${b}`);
       if (af && !bf) return -1; if (!af && bf) return 1;
       return 0;
     });
@@ -751,7 +752,7 @@ export default function ChatList({
             {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <h3 className={cn('font-bold truncate', compact ? 'text-[14px] text-text/90 dark:text-text-inv/90' : 'text-[16px]')}>{agent.name}</h3>
+                <h3 className={cn('font-bold truncate', compact ? 'text-[14px] text-text/90 dark:text-text-inv/90' : 'text-[16px]')}>{customNames[`${connection.id}:${agent.id}`] || agent.name}</h3>
                 {agent.model && <span className="text-[10px] truncate ml-auto shrink-0 bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px text-text/45 dark:text-text-inv/40">{agent.model.split('/').pop()}</span>}
               </div>
               {isThinking ? (
@@ -831,7 +832,7 @@ export default function ChatList({
               )}
               {showStatus && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />}
             </div>
-            <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{agent.name}</h3>
+            <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{customNames[`${connection.id}:${agent.id}`] || agent.name}</h3>
             {isThinking ? (
               <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">Thinking... <TypingDots /></div>
             ) : isTyping ? (
@@ -866,9 +867,10 @@ export default function ChatList({
   // REORDER MODE — Reorder.Item, NO click navigation
   // ══════════════════════════════════════════════════════════════════
 
-  const renderReorderListCard = (agent: AgentInfo) => {
-    const displayName = customNames[agent.id] || agent.name;
-    const isFav = favorites.has(agent.id);
+  const renderReorderListCard = (connectionId: string, agent: AgentInfo) => {
+    const key = `${connectionId}:${agent.id}`;
+    const displayName = customNames[key] || agent.name;
+    const isFav = favorites.has(key);
     return (
       <ReorderListCard
         key={agent.id}
@@ -877,16 +879,17 @@ export default function ChatList({
         isFav={isFav}
         compact={compact}
         renderAvatar={renderAvatar}
-        onFavToggle={() => { setFavoriteStorage(agent.id, !isFav); setFavoritesState(getFavorites()); }}
+        onFavToggle={() => { setFavoriteStorage(connectionId, agent.id, !isFav); setFavoritesState(getFavorites()); }}
         onAvatarClick={() => setAvatarUploadAgent(agent.id)}
-        onNameSave={(name) => { setCustomName(agent.id, name); setCustomNamesState(getCustomNames()); }}
+        onNameSave={(name) => { setCustomName(connectionId, agent.id, name); setCustomNamesState(getCustomNames()); }}
       />
     );
   };
 
-  const renderReorderGridCard = (agent: AgentInfo) => {
-    const displayName = customNames[agent.id] || agent.name;
-    const isFav = favorites.has(agent.id);
+  const renderReorderGridCard = (connectionId: string, agent: AgentInfo) => {
+    const key = `${connectionId}:${agent.id}`;
+    const displayName = customNames[key] || agent.name;
+    const isFav = favorites.has(key);
     return (
       <ReorderGridCard
         key={agent.id}
@@ -894,9 +897,9 @@ export default function ChatList({
         displayName={displayName}
         isFav={isFav}
         renderAvatar={renderAvatar}
-        onFavToggle={() => { setFavoriteStorage(agent.id, !isFav); setFavoritesState(getFavorites()); }}
+        onFavToggle={() => { setFavoriteStorage(connectionId, agent.id, !isFav); setFavoritesState(getFavorites()); }}
         onAvatarClick={() => setAvatarUploadAgent(agent.id)}
-        onNameSave={(name) => { setCustomName(agent.id, name); setCustomNamesState(getCustomNames()); }}
+        onNameSave={(name) => { setCustomName(connectionId, agent.id, name); setCustomNamesState(getCustomNames()); }}
       />
     );
   };
@@ -939,7 +942,7 @@ export default function ChatList({
           {sortedIds.map(id => {
             const a = getAgentById(connectionId, id);
             if (!a) return null;
-            return viewMode === 'grid' ? renderReorderGridCard(a) : renderReorderListCard(a);
+            return viewMode === 'grid' ? renderReorderGridCard(connectionId, a) : renderReorderListCard(connectionId, a);
           })}
         </Reorder.Group>
       );
