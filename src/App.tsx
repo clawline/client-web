@@ -12,6 +12,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 const SIDEBAR_WIDTH_KEY = 'openclaw.sidebar.width';
 const SPLIT_STATE_KEY = 'openclaw.split.enabled';
+const SPLIT_PANES_KEY = 'clawline.split.panes';
 const MIN_SIDEBAR = 240;
 const MAX_SIDEBAR = 600;
 const DEFAULT_SIDEBAR = 288; // w-72
@@ -179,10 +180,18 @@ function AppShell() {
   const [activeChatId, setActiveChatId] = useState<string | null>(initialFromUrl.chatId ?? null);
   const [activeConnectionId, setActiveConnectionState] = useState<string | null>(initialFromUrl.connectionId ?? getActiveConnectionId());
   const [splitPanes, setSplitPanes] = useState<SplitPane[]>(() => {
-    // On large screens, default to one empty split pane (user can close to opt out)
+    // On large screens, restore persisted panes or default to one empty pane
     if (typeof window !== 'undefined' && window.innerWidth >= 1440) {
       const saved = localStorage.getItem(SPLIT_STATE_KEY);
       if (saved === 'off') return []; // User explicitly closed split
+      // Restore persisted pane agents
+      try {
+        const raw = localStorage.getItem(SPLIT_PANES_KEY);
+        if (raw) {
+          const parsed: SplitPane[] = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch { /* ignore */ }
       return [{ connectionId: EMPTY_SPLIT_VALUE, agentId: EMPTY_SPLIT_VALUE, chatId: null }];
     }
     return [];
@@ -311,20 +320,20 @@ function AppShell() {
 
   const isDesktop = useIsDesktop();
   const isSplitViewport = useIsSplitViewport();
-  const MAX_SPLIT_PANES = 3; // + main = 4 panes total
+  const MAX_SPLIT_PANES = 5; // + main = 6 panes total
   const splitOpen = currentScreen === 'chat_room' && isSplitViewport && splitPanes.length > 0;
   const splitAnyAwaiting = splitOpen && splitPanes.some((p) => p.agentId === EMPTY_SPLIT_VALUE);
 
   const closeSplitView = useCallback(() => {
     setSplitPanes([]);
-    try { localStorage.setItem(SPLIT_STATE_KEY, 'off'); } catch { /* noop */ }
+    try { localStorage.setItem(SPLIT_STATE_KEY, 'off'); localStorage.removeItem(SPLIT_PANES_KEY); } catch { /* noop */ }
   }, []);
 
   const closeSplitPane = useCallback((index: number) => {
     setSplitPanes((prev) => {
       const next = prev.filter((_, i) => i !== index);
       if (next.length === 0) {
-        try { localStorage.setItem(SPLIT_STATE_KEY, 'off'); } catch { /* noop */ }
+        try { localStorage.setItem(SPLIT_STATE_KEY, 'off'); localStorage.removeItem(SPLIT_PANES_KEY); } catch { /* noop */ }
       }
       return next;
     });
@@ -359,6 +368,16 @@ function AppShell() {
       { connectionId: EMPTY_SPLIT_VALUE, agentId: EMPTY_SPLIT_VALUE, chatId: null },
     ]);
   }, [closeSplitView, isSplitViewport, splitPanes.length]);
+
+  // Persist pane agents to localStorage whenever they change
+  useEffect(() => {
+    if (splitPanes.length === 0) return;
+    const toSave = splitPanes.filter(p => p.agentId !== EMPTY_SPLIT_VALUE);
+    try {
+      if (toSave.length > 0) localStorage.setItem(SPLIT_PANES_KEY, JSON.stringify(toSave));
+      else localStorage.removeItem(SPLIT_PANES_KEY);
+    } catch { /* noop */ }
+  }, [splitPanes]);
 
   useEffect(() => {
     if (!isSplitViewport || currentScreen !== 'chat_room') {
