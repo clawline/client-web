@@ -602,9 +602,9 @@ function AppShell() {
   if (isDesktop) {
     return (
       <div className="flex flex-col w-full h-full bg-surface dark:bg-surface-dark text-text dark:text-text-inv overflow-hidden font-sans">
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Sidebar */}
-        <div style={{ width: sidebarWidth }} className="sidebar-surface h-full flex flex-col flex-shrink-0 relative">
+        <div style={{ width: sidebarWidth }} className="sidebar-surface flex-shrink-0 flex flex-col relative min-h-0 overflow-hidden">
           {/* Sidebar content: ChatList */}
           <div className="flex-1 min-h-0 overflow-hidden">
             <ChatList

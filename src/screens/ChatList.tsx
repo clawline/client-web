@@ -800,7 +800,7 @@ export default function ChatList({
   }
 
   return (
-    <div className={cn('flex flex-col h-full min-h-0', !compact && 'pb-24')}>
+    <div className={cn('flex flex-col h-full min-h-0 overflow-hidden', !compact && 'pb-24')}>
       {/* Header */}
       <div className={cn('sticky top-0 bg-surface/90 dark:bg-surface-dark/90 backdrop-blur-lg z-10', compact ? 'px-3 pt-3 pb-2' : 'px-5 pt-6 pb-3')}>
         <div className="flex justify-between items-center mb-3 gap-3">
@@ -848,7 +848,7 @@ export default function ChatList({
       </div>
 
       {/* Content */}
-      <div className={cn('flex-1 overflow-y-auto', compact ? 'px-1 pb-2' : 'px-2 pb-4')}>
+      <div className={cn('flex-1 min-h-0 overflow-y-auto', compact ? 'px-1 pb-2' : 'px-2 pb-4')}>
         {/* Reorder mode hint */}
         {reorderMode && (
           <p className="text-center text-[12px] text-text/40 dark:text-text-inv/35 py-2 mb-1">
