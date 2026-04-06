@@ -112,6 +112,7 @@ function InboxItemDetail({
   const [suggestedReply, setSuggestedReply] = useState('');
   const [replyText, setReplyText] = useState('');
   const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState('');
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -134,16 +135,24 @@ function InboxItemDetail({
 
   const handleSuggest = useCallback(async () => {
     setSuggesting(true);
+    setSuggestError('');
     try {
       const messages = await loadConversationMessages(item.connectionId, item.agentId, { limit: 20 });
+      if (messages.length === 0) {
+        setSuggestError('No messages to draft from');
+        return;
+      }
       const mapped = messages.map((m) => ({ sender: m.sender === 'user' ? 'user' : 'ai', text: m.text }));
       const reply = await draftReply(mapped, item.connectionId);
       if (reply) {
         setSuggestedReply(reply);
         setReplyText(reply);
-        // Focus textarea after suggestion arrives
         setTimeout(() => textareaRef.current?.focus(), 100);
+      } else {
+        setSuggestError('Failed to generate reply — check console for details');
       }
+    } catch (err) {
+      setSuggestError(String(err instanceof Error ? err.message : err));
     } finally {
       setSuggesting(false);
     }
@@ -214,6 +223,10 @@ function InboxItemDetail({
               Open Chat
             </button>
           </div>
+
+          {suggestError && (
+            <p className="text-[11px] text-red-500 dark:text-red-400 px-1">{suggestError}</p>
+          )}
 
           {/* Reply input */}
           <div className="flex items-end gap-2">
@@ -323,7 +336,7 @@ function InboxItemCard({
             <div className="text-[11px] text-text/40 dark:text-text-inv/40 truncate mt-0.5">
               {item.connectionName}
             </div>
-            {item.lastMessage && (
+            {item.lastMessage && !isExpanded && (
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-[12px] text-text/55 dark:text-text-inv/55 truncate flex-1">
                   {truncateText(item.lastMessage.text, 60)}

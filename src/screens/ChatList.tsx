@@ -589,6 +589,21 @@ export default function ChatList({
   const connectedCount = connections.filter(c => statusMap[c.id] === 'connected').length;
   const showGroupedView = connections.length > 1 && !searchQuery.trim();
 
+  // ── Global favorites (cross-server) ──
+  const favoriteAgents = useMemo(() => {
+    if (favorites.size === 0) return [];
+    const result: { agent: AgentInfo; connection: ServerConnection }[] = [];
+    for (const conn of connections) {
+      const agents = agentMap[conn.id] || [];
+      for (const agent of agents) {
+        if (favorites.has(`${conn.id}:${agent.id}`)) {
+          result.push({ agent, connection: conn });
+        }
+      }
+    }
+    return result;
+  }, [favorites, connections, agentMap]);
+
   // ── Handlers ──
   const handleRefresh = () => {
     const targets = searchQuery.trim() ? connections : connections.length === 1 ? connections : connections.filter(c => expandedIds.includes(c.id));
@@ -1054,40 +1069,61 @@ export default function ChatList({
               <div className={cn('text-center text-text/50 dark:text-text-inv/45 text-[13px]', viewMode === 'grid' ? 'col-span-full mt-10' : 'mt-10')}>No matching agents found</div>
             )}
           </div>
-        ) : showGroupedView ? (
-          <div className="space-y-1">
-            {connections.map(connection => {
-              const isExpanded = expandedIds.includes(connection.id);
-              const status = statusMap[connection.id] || 'disconnected';
-
-              const isDisconnected = status === 'disconnected';
-
-              return (
-                <div key={connection.id} className={cn(isDisconnected && 'opacity-75')}>
-                  <button type="button" onClick={() => handleToggleGroup(connection.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left group">
-                    <span className={cn('inline-flex h-2 w-2 rounded-full shrink-0', getStatusClasses(status))} />
-                    <span className="sr-only">{status === 'connected' ? 'Connected' : status === 'connecting' || status === 'reconnecting' ? 'Connecting' : 'Disconnected'}</span>
-                    <span className={cn('text-[12px] font-semibold uppercase tracking-wider truncate flex-1',
-                      isDisconnected ? 'text-text/35 dark:text-text-inv/30' : 'text-text/50 dark:text-text-inv/45')}>
-                      {getConnectionLabel(connection)}
-                      {isDisconnected && <span className="normal-case tracking-normal font-medium ml-1.5 text-text/30 dark:text-text-inv/25">· Disconnected</span>}
-                    </span>
-                    <ChevronDown size={12} className={cn('shrink-0 text-text/25 dark:text-text-inv/35 transition-transform duration-200', isExpanded && 'rotate-180')} />
-                  </button>
-                  <AnimatePresence initial={false}>
-                    {isExpanded && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-                        {renderAgentList(connection.id, connection)}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              );
-            })}
-          </div>
         ) : (
-          renderAgentList(connections[0].id, connections[0])
+          <div className="space-y-1">
+            {/* Global Favorites section */}
+            {favoriteAgents.length > 0 && !reorderMode && (
+              <div>
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <Star size={12} className="text-amber-500 fill-amber-500 shrink-0" />
+                  <span className="text-[12px] font-semibold uppercase tracking-wider text-amber-600/70 dark:text-amber-400/70 truncate flex-1">
+                    Favorites
+                  </span>
+                </div>
+                <div className={viewMode === 'grid' ? 'grid gap-2 auto-fill-grid px-1 pb-1' : 'space-y-0.5 pb-1'}>
+                  {favoriteAgents.map(({ agent, connection }, i) => (
+                    viewMode === 'grid'
+                      ? renderGridCard(connection, agent, i)
+                      : renderListCard(connection, agent, i)
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Connection groups / single connection */}
+            {showGroupedView ? (
+              connections.map(connection => {
+                const isExpanded = expandedIds.includes(connection.id);
+                const status = statusMap[connection.id] || 'disconnected';
+                const isDisconnected = status === 'disconnected';
+
+                return (
+                  <div key={connection.id} className={cn(isDisconnected && 'opacity-75')}>
+                    <button type="button" onClick={() => handleToggleGroup(connection.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left group">
+                      <span className={cn('inline-flex h-2 w-2 rounded-full shrink-0', getStatusClasses(status))} />
+                      <span className="sr-only">{status === 'connected' ? 'Connected' : status === 'connecting' || status === 'reconnecting' ? 'Connecting' : 'Disconnected'}</span>
+                      <span className={cn('text-[12px] font-semibold uppercase tracking-wider truncate flex-1',
+                        isDisconnected ? 'text-text/35 dark:text-text-inv/30' : 'text-text/50 dark:text-text-inv/45')}>
+                        {getConnectionLabel(connection)}
+                        {isDisconnected && <span className="normal-case tracking-normal font-medium ml-1.5 text-text/30 dark:text-text-inv/25">· Disconnected</span>}
+                      </span>
+                      <ChevronDown size={12} className={cn('shrink-0 text-text/25 dark:text-text-inv/35 transition-transform duration-200', isExpanded && 'rotate-180')} />
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {isExpanded && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+                          {renderAgentList(connection.id, connection)}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })
+            ) : (
+              renderAgentList(connections[0].id, connections[0])
+            )}
+          </div>
         )}
 
         {/* Add server button — hidden in reorder mode */}

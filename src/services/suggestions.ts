@@ -171,7 +171,10 @@ export async function draftReply(
   connectionId?: string,
 ): Promise<string> {
   const baseUrl = getGatewayHttpUrl(connectionId);
-  if (!baseUrl) return '';
+  if (!baseUrl) {
+    console.warn('[draftReply] no gateway URL for connection:', connectionId);
+    return '';
+  }
 
   const conversationMsgs = messages
     .filter((m) => m.text)
@@ -181,7 +184,10 @@ export async function draftReply(
       text: m.text!.slice(0, 300),
     }));
 
-  if (conversationMsgs.length === 0) return '';
+  if (conversationMsgs.length === 0) {
+    console.warn('[draftReply] no messages to send');
+    return '';
+  }
 
   try {
     const res = await fetch(`${baseUrl}/api/suggestions`, {
@@ -189,10 +195,15 @@ export async function draftReply(
       headers: getAuthHeaders(connectionId),
       body: JSON.stringify({ mode: 'reply', messages: conversationMsgs }),
     });
-    if (!res.ok) return '';
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error(`[draftReply] API error ${res.status}:`, errText.slice(0, 200));
+      return '';
+    }
     const data = await res.json();
     return typeof data.reply === 'string' ? data.reply : '';
-  } catch {
+  } catch (err) {
+    console.error('[draftReply] fetch failed:', err);
     return '';
   }
 }
