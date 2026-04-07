@@ -17,7 +17,6 @@ import {
 } from '../services/agentInbox';
 import * as channel from '../services/clawChannel';
 import { loadConversationMessages } from '../services/messageDB';
-import { saveMessages } from '../services/messageDB';
 import { draftReply } from '../services/suggestions';
 import { setActiveConnectionId } from '../services/connectionStore';
 import EmptyState from '../components/EmptyState';
@@ -171,13 +170,12 @@ function InboxItemDetail({
     if (!text || sending) return;
     setSending(true);
     onSend(text);
-    // Save to IndexedDB so ChatRoom can see the message
-    void saveMessages(item.connectionId, item.agentId, [{
-      id: `inbox-${Date.now()}`,
-      sender: 'user',
-      text,
-      timestamp: Date.now(),
-    }]);
+    // Save to IndexedDB with correct chatId scope so ChatRoom can find it
+    const chatId = channel.getChatId(item.connectionId) || undefined;
+    const msgEntry = { id: `inbox-${Date.now()}`, sender: 'user' as const, text, timestamp: Date.now() };
+    void import('../services/messageDB').then(({ saveConversationMessages }) => {
+      void saveConversationMessages(item.connectionId, item.agentId, [msgEntry], { chatId });
+    });
     // Add to local display immediately
     setRecentMessages((prev) => [...prev.slice(-4), { id: `inbox-${Date.now()}`, sender: 'user', text, timestamp: Date.now() }]);
     setTimeout(() => {
