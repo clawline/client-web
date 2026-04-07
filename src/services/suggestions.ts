@@ -13,6 +13,7 @@ let pendingRequest: Promise<string[]> | null = null;
 
 const SUGGESTION_ENABLED_KEY = 'openclaw.suggestions.enabled';
 const SUGGESTION_PROMPT_KEY = 'openclaw.suggestions.prompt';
+const REPLY_DRAFT_PROMPT_KEY = 'openclaw.replyDraft.prompt';
 const VOICE_REFINE_ENABLED_KEY = 'openclaw.voiceRefine.enabled';
 const VOICE_REFINE_PROMPT_KEY = 'openclaw.voiceRefine.prompt';
 
@@ -32,6 +33,14 @@ export function getSuggestionCustomPrompt(): string {
 
 export function setSuggestionCustomPrompt(prompt: string): void {
   localStorage.setItem(SUGGESTION_PROMPT_KEY, prompt);
+}
+
+export function getReplyDraftPrompt(): string {
+  return localStorage.getItem(REPLY_DRAFT_PROMPT_KEY) || '';
+}
+
+export function setReplyDraftPrompt(prompt: string): void {
+  localStorage.setItem(REPLY_DRAFT_PROMPT_KEY, prompt);
 }
 
 export function isVoiceRefineEnabled(): boolean {
@@ -195,7 +204,7 @@ export async function draftReply(
     const res = await fetch(`${baseUrl}/api/suggestions`, {
       method: 'POST',
       headers: getAuthHeaders(connectionId),
-      body: JSON.stringify({ mode: 'reply', messages: conversationMsgs }),
+      body: JSON.stringify({ mode: 'reply', messages: conversationMsgs, prompt: getReplyDraftPrompt() || undefined }),
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => '');

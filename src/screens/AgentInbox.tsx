@@ -4,6 +4,7 @@ import { ArrowLeft, Inbox as InboxIcon, Send, Sparkles, ExternalLink, Loader2 } 
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Card } from '../components/ui/card';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 import {
   getInboxItems,
   markAsRead,
@@ -16,6 +17,7 @@ import {
 } from '../services/agentInbox';
 import * as channel from '../services/clawChannel';
 import { loadConversationMessages } from '../services/messageDB';
+import { saveMessages } from '../services/messageDB';
 import { draftReply } from '../services/suggestions';
 import { setActiveConnectionId } from '../services/connectionStore';
 import EmptyState from '../components/EmptyState';
@@ -56,44 +58,45 @@ function statusConfig(status: AgentStatus): { color: string; dotClass: string; l
 
 function SummaryBar({ items }: { items: InboxItem[] }) {
   const counts = { pending_reply: 0, thinking: 0, idle: 0, offline: 0 };
+  let totalUnread = 0;
   for (const item of items) {
     counts[item.status]++;
+    totalUnread += item.unreadCount;
   }
+  const online = counts.pending_reply + counts.thinking + counts.idle;
 
   return (
-    <div className="flex items-center gap-3 text-[13px] font-medium px-1">
-      {counts.pending_reply > 0 && (
-        <span className="text-orange-600 dark:text-orange-400">
-          {counts.pending_reply} pending
-        </span>
-      )}
-      {counts.thinking > 0 && (
-        <>
-          {counts.pending_reply > 0 && <span className="text-text/20 dark:text-text-inv/20">·</span>}
-          <span className="text-cyan-600 dark:text-cyan-400">
-            {counts.thinking} thinking
-          </span>
-        </>
-      )}
-      {counts.idle > 0 && (
-        <>
-          {(counts.pending_reply > 0 || counts.thinking > 0) && <span className="text-text/20 dark:text-text-inv/20">·</span>}
-          <span className="text-text/50 dark:text-text-inv/50">
-            {counts.idle} idle
-          </span>
-        </>
-      )}
-      {counts.offline > 0 && (
-        <>
-          {(counts.pending_reply > 0 || counts.thinking > 0 || counts.idle > 0) && <span className="text-text/20 dark:text-text-inv/20">·</span>}
-          <span className="text-red-500/70 dark:text-red-400/70">
-            {counts.offline} offline
-          </span>
-        </>
-      )}
-      {items.length === 0 && (
-        <span className="text-text/40 dark:text-text-inv/40">No agents</span>
-      )}
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className={cn(
+        'rounded-xl px-3 py-2 text-center',
+        counts.pending_reply > 0
+          ? 'bg-orange-50 dark:bg-orange-500/10 ring-1 ring-orange-200 dark:ring-orange-500/20'
+          : 'bg-slate-50 dark:bg-white/[0.03]'
+      )}>
+        <div className={cn('text-lg font-bold', counts.pending_reply > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-text/30 dark:text-text-inv/30')}>
+          {counts.pending_reply}
+        </div>
+        <div className="text-[11px] text-text/50 dark:text-text-inv/40">待回复</div>
+      </div>
+      <div className={cn(
+        'rounded-xl px-3 py-2 text-center',
+        counts.thinking > 0
+          ? 'bg-cyan-50 dark:bg-cyan-500/10 ring-1 ring-cyan-200 dark:ring-cyan-500/20'
+          : 'bg-slate-50 dark:bg-white/[0.03]'
+      )}>
+        <div className={cn('text-lg font-bold', counts.thinking > 0 ? 'text-cyan-600 dark:text-cyan-400' : 'text-text/30 dark:text-text-inv/30')}>
+          {counts.thinking}
+        </div>
+        <div className="text-[11px] text-text/50 dark:text-text-inv/40">思考中</div>
+      </div>
+      <div className="rounded-xl px-3 py-2 text-center bg-slate-50 dark:bg-white/[0.03]">
+        <div className="text-lg font-bold text-text/60 dark:text-text-inv/50">{online}</div>
+        <div className="text-[11px] text-text/50 dark:text-text-inv/40">在线</div>
+      </div>
+      <div className="rounded-xl px-3 py-2 text-center bg-slate-50 dark:bg-white/[0.03]">
+        <div className="text-lg font-bold text-text/60 dark:text-text-inv/50">{totalUnread}</div>
+        <div className="text-[11px] text-text/50 dark:text-text-inv/40">未读消息</div>
+      </div>
     </div>
   );
 }
@@ -109,31 +112,35 @@ function InboxItemDetail({
   onSend: (text: string) => void;
   onOpenChat: () => void;
 }) {
-  const [fullMessage, setFullMessage] = useState<string | null>(null);
+  const [recentMessages, setRecentMessages] = useState<Array<{ id: string; sender: string; text: string; timestamp?: number }>>([]);
   const [suggestedReply, setSuggestedReply] = useState('');
   const [replyText, setReplyText] = useState('');
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState('');
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load full last message
+  // Load recent conversation messages (both user and AI)
   useEffect(() => {
     let cancelled = false;
     void loadConversationMessages(item.connectionId, item.agentId, { limit: 20 }).then((allMessages) => {
       if (cancelled) return;
-      const messages = allMessages.filter(isContentMessage);
-      // Find last AI message
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].sender === 'ai') {
-          setFullMessage(messages[i].text);
-          return;
-        }
-      }
-      setFullMessage(item.lastMessage?.text || null);
+      const messages = allMessages.filter(isContentMessage).filter(
+        (m) => !(m.sender === 'user' && m.text.trim().startsWith('/'))
+      );
+      // Take last 2 messages for context
+      setRecentMessages(messages.slice(-2));
     });
     return () => { cancelled = true; };
   }, [item.connectionId, item.agentId, item.lastMessage?.messageId]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [recentMessages]);
 
   const handleSuggest = useCallback(async () => {
     setSuggesting(true);
@@ -166,13 +173,21 @@ function InboxItemDetail({
     if (!text || sending) return;
     setSending(true);
     onSend(text);
-    // Reset after send
+    // Save to IndexedDB so ChatRoom can see the message
+    void saveMessages(item.connectionId, item.agentId, [{
+      id: `inbox-${Date.now()}`,
+      sender: 'user',
+      text,
+      timestamp: Date.now(),
+    }]);
+    // Add to local display immediately
+    setRecentMessages((prev) => [...prev.slice(-4), { id: `inbox-${Date.now()}`, sender: 'user', text, timestamp: Date.now() }]);
     setTimeout(() => {
       setReplyText('');
       setSuggestedReply('');
       setSending(false);
     }, 300);
-  }, [replyText, sending, onSend]);
+  }, [replyText, sending, onSend, item.connectionId, item.agentId]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -190,14 +205,25 @@ function InboxItemDetail({
       className="overflow-hidden"
     >
       <div className="px-4 pb-4 pt-1 space-y-3">
-        {/* Full last AI message */}
-        {fullMessage && (
-          <div className="rounded-2xl bg-slate-50/80 dark:bg-white/[0.04] px-4 py-3 text-[13px] text-text/80 dark:text-text-inv/80 leading-relaxed max-h-40 overflow-y-auto">
-            {fullMessage}
+        {/* Conversation messages */}
+        {recentMessages.length > 0 && (
+          <div ref={scrollRef} className="max-h-60 overflow-y-auto space-y-2 rounded-2xl bg-slate-50/80 dark:bg-white/[0.03] px-3 py-3">
+            {recentMessages.map((msg) => (
+              <div key={msg.id} className={cn('flex', msg.sender === 'user' ? 'justify-end' : 'justify-start')}>
+                <div className={cn(
+                  'max-w-[85%] rounded-2xl px-3 py-2 text-[13px] leading-relaxed',
+                  msg.sender === 'user'
+                    ? 'bg-primary/10 text-text dark:text-text-inv'
+                    : 'bg-white dark:bg-white/[0.06] text-text/80 dark:text-text-inv/80 shadow-sm'
+                )}>
+                  <MarkdownRenderer content={msg.text} className="text-[13px] leading-relaxed [&_p]:my-0.5 [&_pre]:text-[11px]" />
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Suggest + input */}
+        {/* Suggest + Open Chat + input */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <button
@@ -331,9 +357,6 @@ function InboxItemCard({
                   config.animate && 'animate-pulse'
                 )} />
                 {config.label}
-                {item.status === 'pending_reply' && item.unreadCount > 0 && (
-                  <span className="ml-0.5 px-1.5 py-0.5 bg-orange-500 text-white text-[9px] font-bold rounded-full leading-none">{item.unreadCount}</span>
-                )}
               </span>
             </div>
             <div className="text-[11px] text-text/40 dark:text-text-inv/40 truncate mt-0.5">
@@ -420,7 +443,7 @@ export default function AgentInbox() {
   }, [navigate]);
 
   return (
-    <div className="flex flex-col h-full pb-32 px-5 pt-12 max-w-2xl mx-auto w-full overflow-y-auto">
+    <div className="flex flex-col h-full pb-32 px-5 pt-12 max-w-6xl mx-auto w-full overflow-y-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-5">
         <motion.button
@@ -448,18 +471,20 @@ export default function AgentInbox() {
           description="Connect to a server and start chatting with agents. Their status will appear here."
         />
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           <AnimatePresence mode="popLayout">
             {items.map((item) => {
               const key = `${item.connectionId}:${item.agentId}`;
+              const isExpanded = expandedKey === key;
               return (
-                <InboxItemCard
-                  key={key}
-                  item={item}
-                  isExpanded={expandedKey === key}
-                  onToggle={() => handleToggle(item.connectionId, item.agentId)}
-                  onNavigateToChat={handleNavigateToChat}
-                />
+                <div key={key} className={isExpanded ? 'col-span-full' : ''}>
+                  <InboxItemCard
+                    item={item}
+                    isExpanded={isExpanded}
+                    onToggle={() => handleToggle(item.connectionId, item.agentId)}
+                    onNavigateToChat={handleNavigateToChat}
+                  />
+                </div>
               );
             })}
           </AnimatePresence>

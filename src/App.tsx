@@ -9,6 +9,7 @@ import BottomNav from './components/BottomNav';
 import UpdateBanner from './components/UpdateBanner';
 import IOSInstallPrompt from './components/IOSInstallPrompt';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { useNavigationStore, type Screen, type SplitPane } from './stores/navigationStore';
 
 const SIDEBAR_WIDTH_KEY = 'openclaw.sidebar.width';
 const SPLIT_STATE_KEY = 'openclaw.split.enabled';
@@ -18,11 +19,6 @@ const MAX_SIDEBAR = 600;
 const DEFAULT_SIDEBAR = 288; // w-72
 const EMPTY_SPLIT_VALUE = '__empty__';
 
-type SplitPane = {
-  connectionId: string;
-  agentId: string;
-  chatId: string | null;
-};
 import { getActiveConnectionId, getConnectionById, setActiveConnectionId } from './services/connectionStore';
 import { MESSAGE_PREVIEW_UPDATED_EVENT } from './components/chat/utils';
 import { useSwipeBack } from './hooks/useSwipeBack';
@@ -42,7 +38,7 @@ const Preferences = lazy(() => import('./screens/Preferences'));
 const Pairing = lazy(() => import('./screens/Pairing'));
 const AgentInbox = lazy(() => import('./screens/AgentInbox'));
 
-export type Screen = 'onboarding' | 'callback' | 'chats' | 'chat_room' | 'dashboard' | 'inbox' | 'profile' | 'search' | 'preferences' | 'pairing';
+export type { Screen } from './stores/navigationStore';
 
 function ScreenLoading() {
   return (
@@ -175,27 +171,28 @@ function AppShell() {
   const initialFromUrl = pathToScreen(location.pathname, location.search);
   const initialScreen: Screen = effectivelyAuthenticated ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
 
-  const [currentScreen, setCurrentScreen] = useState<Screen>(initialScreen);
-  const [activeAgentId, setActiveAgentId] = useState<string | null>(initialFromUrl.agentId ?? null);
-  const [activeChatId, setActiveChatId] = useState<string | null>(initialFromUrl.chatId ?? null);
-  const [activeConnectionId, setActiveConnectionState] = useState<string | null>(initialFromUrl.connectionId ?? getActiveConnectionId());
-  const [splitPanes, setSplitPanes] = useState<SplitPane[]>(() => {
-    // On large screens, restore persisted panes or default to one empty pane
-    if (typeof window !== 'undefined' && window.innerWidth >= 1440) {
-      const saved = localStorage.getItem(SPLIT_STATE_KEY);
-      if (saved === 'off') return []; // User explicitly closed split
-      // Restore persisted pane agents
-      try {
-        const raw = localStorage.getItem(SPLIT_PANES_KEY);
-        if (raw) {
-          const parsed: SplitPane[] = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch { /* ignore */ }
-      return [{ connectionId: EMPTY_SPLIT_VALUE, agentId: EMPTY_SPLIT_VALUE, chatId: null }];
-    }
-    return [];
-  });
+  // Navigation state from Zustand store
+  const currentScreen = useNavigationStore((s) => s.currentScreen);
+  const setCurrentScreen = useNavigationStore((s) => s.setCurrentScreen);
+  const activeAgentId = useNavigationStore((s) => s.activeAgentId);
+  const setActiveAgentId = useNavigationStore((s) => s.setActiveAgentId);
+  const activeChatId = useNavigationStore((s) => s.activeChatId);
+  const setActiveChatId = useNavigationStore((s) => s.setActiveChatId);
+  const activeConnectionId = useNavigationStore((s) => s.activeConnectionId);
+  const setActiveConnectionState = useNavigationStore((s) => s.setActiveConnectionId);
+  const splitPanes = useNavigationStore((s) => s.splitPanes);
+  const setSplitPanes = useNavigationStore((s) => s.setSplitPanes);
+
+  // Initialize screen from URL on first render
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    setCurrentScreen(initialScreen);
+    if (initialFromUrl.agentId) setActiveAgentId(initialFromUrl.agentId);
+    if (initialFromUrl.chatId) setActiveChatId(initialFromUrl.chatId);
+    setActiveConnectionState(initialFromUrl.connectionId ?? getActiveConnectionId());
+  }, []);
 
   // Unread message badge for BottomNav
   const [unreadChats, setUnreadChats] = useState(0);
@@ -338,7 +335,7 @@ function AppShell() {
   const isDesktop = useIsDesktop();
   const isSplitViewport = useIsSplitViewport();
   const MAX_SPLIT_PANES = 5; // + main = 6 panes total
-  const splitOpen = currentScreen === 'chat_room' && isSplitViewport && splitPanes.length > 0;
+  const splitOpen = (currentScreen === 'chat_room' || (currentScreen === 'chats' && !!activeAgentId)) && isSplitViewport && splitPanes.length > 0;
   const splitAnyAwaiting = splitOpen && splitPanes.some((p) => p.agentId === EMPTY_SPLIT_VALUE);
 
   const closeSplitView = useCallback(() => {
@@ -386,15 +383,7 @@ function AppShell() {
     ]);
   }, [closeSplitView, isSplitViewport, splitPanes.length]);
 
-  // Persist pane agents to localStorage whenever they change
-  useEffect(() => {
-    if (splitPanes.length === 0) return;
-    const toSave = splitPanes.filter(p => p.agentId !== EMPTY_SPLIT_VALUE);
-    try {
-      if (toSave.length > 0) localStorage.setItem(SPLIT_PANES_KEY, JSON.stringify(toSave));
-      else localStorage.removeItem(SPLIT_PANES_KEY);
-    } catch { /* noop */ }
-  }, [splitPanes]);
+  // Zustand persist handles splitPanes localStorage sync automatically
 
   const splitPanesClearedRef = useRef(false);
   useEffect(() => {
@@ -460,94 +449,97 @@ function AppShell() {
     return <Suspense fallback={<ScreenLoading />}>{content}</Suspense>;
   };
 
-  // For desktop: which screen to show in the main panel (not chat list, since it's in sidebar)
-  const renderDesktopMain = () => {
+  // Persistent chat panel — survives tab switches via CSS display:none
+  const renderChatPanel = () => {
+    const renderSplitPane = (pane: SplitPane, idx: number) => {
+      const paneHasAgent = pane.agentId !== EMPTY_SPLIT_VALUE && pane.connectionId !== EMPTY_SPLIT_VALUE;
+      const runtimeConnId = paneHasAgent
+        ? `${pane.connectionId}::split${idx}::${pane.agentId}`
+        : null;
+
+      if (paneHasAgent && runtimeConnId) {
+        return (
+          <ChatRoom
+            key={`split-${pane.connectionId}-${pane.agentId}`}
+            agentId={pane.agentId}
+            chatId={pane.chatId}
+            connectionId={pane.connectionId}
+            channelConnectionId={runtimeConnId}
+            onBack={() => {}}
+            onOpenConversation={(nextChatId) => {
+              setSplitPanes((prev) => {
+                const next = [...prev];
+                next[idx] = { ...next[idx], chatId: nextChatId };
+                return next;
+              });
+            }}
+            isDesktop
+            isSplitPane
+            onCloseSplit={() => closeSplitPane(idx)}
+          />
+        );
+      }
+      return (
+        <div key={`split-empty-${idx}`} className="flex-1 overflow-hidden flex items-center justify-center">
+          <div className="text-center px-8">
+            <div className="w-14 h-14 rounded-2xl bg-primary/8 flex items-center justify-center mb-4 mx-auto">
+              <MessageCircle size={24} className="text-primary/60" />
+            </div>
+            <p className="text-[14px] text-text/35 dark:text-text-inv/30">Select an agent from the sidebar</p>
+            <button onClick={() => closeSplitPane(idx)} className="mt-3 text-xs text-text/40 hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60">Close pane</button>
+          </div>
+        </div>
+      );
+    };
+
+    if (splitOpen) {
+      return (
+        <Suspense fallback={<ScreenLoading />}>
+          <div className="flex h-full min-w-0 bg-surface dark:bg-surface-dark divide-x divide-border/40 dark:divide-border-dark/40">
+            <div className="min-w-[320px] flex-1 overflow-hidden">
+              <ChatRoom
+                agentId={activeAgentId}
+                chatId={activeChatId}
+                connectionId={activeConnectionId}
+                onBack={() => navigate('chats')}
+                onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)}
+                isDesktop
+                showSplitButton={isSplitViewport}
+                splitActive={splitOpen}
+                onToggleSplit={toggleSplitView}
+              />
+            </div>
+            {splitPanes.map((pane, idx) => (
+              <div key={`pane-${pane.connectionId}-${pane.agentId}`} className="min-w-[320px] flex-1 overflow-hidden">
+                {renderSplitPane(pane, idx)}
+              </div>
+            ))}
+          </div>
+        </Suspense>
+      );
+    }
+
+    return (
+      <Suspense fallback={<ScreenLoading />}>
+        <ChatRoom
+          agentId={activeAgentId}
+          chatId={activeChatId}
+          connectionId={activeConnectionId}
+          onBack={() => { setActiveAgentId(null); setActiveChatId(null); }}
+          onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)}
+          isDesktop
+          showSplitButton={isSplitViewport}
+          splitActive={splitOpen}
+          onToggleSplit={toggleSplitView}
+        />
+      </Suspense>
+    );
+  };
+
+  // Non-chat screens — Dashboard, Inbox, Profile, etc.
+  const renderNonChatDesktopMain = () => {
     const content = (() => {
       switch (currentScreen) {
-        case 'chat_room':
-          if (splitOpen) {
-            const totalPanes = 1 + splitPanes.length; // main + splits
-            // Layout: always horizontal columns
-
-            const renderSplitPane = (pane: SplitPane, idx: number) => {
-              const paneHasAgent = pane.agentId !== EMPTY_SPLIT_VALUE && pane.connectionId !== EMPTY_SPLIT_VALUE;
-              const runtimeConnId = paneHasAgent
-                ? `${pane.connectionId}::split${idx}::${pane.agentId}`
-                : null;
-
-              if (paneHasAgent && runtimeConnId) {
-                return (
-                  <ChatRoom
-                    key={`split-${idx}-${pane.connectionId}-${pane.agentId}`}
-                    agentId={pane.agentId}
-                    chatId={pane.chatId}
-                    connectionId={pane.connectionId}
-                    channelConnectionId={runtimeConnId}
-                    onBack={() => {}}
-                    onOpenConversation={(nextChatId) => {
-                      setSplitPanes((prev) => {
-                        const next = [...prev];
-                        next[idx] = { ...next[idx], chatId: nextChatId };
-                        return next;
-                      });
-                    }}
-                    isDesktop
-                    isSplitPane
-                    onCloseSplit={() => closeSplitPane(idx)}
-                  />
-                );
-              }
-              return (
-                <div key={`split-empty-${idx}`} className="flex-1 overflow-hidden flex items-center justify-center">
-                  <div className="text-center px-8">
-                    <div className="w-14 h-14 rounded-2xl bg-primary/8 flex items-center justify-center mb-4 mx-auto">
-                      <MessageCircle size={24} className="text-primary/60" />
-                    </div>
-                    <p className="text-[14px] text-text/35 dark:text-text-inv/30">Select an agent from the sidebar</p>
-                    <button onClick={() => closeSplitPane(idx)} className="mt-3 text-xs text-text/40 hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60">Close pane</button>
-                  </div>
-                </div>
-              );
-            };
-
-            // All panes: horizontal columns
-            return (
-              <div className="flex h-full min-w-0 bg-surface dark:bg-surface-dark divide-x divide-border/40 dark:divide-border-dark/40">
-                <div className="min-w-[320px] flex-1 overflow-hidden">
-                  <ChatRoom
-                    agentId={activeAgentId}
-                    chatId={activeChatId}
-                    connectionId={activeConnectionId}
-                    onBack={() => navigate('chats')}
-                    onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)}
-                    isDesktop
-                    showSplitButton={isSplitViewport}
-                    splitActive={splitOpen}
-                    onToggleSplit={toggleSplitView}
-                  />
-                </div>
-                {splitPanes.map((pane, idx) => (
-                  <div key={idx} className="min-w-[320px] flex-1 overflow-hidden">
-                    {renderSplitPane(pane, idx)}
-                  </div>
-                ))}
-              </div>
-            );
-          }
-
-          return (
-            <ChatRoom
-              agentId={activeAgentId}
-              chatId={activeChatId}
-              connectionId={activeConnectionId}
-              onBack={() => navigate('chats')}
-              onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)}
-              isDesktop
-              showSplitButton={isSplitViewport}
-              splitActive={splitOpen}
-              onToggleSplit={toggleSplitView}
-            />
-          );
         case 'dashboard':
           return <Dashboard />;
         case 'inbox':
@@ -563,23 +555,6 @@ function AppShell() {
         case 'onboarding':
           return <Onboarding onGetStarted={() => navigate('chats')} />;
         default:
-          // On desktop, 'chats' means the sidebar is showing ChatList.
-          // If there's an active agent, keep showing the ChatRoom in the main panel.
-          if (activeAgentId) {
-            return (
-              <ChatRoom
-                agentId={activeAgentId}
-                chatId={activeChatId}
-                connectionId={activeConnectionId}
-                onBack={() => { setActiveAgentId(null); setActiveChatId(null); }}
-                onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)}
-                isDesktop
-                showSplitButton={isSplitViewport}
-                splitActive={splitOpen}
-                onToggleSplit={toggleSplitView}
-              />
-            );
-          }
           return (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <div className="w-14 h-14 rounded-2xl bg-primary/8 flex items-center justify-center mb-4">
@@ -669,18 +644,32 @@ function AppShell() {
         {/* Main content */}
         <div className="main-panel-surface flex-1 h-full relative overflow-hidden">
           <UpdateBanner isVisible={updateAvailable} onUpdate={applyUpdate} onDismiss={dismissUpdate} />
-          <AnimatePresence mode="popLayout" initial={false}>
-            <motion.div
-              key={`${currentScreen}:${activeConnectionId || ''}:${activeAgentId || ''}:${activeChatId || ''}:${splitPanes.map((p) => `${p.connectionId}:${p.agentId}`).join(',')}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className={`absolute inset-0 ${currentScreen === 'chat_room' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+
+          {/* Persistent chat layer — always mounted when active agent exists, hidden via CSS */}
+          {activeAgentId && (
+            <div
+              className="absolute inset-0 overflow-hidden"
+              style={{ display: currentScreen === 'chat_room' || currentScreen === 'chats' ? 'block' : 'none' }}
             >
-              {renderDesktopMain()}
-            </motion.div>
-          </AnimatePresence>
+              {renderChatPanel()}
+            </div>
+          )}
+
+          {/* Non-chat screens — animated transitions */}
+          {currentScreen !== 'chat_room' && !(currentScreen === 'chats' && activeAgentId) && (
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.div
+                key={currentScreen}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 overflow-y-auto"
+              >
+                {renderNonChatDesktopMain()}
+              </motion.div>
+            </AnimatePresence>
+          )}
         </div>
         </div>
       </div>

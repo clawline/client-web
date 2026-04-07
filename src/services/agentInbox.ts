@@ -11,6 +11,7 @@ import * as channel from './clawChannel';
 import type { AgentInfo } from './clawChannel';
 import { loadConversationMessages } from './messageDB';
 import { getUserId, getUserName } from '../App';
+import { playNewMessage } from '../hooks/useNotificationSound';
 
 // ── Types ──
 
@@ -44,15 +45,31 @@ let initialized = false;
 
 // ── Helpers ──
 
+// Pre-compiled regex for diagnostic dump detection
+const RE_DIAG_MODEL = /Model:\s/;
+const RE_DIAG_TOKENS = /Tokens:\s/;
+const RE_DIAG_SESSION = /Session:\s/;
+const RE_DIAG_RUNTIME = /Runtime:\s/;
+
 export function isContentMessage(m: { sender: string; text: string; isStreaming?: boolean }): boolean {
   if (m.isStreaming) return false;
   if (m.sender !== 'user' && m.sender !== 'ai') return false;
-  const t = m.text?.trim();
+  return isContentText(m.text);
+}
+
+/** Check if raw text content looks like a real message (no sender check needed). */
+function isContentText(text: string): boolean {
+  const t = text?.trim();
   if (!t) return false;
   // Exclude media-only placeholders and cancelled streams
   if (t === '[Image]' || t === '[image]') return false;
   if (t.startsWith('📎')) return false;
   if (t.endsWith('*[cancelled]*')) return false;
+  // Exclude OpenClaw system status dumps (🐾 OpenClaw ...)
+  if (t.startsWith('🐾')) return false;
+  // Exclude diagnostic dumps that contain system markers
+  if (RE_DIAG_MODEL.test(t) && RE_DIAG_TOKENS.test(t)) return false;
+  if (RE_DIAG_SESSION.test(t) && RE_DIAG_RUNTIME.test(t)) return false;
   return true;
 }
 
@@ -100,11 +117,8 @@ function loadCache() {
     const data = JSON.parse(raw) as InboxItem[];
     for (const item of data) {
       // Scrub stale lastMessage that wouldn't pass the content filter
-      if (item.lastMessage) {
-        const t = item.lastMessage.text?.trim();
-        if (!t || t === '[Image]' || t === '[image]' || t.startsWith('📎') || t.endsWith('*[cancelled]*')) {
-          item.lastMessage = undefined;
-        }
+      if (item.lastMessage && !isContentText(item.lastMessage.text)) {
+        item.lastMessage = undefined;
       }
       const key = itemKey(item.connectionId, item.agentId);
       if (!items.has(key)) {
@@ -171,11 +185,17 @@ async function populateAgentFromMessages(
   const agentName = getDisplayName(connectionId, agentId, agent.name || agentId);
   const agentEmoji = agent.identityEmoji || '';
   const item = getOrCreateItem(connectionId, connectionName, agentId, agentName, agentEmoji);
+  // Always sync name/emoji with latest data
+  item.agentName = agentName;
+  item.agentEmoji = agentEmoji;
+  item.connectionName = connectionName;
 
   // Load recent messages to determine last message and unread count
   try {
     const allMessages = await loadConversationMessages(connectionId, agentId, { limit: 50 });
-    const messages = allMessages.filter(isContentMessage);
+    const messages = allMessages.filter(isContentMessage).filter(
+      (m) => !(m.sender === 'user' && m.text.trim().startsWith('/'))
+    );
     if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
       item.lastMessage = {
@@ -186,9 +206,11 @@ async function populateAgentFromMessages(
 
       // Calculate unread count: AI messages since last read
       const lastRead = getLastReadTimestamp(connectionId, agentId);
+      // If user never opened this agent in Inbox, only count messages from last 24h
+      const effectiveLastRead = lastRead || (Date.now() - 24 * 60 * 60 * 1000);
       let unread = 0;
       for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].timestamp <= lastRead) break;
+        if (messages[i].timestamp <= effectiveLastRead) break;
         if (messages[i].sender === 'ai') unread++;
       }
       item.unreadCount = unread;
@@ -278,8 +300,8 @@ function setupConnectionListeners(conn: ServerConnection) {
       // AI sent a message — only track messages with actual text content
       const content = typeof packet.data.content === 'string' ? packet.data.content : '';
       const trimmed = content.trim();
-      if (!trimmed || trimmed === '[Image]' || trimmed === '[image]' || trimmed.startsWith('📎') || trimmed.endsWith('*[cancelled]*')) {
-        return; // skip empty, media-only, and cancelled messages
+      if (!isContentText(trimmed)) {
+        return; // skip system messages, placeholders, diagnostics
       }
 
       const messageId = typeof packet.data.messageId === 'string' ? packet.data.messageId : '';
@@ -289,6 +311,7 @@ function setupConnectionListeners(conn: ServerConnection) {
       item.status = 'pending_reply';
       item.unreadCount += 1;
       item.suggestedReply = undefined;
+      playNewMessage();
       emitUpdate();
       return;
     }
@@ -301,7 +324,7 @@ function setupConnectionListeners(conn: ServerConnection) {
         const messageId = typeof packet.data.messageId === 'string' ? packet.data.messageId : '';
         const timestamp = typeof packet.data.timestamp === 'number' ? packet.data.timestamp : Date.now();
 
-        if (trimmed && trimmed !== '[Image]' && !trimmed.startsWith('📎')) {
+        if (isContentText(trimmed)) {
           item.lastMessage = { text: trimmed, timestamp, messageId };
         }
         item.status = 'idle';
@@ -418,15 +441,29 @@ export async function refreshInbox() {
 }
 
 export function getInboxItems(): InboxItem[] {
-  return [...items.values()]
-    .filter(item => item.lastMessage || item.status === 'thinking' || item.status === 'pending_reply')
-    .sort((a, b) => {
-    // Primary sort: most recent message first
+  const filtered = [...items.values()]
+    .filter(item => item.lastMessage || item.status === 'thinking' || item.status === 'pending_reply');
+
+  // Deduplicate by agentId — keep the most recently active instance
+  const byAgent = new Map<string, InboxItem>();
+  for (const item of filtered) {
+    const existing = byAgent.get(item.agentId);
+    if (!existing) {
+      byAgent.set(item.agentId, item);
+      continue;
+    }
+    const existingTime = existing.lastMessage?.timestamp ?? 0;
+    const itemTime = item.lastMessage?.timestamp ?? 0;
+    // Prefer more recent message; on tie, prefer higher-priority status
+    if (itemTime > existingTime || (itemTime === existingTime && statusPriority(item.status) < statusPriority(existing.status))) {
+      byAgent.set(item.agentId, item);
+    }
+  }
+
+  return [...byAgent.values()].sort((a, b) => {
     const aTime = a.lastMessage?.timestamp ?? 0;
     const bTime = b.lastMessage?.timestamp ?? 0;
     if (aTime !== bTime) return bTime - aTime;
-
-    // Secondary sort: status priority (pending > thinking > idle > offline)
     return statusPriority(a.status) - statusPriority(b.status);
   });
 }

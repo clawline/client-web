@@ -1,11 +1,13 @@
 import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { ChevronLeft, User, Sliders, Sparkles, Mic, Bell, Download, Upload, Check } from 'lucide-react';
+import { ChevronLeft, User, Sliders, Sparkles, Mic, Bell, Volume2, Download, Upload, Check } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
 import { getUserName, setUserName } from '../App';
+import { getSoundEnabled, setSoundEnabled } from '../hooks/useNotificationSound';
 import {
   isSuggestionsEnabled, setSuggestionsEnabled, getSuggestionCustomPrompt, setSuggestionCustomPrompt,
+  getReplyDraftPrompt, setReplyDraftPrompt,
   isVoiceRefineEnabled, setVoiceRefineEnabled, getVoiceRefineCustomPrompt, setVoiceRefineCustomPrompt,
 } from '../services/suggestions';
 import { useNotificationPermission } from '../hooks/useNotificationPermission';
@@ -234,6 +236,50 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
                 </p>
               </motion.div>
             )}
+
+            {/* Reply Draft Prompt */}
+            <div className="pt-2">
+              <label className="block text-[13px] font-medium text-text/70 dark:text-text-inv/70 mb-1.5">Reply Draft Prompt</label>
+              <textarea
+                rows={3}
+                defaultValue={getReplyDraftPrompt()}
+                onChange={(e) => setReplyDraftPrompt(e.target.value)}
+                placeholder="Custom instructions for Suggest Reply (e.g., 'Reply in Chinese', 'Keep it brief')..."
+                className="w-full bg-surface dark:bg-surface-dark border border-border dark:border-border-dark rounded-[16px] px-4 py-3 text-[15px] text-text dark:text-text-inv focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none placeholder:text-text/35 dark:placeholder:text-text-inv/35"
+              />
+              <p className="mt-1.5 text-[11px] text-text/40 dark:text-text-inv/40">
+                Appended to the default reply draft prompt. Controls how Suggest Reply drafts responses.
+              </p>
+            </div>
+          </Card>
+        </section>
+
+        <section>
+          <h3 className="text-sm font-semibold text-text/50 dark:text-text-inv/50 mb-4 uppercase tracking-wider flex items-center gap-2">
+            <Volume2 size={16} /> Notification Sound
+          </h3>
+          <Card className="p-5">
+            <motion.div
+              layout
+              className="flex items-center justify-between gap-4 rounded-[24px] border border-border dark:border-border-dark bg-surface/80 dark:bg-surface-dark/80 px-4 py-4"
+            >
+              <div className="min-w-0">
+                <label htmlFor="sound-toggle" className="block text-[15px] font-semibold text-text dark:text-text-inv">
+                  Sound Effects
+                </label>
+                <p className="mt-1 text-[13px] text-text/50 dark:text-text-inv/50">
+                  Play a notification sound when agents reply
+                </p>
+              </div>
+              <input
+                id="sound-toggle"
+                type="checkbox"
+                className="ios-toggle shrink-0"
+                checked={getSoundEnabled()}
+                onChange={(e) => setSoundEnabled(e.target.checked)}
+                aria-label="Toggle notification sound"
+              />
+            </motion.div>
           </Card>
         </section>
 
