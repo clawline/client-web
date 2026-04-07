@@ -50,32 +50,48 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
     let totalSynced = 0;
 
     try {
+      // Find the oldest local message timestamp across all agents for this connection
       const agents = channel.loadCachedAgents(connectionId);
-
+      let oldestLastTs = Date.now();
       for (const agent of agents) {
+        const localMsgs = await loadConversationMessages(connectionId, agent.id, { limit: 1 });
+        const ts = localMsgs.length > 0
+          ? Math.max(...localMsgs.map((m) => m.timestamp || 0))
+          : Date.now() - 24 * 60 * 60 * 1000;
+        if (ts < oldestLastTs) oldestLastTs = ts;
+      }
+
+      // Sync once per channel (not per agent)
+      const remoteMsgs = await syncMissedMessages(conn.channelId, oldestLastTs, 200, connectionId);
+      if (remoteMsgs.length === 0) {
+        set((s) => ({
+          syncStatus: { ...s.syncStatus, [connectionId]: 'done' },
+          lastSyncTime: { ...s.lastSyncTime, [connectionId]: Date.now() },
+        }));
+        return 0;
+      }
+
+      // Group messages by agent_id
+      const byAgent = new Map<string, typeof remoteMsgs>();
+      for (const msg of remoteMsgs) {
+        const agentId = msg.agent_id || 'unknown';
+        const list = byAgent.get(agentId);
+        if (list) list.push(msg);
+        else byAgent.set(agentId, [msg]);
+      }
+
+      // Save each agent's messages separately
+      const { saveAgentPreview } = await import('../components/chat/utils');
+      for (const [agentId, msgs] of byAgent) {
         try {
-          // Get last local message timestamp for this agent
-          const localMsgs = await loadConversationMessages(connectionId, agent.id, { limit: 1 });
-          const lastTs = localMsgs.length > 0
-            ? Math.max(...localMsgs.map((m) => m.timestamp || 0))
-            : Date.now() - 24 * 60 * 60 * 1000; // Default: last 24h
-
-          const remoteMsgs = await syncMissedMessages(conn.channelId, lastTs, 100, connectionId);
-          if (remoteMsgs.length === 0) continue;
-
-          // Convert to local format and save to IndexedDB
-          const localFormat = remoteMsgs.map((m) => syncMessageToLocal(m));
-          await saveConversationMessages(connectionId, agent.id, localFormat);
-
-          // Update ChatList preview via event
+          const localFormat = msgs.map((m) => syncMessageToLocal(m));
+          await saveConversationMessages(connectionId, agentId, localFormat);
           if (localFormat.length > 0) {
-            const { saveAgentPreview } = await import('../components/chat/utils');
-            saveAgentPreview(agent.id, connectionId, localFormat);
+            saveAgentPreview(agentId, connectionId, localFormat);
           }
-
           totalSynced += localFormat.length;
         } catch {
-          // Skip failed agent, continue with others
+          // Skip failed agent
         }
       }
 
