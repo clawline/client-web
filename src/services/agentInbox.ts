@@ -360,6 +360,24 @@ function setupConnectionListeners(conn: ServerConnection) {
     // Request agent list when connection comes alive to discover new agents
     if (status === 'connected') {
       try { channel.requestAgentList(connectionId); } catch { /* ignore */ }
+      // Trigger global sync for this connection
+      void import('../stores/syncStore').then(({ useSyncStore }) => {
+        void useSyncStore.getState().syncConnection(connectionId).then((count) => {
+          if (count > 0) {
+            // Re-populate inbox with fresh data after sync
+            const connections = getConnections();
+            const conn = connections.find((c) => c.id === connectionId);
+            if (conn) {
+              const agents = channel.loadCachedAgents(connectionId);
+              const connectionName = conn.displayName || conn.name || connectionId;
+              for (const agent of agents) {
+                void populateAgentFromMessages(connectionId, connectionName, agent);
+              }
+              emitUpdate();
+            }
+          }
+        });
+      });
     }
     if (changed) emitUpdate();
   }, connectionId);

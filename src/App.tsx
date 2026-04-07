@@ -746,6 +746,19 @@ export default function App() {
     void initInbox();
   }, []);
 
+  // Global sync: pull missed messages when page becomes visible
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === 'visible') {
+        void import('./stores/syncStore').then(({ useSyncStore }) => {
+          void useSyncStore.getState().syncAll();
+        });
+      }
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
+
   return (
     <BrowserRouter>
       <ErrorBoundary>
