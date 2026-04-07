@@ -697,6 +697,11 @@ class ChannelManager {
             pending.resolve(suggestions);
           }
         }
+        if (packet.type === 'status.failed') {
+          const code = typeof packet.data.code === 'string' ? packet.data.code : 'DELIVERY_FAILED';
+          const message = typeof packet.data.message === 'string' ? packet.data.message : 'Message delivery failed.';
+          this.emitError(instance.connectionId, code, message);
+        }
         instance.messageListeners.forEach((fn) => fn(packet));
       } catch {
         // ignore malformed packets

@@ -129,6 +129,8 @@ export function isGroupedWithPrev(messages: Message[], index: number): boolean {
 
 export function humanizeError(error: { code: string; message: string }): { title: string; body: string } {
   const { code, message } = error;
+  if (code === 'AGENT_ID_MISSING') return { title: 'Agent routing error', body: 'Server could not resolve the target agent for this message. Please check server configuration.' };
+  if (code === 'DELIVERY_FAILED') return { title: 'Delivery failed', body: message || 'The message could not be delivered.' };
   if (code === 'RATE_LIMIT') return { title: 'Slow down', body: 'Too many requests. Try again in a moment.' };
   if (code === 'TOKEN_LIMIT') return { title: 'Message too long', body: 'Try shortening your message.' };
   if (code === 'AUTH_FAILED') return { title: 'Auth error', body: 'Please reconnect.' };
