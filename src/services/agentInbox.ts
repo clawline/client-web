@@ -224,6 +224,27 @@ function setupConnectionListeners(conn: ServerConnection) {
     const agentId = typeof packet.data.agentId === 'string' ? packet.data.agentId : '';
     if (!agentId) return;
 
+    // Only process message-related packet types — ignore typing, agent.context, user.status, etc.
+    const relevantTypes = ['message.send', 'message.receive', 'thinking.start', 'thinking.update', 'thinking.end', 'agent.list'];
+    if (!relevantTypes.includes(packet.type)) return;
+
+    // agent.list is handled separately below — don't create items for it here
+    if (packet.type === 'agent.list') {
+      const agents = (packet.data as { agents?: AgentInfo[] })?.agents ?? [];
+      for (const a of agents) {
+        const key = itemKey(connectionId, a.id);
+        const existing = items.get(key);
+        if (existing) {
+          existing.agentName = getDisplayName(connectionId, a.id, a.name || a.id);
+          existing.agentEmoji = a.identityEmoji || '';
+        } else {
+          void populateAgentFromMessages(connectionId, connectionName, a).then(emitUpdate);
+        }
+      }
+      emitUpdate();
+      return;
+    }
+
     // Resolve agent info from cache
     const cachedAgents = channel.loadCachedAgents(connectionId);
     const agentInfo = cachedAgents.find((a) => a.id === agentId);
@@ -239,8 +260,6 @@ function setupConnectionListeners(conn: ServerConnection) {
     }
 
     if (packet.type === 'thinking.end') {
-      // Don't immediately override status — wait for message.send or re-evaluate
-      // If there's a pending reply, keep it. Otherwise go idle.
       if (item.status === 'thinking') {
         item.status = item.unreadCount > 0 ? 'pending_reply' : 'idle';
         emitUpdate();
@@ -249,12 +268,17 @@ function setupConnectionListeners(conn: ServerConnection) {
     }
 
     if (packet.type === 'message.send') {
-      // AI sent a message
+      // AI sent a message — only track messages with actual text content
       const content = typeof packet.data.content === 'string' ? packet.data.content : '';
+      const trimmed = content.trim();
+      if (!trimmed || trimmed === '[Image]' || trimmed === '[image]' || trimmed.startsWith('📎') || trimmed.endsWith('*[cancelled]*')) {
+        return; // skip empty, media-only, and cancelled messages
+      }
+
       const messageId = typeof packet.data.messageId === 'string' ? packet.data.messageId : '';
       const timestamp = typeof packet.data.timestamp === 'number' ? packet.data.timestamp : Date.now();
 
-      item.lastMessage = { text: content, timestamp, messageId };
+      item.lastMessage = { text: trimmed, timestamp, messageId };
       item.status = 'pending_reply';
       item.unreadCount += 1;
       item.suggestedReply = undefined;
@@ -263,16 +287,15 @@ function setupConnectionListeners(conn: ServerConnection) {
     }
 
     if (packet.type === 'message.receive') {
-      // User sent a message to this agent
       const senderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
-      // Only transition to idle if user (not another agent) sent the message
       if (senderId) {
         const content = typeof packet.data.content === 'string' ? packet.data.content : '';
+        const trimmed = content.trim();
         const messageId = typeof packet.data.messageId === 'string' ? packet.data.messageId : '';
         const timestamp = typeof packet.data.timestamp === 'number' ? packet.data.timestamp : Date.now();
 
-        if (content) {
-          item.lastMessage = { text: content, timestamp, messageId };
+        if (trimmed && trimmed !== '[Image]' && !trimmed.startsWith('📎')) {
+          item.lastMessage = { text: trimmed, timestamp, messageId };
         }
         item.status = 'idle';
         item.unreadCount = 0;
@@ -281,23 +304,6 @@ function setupConnectionListeners(conn: ServerConnection) {
         emitUpdate();
       }
       return;
-    }
-
-    // Agent list updated — refresh names/emojis, create new items for discovered agents
-    if (packet.type === 'agent.list') {
-      const agents = (packet.data as { agents?: AgentInfo[] })?.agents ?? [];
-      for (const a of agents) {
-        const key = itemKey(connectionId, a.id);
-        const existing = items.get(key);
-        if (existing) {
-          existing.agentName = getDisplayName(connectionId, a.id, a.name || a.id);
-          existing.agentEmoji = a.identityEmoji || '';
-        } else {
-          // New agent discovered — create inbox item and populate from messages
-          void populateAgentFromMessages(connectionId, connectionName, a).then(emitUpdate);
-        }
-      }
-      emitUpdate();
     }
   }, connectionId);
 
