@@ -126,11 +126,9 @@ function InboxItemDetail({
     let cancelled = false;
     void loadConversationMessages(item.connectionId, item.agentId, { limit: 20 }).then((allMessages) => {
       if (cancelled) return;
-      const messages = allMessages.filter(isContentMessage).filter(
-        (m) => !(m.sender === 'user' && m.text.trim().startsWith('/'))
-      );
-      // Take last 2 messages for context
-      setRecentMessages(messages.slice(-2));
+      const messages = allMessages.filter(isContentMessage);
+      // Take last 5 messages for conversation context
+      setRecentMessages(messages.slice(-5));
     });
     return () => { cancelled = true; };
   }, [item.connectionId, item.agentId, item.lastMessage?.messageId]);
