@@ -267,20 +267,30 @@ function AppShell() {
   useEffect(() => {
     const { screen, agentId, chatId, connectionId } = pathToScreen(location.pathname, location.search);
     setCurrentScreen(screen);
-    setActiveAgentId(agentId ?? null);
-    setActiveChatId(chatId ?? null);
-    const nextConnectionId = connectionId ?? getActiveConnectionId();
-    setActiveConnectionState(nextConnectionId);
-    if (connectionId && connectionId !== getActiveConnectionId() && getConnectionById(connectionId)) {
-      setActiveConnectionId(connectionId);
+    // Only update agent/chat state when URL explicitly contains them (chat_room route).
+    // For other routes (inbox, dashboard, etc.), preserve existing agent state
+    // so the desktop main panel keeps the chat visible.
+    if (screen === 'chat_room' || agentId) {
+      setActiveAgentId(agentId ?? null);
+      setActiveChatId(chatId ?? null);
+      const nextConnectionId = connectionId ?? getActiveConnectionId();
+      setActiveConnectionState(nextConnectionId);
+      if (connectionId && connectionId !== getActiveConnectionId() && getConnectionById(connectionId)) {
+        setActiveConnectionId(connectionId);
+      }
     }
   }, [location.pathname, location.search]);
 
   const navigate = useCallback((screen: Screen, agentId?: string, chatId?: string, connectionId?: string) => {
     setCurrentScreen(screen);
-    setActiveAgentId(agentId ?? null);
-    setActiveChatId(chatId ?? null);
-    setActiveConnectionState(connectionId ?? getActiveConnectionId());
+    // Only update agent/chat state when explicitly navigating to chat_room,
+    // or when values are provided. Preserve existing values for tab switches
+    // (inbox, dashboard, etc.) so the chat is still there when user comes back.
+    if (screen === 'chat_room' || agentId !== undefined) {
+      setActiveAgentId(agentId ?? null);
+      setActiveChatId(chatId ?? null);
+      setActiveConnectionState(connectionId ?? getActiveConnectionId());
+    }
 
     // Screen → URL
     if (screen === 'chat_room' && agentId) {
@@ -553,6 +563,23 @@ function AppShell() {
         case 'onboarding':
           return <Onboarding onGetStarted={() => navigate('chats')} />;
         default:
+          // On desktop, 'chats' means the sidebar is showing ChatList.
+          // If there's an active agent, keep showing the ChatRoom in the main panel.
+          if (activeAgentId) {
+            return (
+              <ChatRoom
+                agentId={activeAgentId}
+                chatId={activeChatId}
+                connectionId={activeConnectionId}
+                onBack={() => { setActiveAgentId(null); setActiveChatId(null); }}
+                onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)}
+                isDesktop
+                showSplitButton={isSplitViewport}
+                splitActive={splitOpen}
+                onToggleSplit={toggleSplitView}
+              />
+            );
+          }
           return (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <div className="w-14 h-14 rounded-2xl bg-primary/8 flex items-center justify-center mb-4">
