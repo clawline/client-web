@@ -79,8 +79,14 @@ function itemKey(connectionId: string, agentId: string): string {
 
 function getLastReadTimestamp(connectionId: string, agentId: string): number {
   try {
-    const raw = localStorage.getItem(`${LAST_READ_PREFIX}${connectionId}.${agentId}`);
-    return raw ? parseInt(raw, 10) || 0 : 0;
+    // Inbox-specific lastRead
+    const inboxRaw = localStorage.getItem(`${LAST_READ_PREFIX}${connectionId}.${agentId}`);
+    const inboxTs = inboxRaw ? parseInt(inboxRaw, 10) || 0 : 0;
+    // ChatRoom/ChatList lastRead (written when user opens a chat)
+    const chatRaw = localStorage.getItem(`openclaw.lastRead.${connectionId}.${agentId}`);
+    const chatTs = chatRaw ? parseInt(chatRaw, 10) || 0 : 0;
+    // Use whichever is more recent
+    return Math.max(inboxTs, chatTs);
   } catch {
     return 0;
   }
@@ -130,7 +136,9 @@ function loadCache() {
 
 function setLastReadTimestamp(connectionId: string, agentId: string, timestamp: number) {
   try {
+    // Update both Inbox and ChatList lastRead so they stay in sync
     localStorage.setItem(`${LAST_READ_PREFIX}${connectionId}.${agentId}`, String(timestamp));
+    localStorage.setItem(`openclaw.lastRead.${connectionId}.${agentId}`, String(timestamp));
   } catch {
     // ignore storage errors
   }

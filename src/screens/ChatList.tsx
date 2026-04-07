@@ -247,7 +247,17 @@ function formatRelativeTime(ts?: number): string {
 function getPreviewKey(connectionId: string, agentId: string) { return `${PREVIEW_KEY_PREFIX}${connectionId}.${agentId}`; }
 function getPreviewStateKey(connectionId: string, agentId: string) { return `${connectionId}:${agentId}`; }
 function getStoredPreview(agentId: string, connectionId: string): { text: string; timestamp?: number } | null {
-  try { const c = localStorage.getItem(getPreviewKey(connectionId, agentId)); if (c) return JSON.parse(c); } catch {}
+  try {
+    const c = localStorage.getItem(getPreviewKey(connectionId, agentId));
+    if (!c) return null;
+    const parsed = JSON.parse(c) as { text: string; timestamp?: number };
+    // Filter out stale system messages (🐾, [Image], etc.)
+    const t = parsed.text?.trim();
+    if (t && (t.startsWith('🐾') || t === '[Image]' || t === '[image]' || t.startsWith('📎') || t.endsWith('*[cancelled]*'))) {
+      return null;
+    }
+    return parsed;
+  } catch {}
   return null;
 }
 function getAgentOrderKey(connectionId: string) { return `${AGENT_ORDER_KEY_PREFIX}${connectionId}`; }

@@ -550,6 +550,20 @@ export async function getAllAgentIds() {
   });
 }
 
+/** Returns false for system/diagnostic messages that shouldn't appear in previews. */
+function isPreviewableRecord(record: StoredMessageRecord): boolean {
+  const t = record.text?.trim();
+  if (!t) return !!record.mediaType; // media-only is ok
+  if (t.startsWith('🐾')) return false; // OpenClaw system dumps
+  if (t === '[Image]' || t === '[image]') return false;
+  if (t.startsWith('📎')) return false;
+  if (t.endsWith('*[cancelled]*')) return false;
+  // Diagnostic dumps: "Model: ... Tokens: ..." or "Session: ... Runtime: ..."
+  if (/Model:\s/.test(t) && /Tokens:\s/.test(t)) return false;
+  if (/Session:\s/.test(t) && /Runtime:\s/.test(t)) return false;
+  return true;
+}
+
 export async function getLatestMessagePreview(connectionId: string, agentId: string): Promise<MessagePreview | null> {
   if (!connectionId || !agentId || !hasIndexedDBSupport()) {
     return null;
@@ -573,7 +587,7 @@ export async function getLatestMessagePreview(connectionId: string, agentId: str
         }
 
         const record = cursor.value as StoredMessageRecord;
-        if (record.isStreaming) {
+        if (record.isStreaming || !isPreviewableRecord(record)) {
           cursor.continue();
           return;
         }

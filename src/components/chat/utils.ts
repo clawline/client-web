@@ -160,9 +160,23 @@ export function emitPreviewUpdated(connectionId: string, agentId: string) {
   }));
 }
 
+function isPreviewableText(text?: string | null): boolean {
+  const t = text?.trim();
+  if (!t) return false;
+  if (t.startsWith('🐾')) return false;
+  if (t === '[Image]' || t === '[image]') return false;
+  if (t.startsWith('📎')) return false;
+  if (t.endsWith('*[cancelled]*')) return false;
+  if (/Model:\s/.test(t) && /Tokens:\s/.test(t)) return false;
+  if (/Session:\s/.test(t) && /Runtime:\s/.test(t)) return false;
+  return true;
+}
+
 export function saveAgentPreview(agentId: string | null | undefined, connectionId: string, messages: Message[]) {
   if (!agentId || !connectionId || messages.length === 0) return;
-  const lastMeaningfulMessage = [...messages].reverse().find((message) => !message.isStreaming);
+  const lastMeaningfulMessage = [...messages].reverse().find(
+    (message) => !message.isStreaming && (isPreviewableText(message.text) || !!message.mediaType)
+  );
   if (!lastMeaningfulMessage) return;
 
   try {
