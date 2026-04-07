@@ -99,6 +99,13 @@ function loadCache() {
     if (!raw) return;
     const data = JSON.parse(raw) as InboxItem[];
     for (const item of data) {
+      // Scrub stale lastMessage that wouldn't pass the content filter
+      if (item.lastMessage) {
+        const t = item.lastMessage.text?.trim();
+        if (!t || t === '[Image]' || t === '[image]' || t.startsWith('📎') || t.endsWith('*[cancelled]*')) {
+          item.lastMessage = undefined;
+        }
+      }
       const key = itemKey(item.connectionId, item.agentId);
       if (!items.has(key)) {
         items.set(key, item);
@@ -410,7 +417,9 @@ export async function refreshInbox() {
 }
 
 export function getInboxItems(): InboxItem[] {
-  return [...items.values()].sort((a, b) => {
+  return [...items.values()]
+    .filter(item => item.lastMessage || item.status === 'thinking' || item.status === 'pending_reply')
+    .sort((a, b) => {
     // Primary sort: most recent message first
     const aTime = a.lastMessage?.timestamp ?? 0;
     const bTime = b.lastMessage?.timestamp ?? 0;
