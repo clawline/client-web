@@ -172,12 +172,14 @@ function InboxItemDetail({
     onSend(text);
     // Save to IndexedDB with correct chatId scope so ChatRoom can find it
     const chatId = channel.getChatId(item.connectionId) || undefined;
-    const msgEntry = { id: `inbox-${Date.now()}`, sender: 'user' as const, text, timestamp: Date.now() };
+    const msgId = `inbox-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const ts = Date.now();
+    const msgEntry = { id: msgId, sender: 'user' as const, text, timestamp: ts };
     void import('../services/messageDB').then(({ saveConversationMessages }) => {
       void saveConversationMessages(item.connectionId, item.agentId, [msgEntry], { chatId });
     });
     // Add to local display immediately
-    setRecentMessages((prev) => [...prev.slice(-4), { id: `inbox-${Date.now()}`, sender: 'user', text, timestamp: Date.now() }]);
+    setRecentMessages((prev) => [...prev, { id: msgId, sender: 'user', text, timestamp: ts }]);
     setTimeout(() => {
       setReplyText('');
       setSuggestedReply('');
@@ -204,7 +206,7 @@ function InboxItemDetail({
         {/* Conversation messages */}
         {recentMessages.length > 0 && (
           <div ref={scrollRef} className="max-h-60 overflow-y-auto space-y-2 rounded-2xl bg-slate-50/80 dark:bg-white/[0.03] px-3 py-3">
-            {recentMessages.map((msg) => (
+            {recentMessages.filter((msg, idx, arr) => arr.findIndex(m => m.id === msg.id) === idx).map((msg) => (
               <div key={msg.id} className={cn('flex', msg.sender === 'user' ? 'justify-end' : 'justify-start')}>
                 <div className={cn(
                   'max-w-[85%] rounded-2xl px-3 py-2 text-[13px] leading-relaxed',
@@ -416,12 +418,9 @@ export default function AgentInbox() {
 
   const handleToggle = useCallback((connectionId: string, agentId: string) => {
     const key = `${connectionId}:${agentId}`;
-    setExpandedKey((prev) => {
-      if (prev === key) return null;
-      // Mark as read when expanding
-      markAsRead(connectionId, agentId);
-      return key;
-    });
+    setExpandedKey((prev) => (prev === key ? null : key));
+    // Mark as read outside setState to avoid updating AppShell during render
+    setTimeout(() => markAsRead(connectionId, agentId), 0);
   }, []);
 
   const handleNavigateToChat = useCallback((connectionId: string, agentId: string) => {
