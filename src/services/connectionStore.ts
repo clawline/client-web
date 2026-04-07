@@ -36,16 +36,7 @@ export function getConnections(): ServerConnection[] {
 }
 
 export function getConnectionById(id: string): ServerConnection | undefined {
-  const all = readAll();
-  const exact = all.find((c) => c.id === id);
-  if (exact) return exact;
-  // Support split-view IDs like "conn-xxx::split0::agentName" → extract base "conn-xxx"
-  const splitIdx = id.indexOf('::split');
-  if (splitIdx > 0) {
-    const baseId = id.slice(0, splitIdx);
-    return all.find((c) => c.id === baseId);
-  }
-  return undefined;
+  return readAll().find((c) => c.id === id);
 }
 
 export function addConnection(name: string, serverUrl: string, displayName: string, token?: string, chatId?: string, senderId?: string, channelId?: string): ServerConnection {

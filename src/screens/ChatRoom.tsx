@@ -485,6 +485,7 @@ export default function ChatRoom({
       channel.connect({
         connectionId: runtimeConnId,
         chatId: conversationId,
+        channelId: activeConn.channelId,
         senderId: activeConn.senderId || getUserId(),
         senderName: activeConn.displayName,
         serverUrl: activeConn.serverUrl,
@@ -991,6 +992,7 @@ export default function ChatRoom({
       channel.connect({
         connectionId: runtimeConnId,
         chatId: chatId || activeConn.chatId || undefined,
+        channelId: activeConn.channelId,
         senderId: activeConn.senderId || getUserId(),
         senderName: activeConn.displayName,
         serverUrl: activeConn.serverUrl,

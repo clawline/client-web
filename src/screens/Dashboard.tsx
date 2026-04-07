@@ -170,6 +170,7 @@ export default function Dashboard() {
     channel.connect({
       connectionId: connId,
       chatId: activeConn.chatId,
+      channelId: activeConn.channelId,
       senderId: activeConn.senderId || getUserId(),
       senderName: activeConn.displayName,
       serverUrl: activeConn.serverUrl,

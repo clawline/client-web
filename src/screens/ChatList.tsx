@@ -481,7 +481,7 @@ export default function ChatList({
     setRefreshingMap(p => ({ ...p, [connection.id]: true }));
     const status = channel.getStatus(connection.id);
     if (status !== 'connected' && status !== 'connecting') {
-      channel.connect({ connectionId: connection.id, chatId: connection.chatId, senderId: connection.senderId || getUserId(), senderName: connection.displayName, serverUrl: connection.serverUrl, token: connection.token });
+      channel.connect({ connectionId: connection.id, chatId: connection.chatId, channelId: connection.channelId, senderId: connection.senderId || getUserId(), senderName: connection.displayName, serverUrl: connection.serverUrl, token: connection.token });
       return;
     }
     if (status === 'connected') {
@@ -648,6 +648,7 @@ export default function ChatList({
     channel.connect({
       connectionId: connection.id,
       chatId: connection.chatId,
+      channelId: connection.channelId,
       senderId: connection.senderId || getUserId(),
       senderName: connection.displayName,
       serverUrl: connection.serverUrl,

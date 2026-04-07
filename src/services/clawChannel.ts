@@ -1,4 +1,4 @@
-import { getActiveConnectionId, getConnectionById } from './connectionStore';
+import { getActiveConnectionId } from './connectionStore';
 
 const DEFAULT_WS_URL = 'wss://gateway.clawlines.net/client';
 const MAX_RECONNECT_ATTEMPTS = 6;
@@ -87,6 +87,7 @@ type ErrorListener = (connectionId: string, error: { code: string; message: stri
 export type ConnectOptions = {
   connectionId?: string;
   chatId?: string;
+  channelId?: string;
   senderId: string;
   senderName: string;
   serverUrl?: string;
@@ -112,6 +113,7 @@ type ChannelInstance = {
   currentSenderName: string;
   currentAgentId: string;
   currentAuthToken: string;
+  currentChannelId: string;
   statusListeners: Set<StatusListener>;
   messageListeners: Set<MessageListener>;
   lastTouchedAt: number;
@@ -155,6 +157,7 @@ function createInstance(connectionId: string): ChannelInstance {
     currentSenderName: '',
     currentAgentId: '',
     currentAuthToken: '',
+    currentChannelId: '',
     statusListeners: new Set<StatusListener>(),
     messageListeners: new Set<MessageListener>(),
     lastTouchedAt: 0,
@@ -545,6 +548,7 @@ class ChannelManager {
         this.connect({
           connectionId: instance.connectionId,
           chatId: instance.currentChatId,
+          channelId: instance.currentChannelId,
           senderId: instance.currentSenderId,
           senderName: instance.currentSenderName,
           serverUrl: instance.currentServerUrl,
@@ -593,14 +597,14 @@ class ChannelManager {
     instance.currentSenderName = opts.senderName;
     // Note: currentAgentId is managed by selectAgent(), not connect()
     instance.currentAuthToken = opts.token || '';
+    instance.currentChannelId = opts.channelId || instance.currentChannelId || '';
     instance.manualClose = false;
 
     const token = ++instance.connectionToken;
     this.updateStatus(instance, instance.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
 
     // Don't pass agentId to URL — agent is selected via selectAgent() message
-    const connData = getConnectionById(instance.connectionId);
-    const socket = new WebSocket(buildSocketUrl(nextServerUrl, opts.chatId, undefined, opts.token, connData?.channelId));
+    const socket = new WebSocket(buildSocketUrl(nextServerUrl, opts.chatId, undefined, opts.token, instance.currentChannelId || undefined));
     instance.ws = socket;
     this.touch(instance);
     this.enforcePoolLimit(instance.connectionId);

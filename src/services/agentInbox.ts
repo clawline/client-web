@@ -389,6 +389,7 @@ export async function refreshInbox() {
       channel.connect({
         connectionId: conn.id,
         chatId: conn.chatId,
+        channelId: conn.channelId,
         senderId: conn.senderId || getUserId(),
         senderName: conn.displayName || getUserName(),
         serverUrl: conn.serverUrl,
