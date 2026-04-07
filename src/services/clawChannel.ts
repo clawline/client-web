@@ -4,7 +4,8 @@ const DEFAULT_WS_URL = 'wss://gateway.clawlines.net/client';
 const MAX_RECONNECT_ATTEMPTS = 6;
 const MAX_ACTIVE_CONNECTIONS = 6;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes — chat apps should stay connected
-const HEARTBEAT_INTERVAL_MS = 15 * 1000; // 15 seconds — keeps connection alive; if no pong before next ping, connection is considered dead
+const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
+const HEARTBEAT_MAX_MISSED = 2; // allow 2 missed pongs before killing
 const THINKING_TIMEOUT_MS = 60 * 1000;
 const AGENT_CACHE_PREFIX = 'openclaw.agentList.';
 const STATUS_CACHE_PREFIX = 'openclaw.channelStatus.';
@@ -102,7 +103,7 @@ type ChannelInstance = {
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   idleTimer: ReturnType<typeof setTimeout> | null;
   heartbeatTimer: ReturnType<typeof setInterval> | null;
-  heartbeatPending: boolean;
+  heartbeatMissed: number;
   manualClose: boolean;
   currentStatus: ConnectionStatus;
   currentServerUrl: string;
@@ -145,7 +146,7 @@ function createInstance(connectionId: string): ChannelInstance {
     reconnectTimer: null,
     idleTimer: null,
     heartbeatTimer: null,
-    heartbeatPending: false,
+    heartbeatMissed: 0,
     manualClose: false,
     currentStatus: 'disconnected',
     currentServerUrl: '',
@@ -457,19 +458,17 @@ class ChannelManager {
         this.stopHeartbeat(instance);
         return;
       }
-      // If previous heartbeat never got a response, connection is dead
-      if (instance.heartbeatPending) {
-        instance.heartbeatPending = false;
+      // Track missed pongs — only kill after HEARTBEAT_MAX_MISSED consecutive misses
+      instance.heartbeatMissed++;
+      if (instance.heartbeatMissed > HEARTBEAT_MAX_MISSED) {
+        instance.heartbeatMissed = 0;
         this.stopHeartbeat(instance);
-        // Force close and trigger reconnect
         try { instance.ws.close(4000, 'Heartbeat timeout'); } catch { /* ignore */ }
         return;
       }
-      instance.heartbeatPending = true;
       try {
         instance.ws.send(JSON.stringify({ type: 'ping', data: { timestamp: Date.now() } }));
       } catch {
-        // Send failed — connection is dead
         this.stopHeartbeat(instance);
         try { instance.ws?.close(4000, 'Heartbeat send failed'); } catch { /* ignore */ }
       }
@@ -481,7 +480,7 @@ class ChannelManager {
       clearInterval(instance.heartbeatTimer);
       instance.heartbeatTimer = null;
     }
-    instance.heartbeatPending = false;
+    instance.heartbeatMissed = 0;
   }
 
   private touch(instance: ChannelInstance) {
@@ -617,7 +616,7 @@ class ChannelManager {
     socket.addEventListener('message', (event) => {
       if (instance.connectionToken !== token || instance.ws !== socket) return;
       // Any message from server means connection is alive — reset heartbeat pending
-      instance.heartbeatPending = false;
+      instance.heartbeatMissed = 0;
       this.touch(instance);
 
       try {
