@@ -311,6 +311,9 @@ function InboxItemCard({
 
   const handleSend = useCallback((text: string) => {
     try {
+      // Select the agent first — same as ChatRoom does — so the server
+      // routes the reply back to this WS connection instead of buffering it.
+      channel.selectAgent(item.agentId, item.connectionId);
       channel.sendText(text, item.agentId, item.connectionId);
       recordUserMessage(item.connectionId, item.agentId, text);
     } catch {
