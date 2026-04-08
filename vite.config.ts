@@ -2,11 +2,16 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
-import { createHash } from 'crypto';
+import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
 
-// Single build hash shared across sw.js, index.html, and JS define
-const buildHash = createHash('md5').update(Date.now().toString()).digest('hex').slice(0, 8);
+// Use git short commit hash as build identifier so versions map to code
+let buildHash: string;
+try {
+  buildHash = execSync('git rev-parse --short=8 HEAD', { encoding: 'utf-8' }).trim();
+} catch {
+  buildHash = 'unknown';
+}
 
 // Plugin to inject build hash into sw.js and index.html so browsers detect new versions
 function swBuildHashPlugin() {
