@@ -886,9 +886,11 @@ export default function ChatRoom({
         setShowReconnected(true);
         setTimeout(() => setShowReconnected(false), 2500);
 
-        // Flush offline outbox — send pending messages
+        // Flush offline outbox — dequeue FIRST to prevent re-flush duplicates
         outbox.getByConnection(runtimeConnId).then(async (entries) => {
           for (const entry of entries) {
+            // Dequeue before sending — prevents duplicate sends on rapid reconnect
+            await outbox.dequeue(entry.id).catch(() => {});
             try {
               if (entry.type === 'text') {
                 entry.replyTo
@@ -903,16 +905,15 @@ export default function ChatRoom({
                   agentId: entry.agentId || undefined,
                 }, runtimeConnId);
               }
-              // B2: Update UI: pending → sent + dequeue
+              // B2: Update UI: pending → sent
               setMessages((prev) => prev.map((m) =>
                 m.id === entry.id ? { ...m, deliveryStatus: 'sent' as DeliveryStatus } : m
               ));
-              await outbox.dequeue(entry.id);
             } catch (err) {
-              // B2: continue to next entry instead of blocking all — only break on connection errors
+              // Send failed — re-enqueue for next reconnect attempt
               const isConnectionError = !navigator.onLine || (err instanceof Error && /closed|not open|CLOSING/i.test(err.message));
+              await outbox.enqueue(entry).catch(() => {});
               if (isConnectionError) break; // connection-level: stop trying
-              // else: per-message error, skip this one and continue
               continue;
             }
           }
