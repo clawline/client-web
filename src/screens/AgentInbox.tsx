@@ -106,10 +106,12 @@ function InboxItemDetail({
   item,
   onSend,
   onOpenChat,
+  onClose,
 }: {
   item: InboxItem;
   onSend: (text: string) => void;
   onOpenChat: () => void;
+  onClose: () => void;
 }) {
   const [recentMessages, setRecentMessages] = useState<Array<{ id: string; sender: string; text: string; timestamp?: number }>>([]);
   const [suggestedReply, setSuggestedReply] = useState('');
@@ -191,8 +193,10 @@ function InboxItemDetail({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    } else if (e.key === 'Escape') {
+      onClose();
     }
-  }, [handleSend]);
+  }, [handleSend, onClose]);
 
   return (
     <motion.div
@@ -205,7 +209,7 @@ function InboxItemDetail({
       <div className="px-4 pb-4 pt-1 space-y-3">
         {/* Conversation messages */}
         {recentMessages.length > 0 && (
-          <div ref={scrollRef} className="max-h-60 overflow-y-auto space-y-2 rounded-2xl bg-slate-50/80 dark:bg-white/[0.03] px-3 py-3">
+          <div ref={scrollRef} className="max-h-96 overflow-y-auto space-y-2 rounded-2xl bg-slate-50/80 dark:bg-white/[0.03] px-3 py-3">
             {recentMessages.filter((msg, idx, arr) => arr.findIndex(m => m.id === msg.id) === idx).map((msg) => (
               <div key={msg.id} className={cn('flex', msg.sender === 'user' ? 'justify-end' : 'justify-start')}>
                 <div className={cn(
@@ -387,6 +391,7 @@ function InboxItemCard({
               item={item}
               onSend={handleSend}
               onOpenChat={handleOpenChat}
+              onClose={onToggle}
             />
           )}
         </AnimatePresence>

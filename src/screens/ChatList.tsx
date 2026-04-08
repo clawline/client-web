@@ -593,8 +593,11 @@ export default function ChatList({
   const filteredResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
-    return connections.flatMap(c => (agentMap[c.id] || []).filter(a => a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q)).map(a => ({ agent: a, connection: c })));
-  }, [agentMap, connections, searchQuery]);
+    return connections.flatMap(c => (agentMap[c.id] || []).filter(a => {
+      const displayName = customNames[`${c.id}:${a.id}`] || a.name;
+      return displayName.toLowerCase().includes(q) || a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q) || (c.name || '').toLowerCase().includes(q) || (c.displayName || '').toLowerCase().includes(q);
+    }).map(a => ({ agent: a, connection: c })));
+  }, [agentMap, connections, searchQuery, customNames]);
 
   const connectedCount = connections.filter(c => statusMap[c.id] === 'connected').length;
   const showGroupedView = connections.length > 1 && !searchQuery.trim();

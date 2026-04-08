@@ -1133,6 +1133,10 @@ class ChannelManager {
     return this.get(connectionId)?.currentChatId || '';
   }
 
+  getSenderId(connectionId?: string) {
+    return this.get(connectionId)?.currentSenderId || '';
+  }
+
   getCurrentAgentId(connectionId?: string) {
     return this.get(connectionId)?.currentAgentId || '';
   }
@@ -1366,6 +1370,10 @@ export function getReconnectInfo(connectionId?: string) {
 
 export function getChatId(connectionId?: string) {
   return manager.getChatId(connectionId);
+}
+
+export function getSenderId(connectionId?: string) {
+  return manager.getSenderId(connectionId);
 }
 
 export function getCurrentAgentId(connectionId?: string) {

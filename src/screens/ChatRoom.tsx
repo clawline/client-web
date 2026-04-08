@@ -198,7 +198,6 @@ export default function ChatRoom({
   const agentReadyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevAgentIdRef = useRef<string | null | undefined>(undefined);
   const streamingSourceAgentRef = useRef<string | null>(null); // Track which agent owns current streaming
-  const lastTypingSentRef = useRef(0);
   const fileInputRef2 = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1037,7 +1036,6 @@ export default function ChatRoom({
     // because React inserts at top — we rely on browser's scroll anchoring
   }, [messages, loadingMoreHistory]);
 
-  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -1046,17 +1044,6 @@ export default function ChatRoom({
     setShowSlashMenu(val.startsWith('/') && (
       !val.includes(' ') || val.startsWith('/use ')
     ));
-
-    // Bug 2: Throttle typing indicator to prevent WS spam
-    if (val.trim()) {
-      const now = Date.now();
-      if (now - lastTypingSentRef.current > 3000) {
-        try { channel.sendTyping(true, runtimeConnId); } catch {}
-        lastTypingSentRef.current = now;
-      }
-      if (typingTimer.current) clearTimeout(typingTimer.current);
-      typingTimer.current = setTimeout(() => { try { channel.sendTyping(false, runtimeConnId); } catch {} }, 3000);
-    }
   };
 
   // Edit message

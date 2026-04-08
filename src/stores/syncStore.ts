@@ -7,6 +7,7 @@ import { saveConversationMessages, loadConversationMessages } from '../services/
 const SYNC_COMPLETED_EVENT = 'openclaw:sync-completed';
 const MIN_SYNC_INTERVAL_MS = 30_000; // Don't re-sync same connection within 30s
 const DEBOUNCE_MS = 5_000;
+const MAX_SYNC_PAGES = 5; // Max pagination rounds (5 × 200 = 1000 messages)
 
 export interface SyncState {
   syncStatus: Record<string, 'idle' | 'syncing' | 'done' | 'error'>;
@@ -52,18 +53,33 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
     try {
       // Find the oldest local message timestamp across all agents for this connection
       const agents = channel.loadCachedAgents(connectionId);
+      const chatId = conn.chatId || conn.channelId || undefined;
       let oldestLastTs = Date.now();
       for (const agent of agents) {
-        const localMsgs = await loadConversationMessages(connectionId, agent.id, { limit: 1 });
+        const localMsgs = await loadConversationMessages(connectionId, agent.id, { chatId, limit: 1 });
         const ts = localMsgs.length > 0
           ? Math.max(...localMsgs.map((m) => m.timestamp || 0))
           : Date.now() - 24 * 60 * 60 * 1000;
         if (ts < oldestLastTs) oldestLastTs = ts;
       }
 
-      // Sync once per channel (not per agent)
-      const remoteMsgs = await syncMissedMessages(conn.channelId, oldestLastTs, 200, connectionId);
-      if (remoteMsgs.length === 0) {
+      // Paginated sync: loop until no more messages or max pages reached
+      let cursor = oldestLastTs;
+      const allRemoteMsgs: SyncMessage[] = [];
+
+      for (let page = 0; page < MAX_SYNC_PAGES; page++) {
+        const result = await syncMissedMessages(conn.channelId, cursor, 200, connectionId);
+        if (result.messages.length === 0) break;
+
+        allRemoteMsgs.push(...result.messages);
+
+        // Move cursor to the last message's timestamp
+        cursor = Math.max(...result.messages.map((m) => m.timestamp));
+
+        if (!result.hasMore) break;
+      }
+
+      if (allRemoteMsgs.length === 0) {
         set((s) => ({
           syncStatus: { ...s.syncStatus, [connectionId]: 'done' },
           lastSyncTime: { ...s.lastSyncTime, [connectionId]: Date.now() },
@@ -72,20 +88,20 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
       }
 
       // Group messages by agent_id
-      const byAgent = new Map<string, typeof remoteMsgs>();
-      for (const msg of remoteMsgs) {
+      const byAgent = new Map<string, SyncMessage[]>();
+      for (const msg of allRemoteMsgs) {
         const agentId = msg.agent_id || 'unknown';
         const list = byAgent.get(agentId);
         if (list) list.push(msg);
         else byAgent.set(agentId, [msg]);
       }
 
-      // Save each agent's messages separately
+      // Save each agent's messages separately — use chatId for correct scope
       const { saveAgentPreview } = await import('../components/chat/utils');
       for (const [agentId, msgs] of byAgent) {
         try {
           const localFormat = msgs.map((m) => syncMessageToLocal(m));
-          await saveConversationMessages(connectionId, agentId, localFormat);
+          await saveConversationMessages(connectionId, agentId, localFormat, { chatId });
           if (localFormat.length > 0) {
             saveAgentPreview(agentId, connectionId, localFormat);
           }

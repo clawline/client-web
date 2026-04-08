@@ -155,3 +155,114 @@ Heavy screens (`ChatRoom`, `Dashboard`, `Profile`, `Search`, `Preferences`, `Pai
 - Build produces `__APP_VERSION__` and `__BUILD_HASH__` global defines
 - The `miniprogram/` directory referenced in README does not exist in this repo (it's a separate WeChat mini-program project)
 - `.impeccable.md` at project root contains the design system documentation (brand personality, aesthetic direction)
+
+## Manual Testing with gstack browse
+
+The project has no automated test suite. For integration testing, use the `browse` headless browser tool at `~/.claude/skills/gstack/browse/dist/browse` (aliased as `$B`).
+
+### Critical rules
+
+1. **All steps must be in a single Bash tool call.** The browse server starts fresh on every Bash invocation — session state (cookies, localStorage, WS connections) does NOT persist between calls. Chain everything with `&&`.
+
+2. **`wait --timeout=N` does NOT work.** The `--timeout` flag is silently ignored; the default wait is 15 seconds. Never pass `--timeout`.
+
+3. **Use text selectors over refs for navigation.** `$B click "button:has-text('Inbox')"` is more reliable than `$B click @e19`. Refs shift when page state changes (expand/collapse, loading). Use `$B snapshot -i` + refs only for unique interactive elements where text matching is ambiguous.
+
+4. **`$B snapshot -i > /dev/null` does NOT populate refs.** Piping to `/dev/null` breaks ref storage. Always let snapshot output print (or redirect to a variable) before using `@eN` refs.
+
+5. **No `sleep` between `$B` commands.** Bash `sleep` triggers browse server idle timeout → `[browse] Starting server...` on next call = session lost. Use `$B js "await new Promise(r => setTimeout(r, Nms))"` for in-browser waits, keep under 5 seconds.
+
+### Login flow (Logto)
+
+The app at `localhost:4026` shows a splash screen with "Get Started". Clicking it redirects to `logto.dr.restry.cn`. The Logto page is in Chinese — form fields by HTML name:
+
+```bash
+$B goto http://localhost:4026/
+$B click "text=Get Started"
+$B wait "text=登录你的账号"   # wait for Logto page (default 15s)
+$B fill "input[name=identifier]" "USERNAME"
+$B fill "input[name=password]" "PASSWORD"
+$B click "button[type=submit]"
+$B wait "text=Chats"         # wait for OAuth callback → app redirect
+```
+
+Test account: `test_all_apps` / `Test@2026`
+
+### Injecting connections (localStorage)
+
+After login, inject connections before navigating so the app auto-connects WS:
+
+```bash
+$B js "localStorage.setItem('openclaw.connections', JSON.stringify([{
+  id:'conn-fires-t1', name:'Fires (Levis)', displayName:'Fires/Levis',
+  serverUrl:'wss://relay.restry.cn/client?channelId=fires&token=1b695364f8d24ebaae61f1d8aa9aed94',
+  token:'1b695364f8d24ebaae61f1d8aa9aed94', chatId:'fires', channelId:'fires', senderId:'Levis'
+}]))"
+$B goto http://localhost:4026/chats
+$B wait "text=main"          # WS connected when agents appear
+```
+
+### Injecting messages (IndexedDB)
+
+`messageDB.ts` schema — each record must include `key`, `scopeId`, and the standard fields:
+
+```javascript
+// scopeId = agentId when no chatId (e.g. 'main')
+// key = `${connectionId}::${scopeId}::${messageId}`
+$B js "(async()=>{
+  const cid='conn-fires-t1', aid='main', sid='main', ts=Date.now();
+  const msgs = [
+    {key:cid+'::'+sid+'::m1', scopeId:sid, id:'m1', connectionId:cid, agentId:aid,
+     sender:'user', text:'Hello', timestamp:ts-300000, reactions:[], isStreaming:false},
+    {key:cid+'::'+sid+'::m2', scopeId:sid, id:'m2', connectionId:cid, agentId:aid,
+     sender:'ai', text:'Real reply text', timestamp:ts-280000, reactions:[], isStreaming:false},
+  ];
+  return await new Promise((res,rej)=>{
+    const req=indexedDB.open('clawline-messages',1);
+    req.onsuccess=(e)=>{ const db=e.target.result;
+      const tx=db.transaction('messages','readwrite');
+      msgs.forEach(m=>tx.objectStore('messages').put(m));
+      tx.oncomplete=()=>res('ok'); tx.onerror=()=>rej('err');
+    }; req.onerror=()=>rej('db');
+  });
+})()"
+```
+
+DB name: `clawline-messages` v1, object store: `messages`, keyPath: `key`.  
+Indexes: `by-scope-timestamp` on `[connectionId, scopeId, timestamp]` — used by `loadConversationMessages`.
+
+### Inbox-specific notes
+
+- Inbox only shows agents that have `lastMessage` OR status `thinking`/`pending_reply`. Agents with no message history are filtered out — "No Agents Yet" is correct when IndexedDB is empty.
+- After injecting messages, navigate to Inbox via `$B click "button:has-text('Inbox')"` and wait for `$B wait "text=待回复"`.
+- System messages filtered from previews: `🐾 ...`, `[Image]`, `[image]`, `📎...`, `*[cancelled]*`, diagnostic dumps (`Model: ... Tokens: ...`).
+- **Desktop layout conflict**: On desktop, the sidebar (ChatList) is always visible alongside the Inbox. `button:has-text('main')` will match both the sidebar's "Chat with main" button AND the Inbox agent card. Use `button:has-text('Awaiting Reply')` to uniquely click an Inbox card.
+- **Expand card triggers markAsRead immediately**: Clicking a card calls `markAsRead()` via a `setTimeout(0)` in `handleToggle`. The card's status changes from `pending_reply` → `idle` and `unreadCount` drops to 0 instantly — this is intentional ("viewing = read").
+- **Send button has no text**: The send button in the expanded reply panel contains only a `<Send>` SVG icon. Use `$B press "Enter"` on the textarea instead of trying to click the button by text.
+- **Multi-connection inbox cache injection**: For testing multi-server scenarios without triggering the WS crash, inject pre-built items directly into `openclaw.inbox.cache`:
+  ```javascript
+  $B js "(()=>{const ts=Date.now();const items=[
+    {connectionId:'conn-A', connectionName:'Server A', agentId:'main', agentName:'main',
+     agentEmoji:'🤖', status:'pending_reply',
+     lastMessage:{text:'Message from A',timestamp:ts-120000,messageId:'m1'}, unreadCount:2},
+    {connectionId:'conn-B', connectionName:'Server B', agentId:'nexora-fe', agentName:'nexora-fe',
+     agentEmoji:'🎨', status:'pending_reply',
+     lastMessage:{text:'Message from B',timestamp:ts-60000,messageId:'m2'}, unreadCount:3},
+  ]; localStorage.setItem('openclaw.inbox.cache',JSON.stringify(items)); return 'ok';})()"
+  ```
+- **Two simultaneous WS connections crash the headless browser**: Injecting 2 connections and navigating to `/chats` with `$B wait "text=main"` consistently crashes the browser context (Playwright closes). Single connections work fine. This may be a Vite HMR interaction in dev mode; test multi-connection stats via inbox cache injection instead.
+
+### Inbox integration test results (verified 2026-04-07)
+
+| Test | Scenario | Result |
+|------|----------|--------|
+| A | 3 agents from 2 connections (Fires + nexora) — stats bar | `2 待回复 0 思考中 3 在线 6 未读消息` ✅ |
+| A | Agent cards sorted by recency, correct connection names | ✅ |
+| A | System messages (🐾, [Image]) not shown as last message | ✅ |
+| B | Expand card → markAsRead fires immediately | 待回复 2→1, 未读 5→3 ✅ |
+| B | Type reply + Enter → message appears in conversation view | ✅ |
+| B | Other agents' unread counts unaffected by reply | ✅ |
+| C | Real WS: send from Inbox → agent shows "Thinking..." | Stats: `0 待回复 1 思考中` ✅ |
+| C | Real WS: agent replies → Inbox updates to "Awaiting Reply" | Stats: `1 待回复 0 思考中` ✅ |
+| C | Sidebar also shows "Thinking..." while agent processes | ✅ |
+| D | "Suggest Reply" generates contextual suggestion in textarea | ✅ |

@@ -305,7 +305,6 @@ function setupConnectionListeners(conn: ServerConnection) {
     }
 
     if (packet.type === 'message.send') {
-      // AI sent a message — only track messages with actual text content
       const content = typeof packet.data.content === 'string' ? packet.data.content : '';
       const trimmed = content.trim();
       if (!isContentText(trimmed)) {
@@ -314,6 +313,32 @@ function setupConnectionListeners(conn: ServerConnection) {
 
       const messageId = typeof packet.data.messageId === 'string' ? packet.data.messageId : '';
       const timestamp = typeof packet.data.timestamp === 'number' ? packet.data.timestamp : Date.now();
+
+      // Check if this is our own message echoed back by the relay
+      const senderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
+      const mySenderId = channel.getSenderId(connectionId);
+      const isEcho = packet.data.echo === true || (senderId && mySenderId && senderId === mySenderId);
+
+      if (isEcho) {
+        // User's own echo — save as user message, don't increment unread
+        const chatId = channel.getChatId(connectionId) || undefined;
+        void import('./messageDB').then(({ saveConversationMessages }) => {
+          void saveConversationMessages(connectionId, agentId, [
+            { id: messageId || `user-${timestamp}`, sender: 'user', text: trimmed, timestamp }
+          ], { chatId });
+        });
+        item.lastMessage = { text: trimmed, timestamp, messageId };
+        emitUpdate();
+        return;
+      }
+
+      // AI message — save to IndexedDB + update status
+      const chatId = channel.getChatId(connectionId) || undefined;
+      void import('./messageDB').then(({ saveConversationMessages }) => {
+        void saveConversationMessages(connectionId, agentId, [
+          { id: messageId || `ai-${timestamp}`, sender: 'ai', text: trimmed, timestamp }
+        ], { chatId });
+      });
 
       item.lastMessage = { text: trimmed, timestamp, messageId };
       item.status = 'pending_reply';
@@ -334,6 +359,17 @@ function setupConnectionListeners(conn: ServerConnection) {
 
         if (isContentText(trimmed)) {
           item.lastMessage = { text: trimmed, timestamp, messageId };
+          // Only save to IndexedDB if it's from another client — our own sends
+          // are already saved by InboxItemDetail.handleSend or ChatRoom
+          const mySenderId = channel.getSenderId(connectionId);
+          if (senderId !== mySenderId) {
+            const chatId = channel.getChatId(connectionId) || undefined;
+            void import('./messageDB').then(({ saveConversationMessages }) => {
+              void saveConversationMessages(connectionId, agentId, [
+                { id: messageId || `user-${timestamp}`, sender: 'user', text: trimmed, timestamp }
+              ], { chatId });
+            });
+          }
         }
         item.status = 'idle';
         item.unreadCount = 0;
