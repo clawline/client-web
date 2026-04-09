@@ -3,7 +3,7 @@ import { AnimatePresence, motion, Reorder, useDragControls } from 'motion/react'
 import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List, ArrowUpDown, Check, Crown, GripVertical, Star, Pencil } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
-import { CONNECTIONS_UPDATED_EVENT, getConnections, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
+import { CONNECTIONS_UPDATED_EVENT, getConnections, getConnectionById, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
 import * as channel from '../services/clawChannel';
 import type { AgentInfo, ConversationSummary, ChannelStatus } from '../services/clawChannel';
 import { getUserId } from '../App';
@@ -294,6 +294,15 @@ function hasUnread(connectionId: string, agentId: string, lastMessageTs?: number
   return lastMessageTs > getLastReadTimestamp(connectionId, agentId);
 }
 function getConnectionLabel(c: ServerConnection) { return c.name || c.displayName || 'Server'; }
+
+/** Resolve the display name for an agent. Custom name > agent name > server name (for default/generic agents). */
+function resolveAgentName(agent: AgentInfo, connection: ServerConnection, customNames: Record<string, string>) {
+  const key = `${connection.id}:${agent.id}`;
+  if (customNames[key]) return customNames[key];
+  // If agent name equals its ID (e.g. "main"), it's a generic default — use server name instead
+  if (agent.name === agent.id) return connection.name || connection.displayName || agent.name;
+  return agent.name;
+}
 function getStatusClasses(status: ChannelStatus) {
   if (status === 'connected') return 'bg-primary';
   if (status === 'connecting' || status === 'reconnecting') return 'bg-amber-400';
@@ -784,7 +793,7 @@ export default function ChatList({
             {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <h3 className={cn('font-bold truncate', compact ? 'text-[14px] text-text/90 dark:text-text-inv/90' : 'text-[16px]')}>{customNames[`${connection.id}:${agent.id}`] || agent.name}</h3>
+                <h3 className={cn('font-bold truncate', compact ? 'text-[14px] text-text/90 dark:text-text-inv/90' : 'text-[16px]')}>{resolveAgentName(agent, connection, customNames)}</h3>
                 {agent.model && <span className="text-[10px] truncate ml-auto shrink-0 bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px text-text/45 dark:text-text-inv/40">{agent.model.split('/').pop()}</span>}
               </div>
               {isThinking ? (
@@ -864,7 +873,7 @@ export default function ChatList({
               )}
               {showStatus && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />}
             </div>
-            <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{customNames[`${connection.id}:${agent.id}`] || agent.name}</h3>
+            <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{resolveAgentName(agent, connection, customNames)}</h3>
             {isThinking ? (
               <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">Thinking... <TypingDots /></div>
             ) : isTyping ? (
@@ -901,7 +910,8 @@ export default function ChatList({
 
   const renderReorderListCard = (connectionId: string, agent: AgentInfo) => {
     const key = `${connectionId}:${agent.id}`;
-    const displayName = customNames[key] || agent.name;
+    const conn = getConnectionById(connectionId);
+    const displayName = conn ? resolveAgentName(agent, conn, customNames) : (customNames[key] || agent.name);
     const isFav = favorites.has(key);
     return (
       <ReorderListCard
@@ -920,7 +930,8 @@ export default function ChatList({
 
   const renderReorderGridCard = (connectionId: string, agent: AgentInfo) => {
     const key = `${connectionId}:${agent.id}`;
-    const displayName = customNames[key] || agent.name;
+    const conn = getConnectionById(connectionId);
+    const displayName = conn ? resolveAgentName(agent, conn, customNames) : (customNames[key] || agent.name);
     const isFav = favorites.has(key);
     return (
       <ReorderGridCard
