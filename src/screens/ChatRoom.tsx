@@ -149,6 +149,8 @@ export default function ChatRoom({
   const [activeToolCalls, setActiveToolCalls] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number }[]>([]);
   const [toolCallHistory, setToolCallHistory] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number; endTime: number; resultSummary?: string }[]>([]);
   const [toolHistoryExpanded, setToolHistoryExpanded] = useState(false);
+  const [thinkingText, setThinkingText] = useState('');
+  const streamingPhaseRef = useRef<'idle' | 'streaming_pre' | 'captured' | 'streaming_final'>('idle');
   const retryingRef = useRef<Set<string>>(new Set()); // B1: prevent double-tap retry
   const [voiceMode, setVoiceMode] = useState(() => localStorage.getItem('clawline:voiceMode') === 'true');
   const [voiceListening, setVoiceListening] = useState(false);
@@ -704,6 +706,8 @@ export default function ChatRoom({
         setActiveToolCalls([]); // S3: Clear stale tool calls on final message
         setToolCallHistory([]);
         setToolHistoryExpanded(false);
+        setThinkingText('');
+        streamingPhaseRef.current = 'idle';
         setMessages((prev) => {
           let changed = false;
           const next = prev.map((m) => {
@@ -752,6 +756,10 @@ export default function ChatRoom({
         // Only accept thinking for current agent (ignore events without agentId or from other agents)
         const thinkAgentId = (packet.data as { agentId?: string }).agentId;
         if (!thinkAgentId || !agentId || thinkAgentId === agentId) {
+          // Mark phase as captured — thinkingText is already buffered by text.delta handler
+          if (streamingPhaseRef.current === 'streaming_pre' || streamingPhaseRef.current === 'idle') {
+            streamingPhaseRef.current = 'captured';
+          }
           setIsThinking(true);
           setThinkingPhase('Thinking');
           thinkingStartRef.current = Date.now();
@@ -917,31 +925,40 @@ export default function ChatRoom({
 
           if (localStorage.getItem('openclaw.streaming.enabled') === 'false') return;
 
-          // Streaming text output from backend
-          setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; } // Hide thinking indicator when streaming starts
-
+          // Streaming text output from backend — phase-aware
           if (typeof deltaData.text === 'string') {
-            // Update or create streaming bubble with accumulated text
-            setMessages((prev) => {
-              const streamingIdx = prev.findIndex((m) => m.isStreaming);
-              if (streamingIdx >= 0) {
-                // Update existing streaming message
-                const updated = [...prev];
-                updated[streamingIdx] = { ...updated[streamingIdx], text: deltaData.text! };
-                return updated;
+            if (streamingPhaseRef.current === 'captured' || streamingPhaseRef.current === 'streaming_final') {
+              // Post-tool text = final response → create/update streaming message
+              if (streamingPhaseRef.current === 'captured') {
+                streamingPhaseRef.current = 'streaming_final';
+                setIsThinking(false);
+                if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
               }
-              // Create new streaming message
-              return [
-                ...prev,
-                {
-                  id: `streaming-${Date.now()}`,
-                  sender: 'ai',
-                  text: deltaData.text,
-                  isStreaming: true,
-                  timestamp: deltaData.timestamp || Date.now(),
-                },
-              ];
-            });
+              setMessages((prev) => {
+                const streamingIdx = prev.findIndex((m) => m.isStreaming);
+                if (streamingIdx >= 0) {
+                  const updated = [...prev];
+                  updated[streamingIdx] = { ...updated[streamingIdx], text: deltaData.text! };
+                  return updated;
+                }
+                return [
+                  ...prev,
+                  {
+                    id: `streaming-${Date.now()}`,
+                    sender: 'ai',
+                    text: deltaData.text,
+                    isStreaming: true,
+                    timestamp: deltaData.timestamp || Date.now(),
+                  },
+                ];
+              });
+            } else {
+              // Pre-tool text — buffer in thinkingText, don't create streaming message
+              if (streamingPhaseRef.current === 'idle') {
+                streamingPhaseRef.current = 'streaming_pre';
+              }
+              setThinkingText(deltaData.text);
+            }
           }
         }
       }
@@ -1268,6 +1285,8 @@ export default function ChatRoom({
       setMessages((prev) => [...prev, userMsg]);
       // Immediately show thinking state after sending (unless it's a slash command)
       if (!text.startsWith('/')) {
+        setThinkingText('');
+        streamingPhaseRef.current = 'idle';
         setIsThinking(true);
         setThinkingPhase('Thinking');
         thinkingStartRef.current = Date.now();
@@ -1836,9 +1855,9 @@ export default function ChatRoom({
           </div>
         )}
 
-        {/* Thinking indicator — only show when NOT streaming (during streaming, status shows inline next to cursor) */}
+        {/* Thinking indicator — show when thinking (not streaming) OR when we have captured thinking text */}
         <AnimatePresence>
-          {isThinking && !messages.some((m) => m.isStreaming) && (
+          {((isThinking && !messages.some((m) => m.isStreaming)) || thinkingText) && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1862,6 +1881,16 @@ export default function ChatRoom({
                     </span>
                   );
                 })()}
+
+                {/* Captured/buffered thinking text — live display */}
+                {thinkingText && (
+                  <div className="mt-2 max-h-24 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-2 shadow-sm dark:border-slate-700/70 dark:bg-card-alt/75">
+                    <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-slate-600 dark:text-slate-400">
+                      {thinkingText}
+                      <span className="inline-block w-1.5 h-3.5 bg-primary/50 animate-pulse ml-0.5 align-middle" />
+                    </div>
+                  </div>
+                )}
 
                 {/* Expandable tool call history */}
                 {(toolCallHistory.length > 0 || activeToolCalls.length > 1) && (
@@ -1910,6 +1939,8 @@ export default function ChatRoom({
                   setActiveToolCalls([]);
                   setToolCallHistory([]);
                   setThinkingPhase('');
+                  setThinkingText('');
+                  streamingPhaseRef.current = 'idle';
                   if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
                   // Mark any streaming messages as complete
                   setMessages((prev) => prev.map((m) => m.isStreaming ? { ...m, isStreaming: false, text: m.text + '\n\n*[cancelled]*' } : m));
