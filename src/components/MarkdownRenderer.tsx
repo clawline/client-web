@@ -8,6 +8,32 @@ import type { LanguageFn } from 'highlight.js';
 
 import { cn } from '../lib/utils';
 
+// HTML tags that rehypeRaw is allowed to process as real HTML.
+// Everything else (e.g. AI placeholders like <provider/model>, <id>, <name>)
+// gets escaped to literal angle-bracket text before markdown parsing.
+const ALLOWED_RAW_HTML = new Set([
+  'br', 'hr', 'wbr',
+  'b', 'i', 'u', 's', 'em', 'strong', 'del', 'ins', 'small',
+  'sub', 'sup', 'mark', 'kbd', 'abbr', 'cite', 'q', 'dfn',
+  'details', 'summary',
+  'ruby', 'rt', 'rp',
+]);
+
+/**
+ * Escape angle-bracket sequences that look like HTML tags but aren't in the
+ * allowed set.  Fenced code blocks (```) and inline code (`) are left alone.
+ */
+function escapeUnknownHtmlTags(md: string): string {
+  return md.replace(
+    /(```[\s\S]*?```|`[^`\n]+`)|<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*\/?>/g,
+    (match, codeBlock, tagName) => {
+      if (codeBlock) return match;
+      if (tagName && ALLOWED_RAW_HTML.has(tagName.toLowerCase())) return match;
+      return match.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    },
+  );
+}
+
 // Load commonly used languages lazily
 const langLoaders: Record<string, () => Promise<{ default: LanguageFn }>> = {
   javascript: () => import('highlight.js/lib/languages/javascript'),
@@ -177,7 +203,7 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
           hr: () => <hr className="my-4 border-border dark:border-border-dark" />,
         }}
       >
-        {content}
+        {escapeUnknownHtmlTags(content)}
       </ReactMarkdown>
     </div>
   );
