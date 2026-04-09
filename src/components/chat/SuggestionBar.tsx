@@ -150,8 +150,8 @@ function SuggestionBarInner({
   const hideContent = showSlashMenu || showEmojiPicker;
 
   return (
-    <div className="flex items-center gap-1 px-0.5">
-      {/* Fixed left icons — always visible, never hidden by slash menu */}
+    <div className="flex items-center gap-1.5 px-0.5 min-h-[28px]">
+      {/* Fixed left icons — always visible */}
       <div className="flex items-center gap-1 shrink-0">
         <IconButtons skillCount={skillCount} onOpenSlashMenu={onOpenSlashMenu} onOpenContextViewer={onOpenContextViewer} />
       </div>
@@ -170,76 +170,66 @@ function SuggestionBarInner({
       {!hideContent && hasUserMessage && (
         <motion.div
           key="ai-suggestions"
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 10 }}
-          className="flex items-center gap-1.5 flex-1 min-w-0"
+          exit={{ opacity: 0, y: 6 }}
+          className="flex-1 min-w-0 overflow-x-auto scrollbar-hide"
         >
-          <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
+          <div className="flex items-center gap-1.5">
+            {/* AI sparkle button — click to generate suggestions */}
+            {aiSuggestions.length === 0 && !loading && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={fetchAiSuggestions}
+                className="flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/6 px-2.5 py-1 text-[11px] font-medium text-primary/80 transition-colors hover:bg-primary/10 hover:text-primary active:bg-primary/15"
+                title={lang === 'zh' ? 'AI 智能建议' : 'AI suggestions'}
+              >
+                <Sparkles size={12} />
+                <span>{lang === 'zh' ? '建议' : 'Suggest'}</span>
+              </motion.button>
+            )}
 
-          {/* Scrollable suggestion area */}
-          <div className="flex-1 overflow-x-auto scrollbar-hide">
-            <div className="flex items-center gap-1.5">
-              {/* AI sparkle button — click to generate suggestions */}
-              {aiSuggestions.length === 0 && !loading && (
-                <motion.button
-                  whileTap={{ scale: 0.9 }}
-                  onClick={fetchAiSuggestions}
-                  className="flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/6 px-2.5 py-1 text-[11px] font-medium text-primary/80 transition-colors hover:bg-primary/10 hover:text-primary active:bg-primary/15"
-                  title={lang === 'zh' ? 'AI 智能建议' : 'AI suggestions'}
-                >
-                  <Sparkles size={12} />
-                  <span>{lang === 'zh' ? '建议' : 'Suggest'}</span>
-                </motion.button>
-              )}
+            {/* Loading state */}
+            {loading && aiSuggestions.length === 0 && (
+              <span className="flex items-center gap-1 px-2 text-[11px] text-slate-400 dark:text-slate-500">
+                <Sparkles size={11} className="animate-pulse text-primary/50" />
+                <span>{lang === 'zh' ? '生成中…' : 'Thinking…'}</span>
+              </span>
+            )}
 
-              {/* Loading state */}
-              {loading && aiSuggestions.length === 0 && (
-                <span className="flex items-center gap-1 px-2 text-[11px] text-slate-400 dark:text-slate-500">
-                  <Sparkles size={11} className="animate-pulse text-primary/50" />
-                  <span>{lang === 'zh' ? '生成中…' : 'Thinking…'}</span>
-                </span>
-              )}
+            {/* AI-generated suggestions */}
+            {aiSuggestions.length > 0 && aiSuggestions.map((sug, i) => (
+              <SuggestionPill
+                key={`ai-${i}-${sug}`}
+                text={sug}
+                delay={i * 0.05}
+                onTap={() => onSetInputValue(sug)}
+                onLongPress={() => onQuickSend(sug)}
+              />
+            ))}
 
-              {/* AI-generated suggestions */}
-              {aiSuggestions.length > 0 && aiSuggestions.map((sug, i) => (
-                <SuggestionPill
-                  key={`ai-${i}-${sug}`}
-                  text={sug}
-                  delay={i * 0.05}
-                  onTap={() => onSetInputValue(sug)}
-                  onLongPress={() => onQuickSend(sug)}
-                />
-              ))}
+            {/* Refresh button when suggestions are shown */}
+            {aiSuggestions.length > 0 && !loading && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={fetchAiSuggestions}
+                className="flex-shrink-0 inline-flex h-5 w-5 items-center justify-center rounded-full text-primary/40 transition-colors hover:bg-primary/8 hover:text-primary/70"
+                title={lang === 'zh' ? '换一批' : 'Refresh'}
+              >
+                <Sparkles size={10} />
+              </motion.button>
+            )}
 
-              {/* Refresh button when suggestions are shown */}
-              {aiSuggestions.length > 0 && !loading && (
-                <motion.button
-                  whileTap={{ scale: 0.9 }}
-                  onClick={fetchAiSuggestions}
-                  className="flex-shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full text-primary/40 transition-colors hover:bg-primary/8 hover:text-primary/70 active:bg-primary/15"
-                  title={lang === 'zh' ? '换一批' : 'Refresh'}
-                >
-                  <Sparkles size={11} />
-                </motion.button>
-              )}
-            </div>
-          </div>
-
-          <div className="h-5 w-px bg-border dark:bg-border-dark mx-0.5 shrink-0" />
-
-          <div className="max-w-[44%] overflow-x-auto scrollbar-hide shrink-0">
-            <div className="flex items-center gap-1">
-              {QUICK_COMMANDS.map((cmd) => (
-                <QuickCommandPill
-                  key={cmd.label}
-                  emoji={cmd.emoji}
-                  label={cmd.label}
-                  onTap={() => onSetInputValue(cmd.label)}
-                  onLongPress={() => onQuickSend(cmd.label)}
-                />
-              ))}
-            </div>
+            {/* Quick commands — inline after suggestions */}
+            {QUICK_COMMANDS.map((cmd) => (
+              <QuickCommandPill
+                key={cmd.label}
+                emoji={cmd.emoji}
+                label={cmd.label}
+                onTap={() => onSetInputValue(cmd.label)}
+                onLongPress={() => onQuickSend(cmd.label)}
+              />
+            ))}
           </div>
         </motion.div>
       )}

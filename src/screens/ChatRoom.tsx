@@ -1802,12 +1802,12 @@ export default function ChatRoom({
         <AnimatePresence>
           {isThinking && !messages.some((m) => m.isStreaming) && (
             <motion.div
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -5 }}
-              className="mt-3 flex gap-3 rounded-[22px] border border-primary/12 bg-primary/6 px-3 py-3 shadow-[0_16px_32px_-28px_rgba(239,90,35,0.45)] dark:border-primary/16 dark:bg-primary/8"
+              exit={{ opacity: 0, y: -4 }}
+              className="mt-2 flex gap-2.5 rounded-2xl border border-primary/10 bg-primary/[0.04] px-3 py-2.5 dark:border-primary/14 dark:bg-primary/[0.06]"
             >
-              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-deep text-sm text-white shadow-sm">
+              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-deep text-[12px] text-white shadow-sm">
                 {agentInfo?.identityEmoji || '🤖'}
               </div>
               <div className="min-w-0 flex-1 pt-1.5">
@@ -1876,7 +1876,7 @@ export default function ChatRoom({
                   // Mark any streaming messages as complete
                   setMessages((prev) => prev.map((m) => m.isStreaming ? { ...m, isStreaming: false, text: m.text + '\n\n*[cancelled]*' } : m));
                 }}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-primary/50 transition-colors hover:bg-primary/10 hover:text-primary self-start mt-0.5"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-primary/40 transition-colors hover:bg-primary/10 hover:text-primary self-start"
                 title="Cancel"
                 aria-label="Cancel AI response"
               >
@@ -2448,11 +2448,11 @@ export default function ChatRoom({
           </div>
 
           {/* Row 2: status + send/mic */}
-          <div className="flex items-center justify-between gap-1 px-1">
-            {/* Connection status */}
-            <div className="flex items-center gap-1.5 text-[11px] text-text/40 dark:text-text-inv/35 truncate">
-              <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${wsStatus === 'connected' ? 'bg-emerald-500' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'bg-amber-400 animate-pulse' : 'bg-text/20 dark:bg-text-inv/20'}`} />
-              <span className="truncate">{wsStatus === 'connected' ? (agentInfo?.model?.split('/').pop() || 'Connected') : wsStatus === 'connecting' ? 'Connecting...' : wsStatus === 'reconnecting' ? 'Reconnecting...' : 'Disconnected'}</span>
+          <div className="flex items-center justify-between gap-1 px-1 pb-0.5">
+            {/* Connection status — compact */}
+            <div className="flex items-center gap-1.5 text-[11px] text-text/35 dark:text-text-inv/30 truncate">
+              <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${wsStatus === 'connected' ? 'bg-emerald-400' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'bg-amber-400 animate-pulse' : 'bg-text/15 dark:bg-text-inv/15'}`} />
+              <span className="truncate">{wsStatus === 'connected' ? (agentInfo?.model?.split('/').pop() || 'Ready') : wsStatus === 'connecting' ? 'Connecting...' : wsStatus === 'reconnecting' ? 'Reconnecting...' : 'Offline'}</span>
             </div>
 
             {/* Send / Mic */}
