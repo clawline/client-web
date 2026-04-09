@@ -1971,7 +1971,7 @@ export default function ChatRoom({
       />
 
       {/* Input Area */}
-      <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-1.5 bg-white px-2 pt-1.5 pb-2 dark:bg-[#11161d]">
+      <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-1.5 bg-white px-2 pt-1.5 pb-3 dark:bg-[#11161d]">
         <AnimatePresence>
           {showSlashMenu && (
             <>
@@ -2443,16 +2443,29 @@ export default function ChatRoom({
               placeholder={agentReady ? 'Reply...' : 'Switching agent...'}
               disabled={!agentReady}
               aria-label="Type a message"
-              className="flex-1 min-w-0 bg-transparent border-none px-1.5 py-1 text-[14px] text-text placeholder:text-text/35 focus:outline-none dark:text-text-inv dark:placeholder:text-text-inv/30 disabled:text-slate-400 disabled:italic disabled:opacity-90"
+              className="flex-1 min-w-0 bg-transparent border-none px-1.5 py-1 text-[13px] text-text placeholder:text-[13px] placeholder:text-text/30 focus:outline-none dark:text-text-inv dark:placeholder:text-text-inv/25 disabled:text-slate-400 disabled:italic disabled:opacity-90"
             />
           </div>
 
-          {/* Row 2: status + send/mic */}
-          <div className="flex items-center justify-between gap-1 px-1 pb-0.5">
+          {/* Row 2: status + quick commands + send/mic */}
+          <div className="flex items-center gap-1 px-1 pb-1">
             {/* Connection status — compact */}
-            <div className="flex items-center gap-1.5 text-[11px] text-text/35 dark:text-text-inv/30 truncate">
+            <div className="flex items-center gap-1.5 text-[10px] text-text/30 dark:text-text-inv/25 shrink-0">
               <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${wsStatus === 'connected' ? 'bg-emerald-400' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'bg-amber-400 animate-pulse' : 'bg-text/15 dark:bg-text-inv/15'}`} />
-              <span className="truncate">{wsStatus === 'connected' ? (agentInfo?.model?.split('/').pop() || 'Ready') : wsStatus === 'connecting' ? 'Connecting...' : wsStatus === 'reconnecting' ? 'Reconnecting...' : 'Offline'}</span>
+              <span>{wsStatus === 'connected' ? (agentInfo?.model?.split('/').pop() || 'Ready') : wsStatus === 'connecting' ? 'Connecting...' : wsStatus === 'reconnecting' ? 'Reconnecting...' : 'Offline'}</span>
+            </div>
+
+            {/* Quick commands — subtle, right-aligned */}
+            <div className="flex-1 flex items-center justify-end gap-0.5 overflow-x-auto scrollbar-hide">
+              {['/status', '/models', '/help', '/new', '/reset'].map((cmd) => (
+                <button
+                  key={cmd}
+                  onClick={() => quickSend(cmd, { clearInput: false })}
+                  className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] text-text/30 transition-colors hover:text-text/55 hover:bg-text/[0.04] dark:text-text-inv/25 dark:hover:text-text-inv/45 dark:hover:bg-text-inv/[0.06]"
+                >
+                  {cmd}
+                </button>
+              ))}
             </div>
 
             {/* Send / Mic */}

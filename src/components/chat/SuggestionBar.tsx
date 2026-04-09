@@ -219,17 +219,6 @@ function SuggestionBarInner({
                 <Sparkles size={10} />
               </motion.button>
             )}
-
-            {/* Quick commands — inline after suggestions */}
-            {QUICK_COMMANDS.map((cmd) => (
-              <QuickCommandPill
-                key={cmd.label}
-                emoji={cmd.emoji}
-                label={cmd.label}
-                onTap={() => onSetInputValue(cmd.label)}
-                onLongPress={() => onQuickSend(cmd.label)}
-              />
-            ))}
           </div>
         </motion.div>
       )}
