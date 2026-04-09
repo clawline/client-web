@@ -576,6 +576,19 @@ export default function ChatRoom({
           agentReadyTimeoutRef.current = null;
         }
         setAgentReady(true);
+      } else if (packet.type === 'message.receive' && packet.data?.content) {
+        // Cross-device sync: user message sent from another client (phone/tablet)
+        const peerSenderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
+        const mySenderId = channel.getSenderId(runtimeConnId);
+        if (peerSenderId && mySenderId && peerSenderId !== mySenderId) {
+          const msgId = (packet.data.messageId as string) || `peer-${Date.now()}`;
+          const content = (packet.data.content as string) || '';
+          const ts = (packet.data.timestamp as number) || Date.now();
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === msgId)) return prev;
+            return [...prev, { id: msgId, sender: 'user', text: content, timestamp: ts, deliveryStatus: 'delivered' as DeliveryStatus }];
+          });
+        }
       } else if (packet.type === 'message.send' && (packet.data?.content || packet.data?.mediaUrl)) {
         // Message isolation: only accept messages for current agent
         const packetAgentId = (packet.data.agentId as string | undefined) || undefined;

@@ -357,6 +357,20 @@ function setupConnectionListeners(conn: ServerConnection) {
 
         if (isContentText(trimmed)) {
           item.lastMessage = { text: trimmed, timestamp, messageId };
+          // Save cross-client messages to IndexedDB (e.g. sent from phone)
+          const mySenderId = channel.getSenderId(connectionId);
+          if (senderId !== mySenderId) {
+            const chatId = channel.getChatId(connectionId) || undefined;
+            void import('./messageDB').then(({ saveConversationMessages }) => {
+              void saveConversationMessages(connectionId, agentId, [
+                { id: messageId || `peer-${timestamp}`, sender: 'user', text: trimmed, timestamp }
+              ], { chatId }).then(() => {
+                window.dispatchEvent(new CustomEvent(CONVERSATION_UPDATED_EVENT, {
+                  detail: { connectionId, agentId },
+                }));
+              });
+            });
+          }
         }
         item.status = 'idle';
         item.unreadCount = 0;
