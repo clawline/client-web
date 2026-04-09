@@ -150,9 +150,9 @@ function SuggestionBarInner({
   const hideContent = showSlashMenu || showEmojiPicker;
 
   return (
-    <div className="flex items-center gap-1.5 px-0.5">
+    <div className="flex items-center gap-1 px-0.5">
       {/* Fixed left icons — always visible, never hidden by slash menu */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="flex items-center gap-1 shrink-0">
         <IconButtons skillCount={skillCount} onOpenSlashMenu={onOpenSlashMenu} onOpenContextViewer={onOpenContextViewer} />
       </div>
 
@@ -329,17 +329,17 @@ function IconButtons({ skillCount, onOpenSlashMenu, onOpenContextViewer }: {
     <>
       <button
         onPointerDown={(e) => { e.stopPropagation(); onOpenSlashMenu(); }}
-        className="flex-shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full border border-primary/20 bg-primary/12 text-primary transition-colors active:scale-95 active:bg-primary/20"
+        className="flex-shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-primary/15 bg-primary/8 text-primary/70 transition-colors active:scale-95 active:bg-primary/18"
         title={`Skills (${skillCount})`}
       >
-        <Puzzle size={15} />
+        <Puzzle size={13} />
       </button>
       <button
         onPointerDown={(e) => { e.stopPropagation(); onOpenContextViewer(); }}
-        className="flex-shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full border border-primary/20 bg-primary/12 text-primary transition-colors active:scale-95 active:bg-primary/20"
+        className="flex-shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-primary/15 bg-primary/8 text-primary/70 transition-colors active:scale-95 active:bg-primary/18"
         title="Context"
       >
-        <FileText size={15} />
+        <FileText size={13} />
       </button>
     </>
   );
