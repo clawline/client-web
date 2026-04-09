@@ -295,12 +295,12 @@ function hasUnread(connectionId: string, agentId: string, lastMessageTs?: number
 }
 function getConnectionLabel(c: ServerConnection) { return c.name || c.displayName || 'Server'; }
 
-/** Resolve the display name for an agent. Custom name > agent name > server name (for default/generic agents). */
+/** Resolve the display name for an agent. Custom name > agent name > server name (for default agent only). */
 function resolveAgentName(agent: AgentInfo, connection: ServerConnection, customNames: Record<string, string>) {
   const key = `${connection.id}:${agent.id}`;
   if (customNames[key]) return customNames[key];
-  // If agent name equals its ID (e.g. "main"), it's a generic default — use server name instead
-  if (agent.name === agent.id) return connection.name || connection.displayName || agent.name;
+  // Only for the default agent: if name is generic (equals ID, e.g. "main"), use server name
+  if (agent.isDefault && agent.name === agent.id) return connection.name || connection.displayName || agent.name;
   return agent.name;
 }
 function getStatusClasses(status: ChannelStatus) {
