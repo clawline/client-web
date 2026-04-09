@@ -638,10 +638,36 @@ export default function ChatRoom({
 
         // Clear streaming source on final message delivery
         streamingSourceAgentRef.current = null;
-        const content = (packet.data.content as string) || '';
+        let content = (packet.data.content as string) || '';
         const mediaUrl = packet.data.mediaUrl as string | undefined;
         const contentType = packet.data.contentType as string | undefined;
         const mimeType = packet.data.mimeType as string | undefined;
+
+        // Cross-agent delegate: parse <<DELEGATE:agentId>>message<</DELEGATE>> directives
+        const delegateRegex = /<<DELEGATE:([a-zA-Z0-9_-]+)>>([\s\S]*?)<<\/DELEGATE>>/g;
+        let delegateMatch: RegExpExecArray | null;
+        while ((delegateMatch = delegateRegex.exec(content)) !== null) {
+          const targetAgentId = delegateMatch[1];
+          const delegateMsg = delegateMatch[2].trim();
+          if (targetAgentId && delegateMsg) {
+            try {
+              channel.selectAgent(targetAgentId, runtimeConnId);
+              channel.sendText(delegateMsg, targetAgentId, runtimeConnId);
+              // Switch back to current agent
+              if (agentId) channel.selectAgent(agentId, runtimeConnId);
+              // Show a local notification in this chat
+              const noteId = `delegate-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+              setMessages(prev => [...prev, {
+                id: noteId,
+                sender: 'ai',
+                text: `📨 Task delegated to **${targetAgentId}**: ${delegateMsg.slice(0, 100)}${delegateMsg.length > 100 ? '...' : ''}`,
+                timestamp: Date.now(),
+              }]);
+            } catch { /* connection not ready, ignore */ }
+          }
+        }
+        // Strip delegate tags from displayed content
+        content = content.replace(delegateRegex, '').trim();
 
         // Determine media type from contentType or mimeType
         let mediaType: string | undefined;
