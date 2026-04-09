@@ -171,6 +171,7 @@ export default function ChatRoom({
   const [showFileGallery, setShowFileGallery] = useState(false);
   const [showContextViewer, setShowContextViewer] = useState(false);
   const [showMoreIcons, setShowMoreIcons] = useState(false);
+  const [showModelMenu, setShowModelMenu] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
   const copyMessage = useCallback((msgId: string, text: string) => {
@@ -2196,7 +2197,7 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
-        <div className="relative flex items-center gap-1 rounded-[16px] border border-border/60 bg-surface/70 p-1.5 dark:border-border-dark/60 dark:bg-white/[0.04]">
+        <div className="relative flex flex-col gap-0.5 rounded-[20px] border border-border/50 bg-surface/50 px-1.5 py-1.5 dark:border-border-dark/50 dark:bg-white/[0.03]">
           {voiceMode ? (
             <>
               {/* Recognized text floating above bar */}
@@ -2322,15 +2323,65 @@ export default function ChatRoom({
             </>
           ) : (
             <>
-          {/* Action menu toggle (+ button) */}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={() => setShowMoreIcons(!showMoreIcons)}
-            className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/40 hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60'}`}
-            aria-label="Attach"
-          >
-            <Plus size={20} />
-          </motion.button>
+          {/* Model menu popover */}
+          <AnimatePresence>
+            {showModelMenu && (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-20"
+                  onClick={() => setShowModelMenu(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                  className="absolute bottom-full right-0 z-30 mb-2 w-[260px] rounded-2xl border border-border/70 bg-white p-1.5 shadow-[0_24px_48px_-20px_rgba(15,23,42,0.28)] dark:border-border-dark/70 dark:bg-card-alt dark:shadow-[0_24px_48px_-20px_rgba(2,6,23,0.7)]"
+                >
+                  {/* Current model */}
+                  <div className="flex items-center gap-3 rounded-xl px-3 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[14px] font-medium text-text dark:text-text-inv truncate">{agentInfo?.model?.split('/').pop() || 'Default'}</div>
+                      <div className="text-[11px] text-text/45 dark:text-text-inv/40 mt-0.5">Current model</div>
+                    </div>
+                    <Check size={16} className="text-primary shrink-0" />
+                  </div>
+
+                  <div className="mx-2 border-t border-border/40 dark:border-border-dark/40" />
+
+                  {/* Extended thinking toggle */}
+                  <button
+                    onClick={() => {
+                      quickSend(thinkLevel !== 'off' ? '/think off' : '/think medium', { clearInput: false });
+                      setShowModelMenu(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[14px] text-text dark:text-text-inv">Extended thinking</div>
+                      <div className="text-[11px] text-text/45 dark:text-text-inv/40 mt-0.5">Think longer for complex tasks</div>
+                    </div>
+                    {/* Toggle switch */}
+                    <div className={`relative w-10 h-[22px] rounded-full transition-colors shrink-0 ${thinkLevel !== 'off' ? 'bg-primary' : 'bg-text/15 dark:bg-text-inv/15'}`}>
+                      <div className={`absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${thinkLevel !== 'off' ? 'translate-x-[21px]' : 'translate-x-[3px]'}`} />
+                    </div>
+                  </button>
+
+                  <div className="mx-2 border-t border-border/40 dark:border-border-dark/40" />
+
+                  {/* More models */}
+                  <button
+                    onClick={() => { quickSend('/models', { clearInput: false }); setShowModelMenu(false); }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                  >
+                    <span className="flex-1 text-[14px] text-text dark:text-text-inv">More models</span>
+                    <ChevronRight size={16} className="text-text/30 dark:text-text-inv/30" />
+                  </button>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
 
           {/* Action menu popover */}
           <AnimatePresence>
@@ -2426,49 +2477,72 @@ export default function ChatRoom({
             )}
           </AnimatePresence>
 
-          <input
-            type="text"
-            value={inputValue}
-            onChange={handleInputChange}
-            onPaste={handlePaste}
-            onFocus={() => { setShowEmojiPicker(false); }}
-            onBlur={() => { window.scrollTo(0, 0); }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing && agentReady) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder={agentReady ? "Message..." : "Switching agent..."}
-            disabled={!agentReady}
-            aria-label="Type a message"
-            className="flex-1 bg-transparent border-none px-2 py-1.5 text-[14px] text-text placeholder:text-slate-400 focus:outline-none focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-primary dark:text-text-inv dark:placeholder:text-slate-500 disabled:text-slate-400 disabled:italic disabled:opacity-90"
-          />
+          {/* Row 1: + button + text input */}
+          <div className="flex items-center gap-0.5">
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setShowMoreIcons(!showMoreIcons)}
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/40 hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60'}`}
+              aria-label="Attach"
+            >
+              <Plus size={18} />
+            </motion.button>
 
-          {/* Voice mode toggle when no text, Send button when has text */}
-          {inputValue.trim() ? (
-            <motion.button
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              whileHover={{ scale: 1.08, y: -2 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={handleSend}
+            <input
+              type="text"
+              value={inputValue}
+              onChange={handleInputChange}
+              onPaste={handlePaste}
+              onFocus={() => { setShowEmojiPicker(false); setShowModelMenu(false); }}
+              onBlur={() => { window.scrollTo(0, 0); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && agentReady) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={agentReady ? 'Reply...' : 'Switching agent...'}
               disabled={!agentReady}
-              aria-label="Send message"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Type a message"
+              className="flex-1 min-w-0 bg-transparent border-none px-1.5 py-1 text-[14px] text-text placeholder:text-text/35 focus:outline-none dark:text-text-inv dark:placeholder:text-text-inv/30 disabled:text-slate-400 disabled:italic disabled:opacity-90"
+            />
+          </div>
+
+          {/* Row 2: model pill + send/mic */}
+          <div className="flex items-center justify-end gap-1 pl-10 -mt-0.5">
+            {/* Model pill */}
+            <button
+              onClick={() => setShowModelMenu(!showModelMenu)}
+              className="flex items-center gap-1 rounded-full bg-text/[0.04] px-2.5 py-1 text-[12px] text-text/55 transition-colors hover:bg-text/[0.07] dark:bg-text-inv/[0.06] dark:text-text-inv/50 dark:hover:bg-text-inv/[0.09]"
             >
-              <ArrowUp size={20} strokeWidth={2.5} />
-            </motion.button>
-          ) : (
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => { localStorage.setItem('clawline:voiceMode', 'true'); setVoiceMode(true); }}
-              aria-label="Switch to voice input"
-              className="flex h-11 w-11 items-center justify-center rounded-full text-text/40 transition-colors hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60"
-            >
-              <Mic size={18} />
-            </motion.button>
-          )}
+              <span className="truncate max-w-[120px]">{agentInfo?.model?.split('/').pop() || 'Model'}</span>
+              <ChevronDown size={12} />
+            </button>
+
+            {/* Send / Mic */}
+            {inputValue.trim() ? (
+              <motion.button
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={handleSend}
+                disabled={!agentReady}
+                aria-label="Send message"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ArrowUp size={16} strokeWidth={2.5} />
+              </motion.button>
+            ) : (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => { localStorage.setItem('clawline:voiceMode', 'true'); setVoiceMode(true); }}
+                aria-label="Switch to voice input"
+                className="flex h-8 w-8 items-center justify-center rounded-full text-text/40 transition-colors hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60"
+              >
+                <Mic size={16} />
+              </motion.button>
+            )}
+          </div>
             </>
           )}
         </div>
