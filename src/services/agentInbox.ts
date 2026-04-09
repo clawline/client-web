@@ -32,6 +32,7 @@ export type InboxItem = {
 // ── Constants ──
 
 const INBOX_UPDATED_EVENT = 'openclaw:inbox-updated';
+const CONVERSATION_UPDATED_EVENT = 'openclaw:conversation-updated';
 const LAST_READ_PREFIX = 'openclaw.inbox.lastRead.';
 const INBOX_CACHE_KEY = 'openclaw.inbox.cache';
 const AGENT_NAMES_KEY = 'clawline.agentNames';
@@ -325,21 +326,18 @@ function setupConnectionListeners(conn: ServerConnection) {
         void import('./messageDB').then(({ saveConversationMessages }) => {
           void saveConversationMessages(connectionId, agentId, [
             { id: messageId || `user-${timestamp}`, sender: 'user', text: trimmed, timestamp }
-          ], { chatId });
+          ], { chatId }).then(() => {
+            window.dispatchEvent(new CustomEvent(CONVERSATION_UPDATED_EVENT, {
+              detail: { connectionId, agentId },
+            }));
+          });
         });
         item.lastMessage = { text: trimmed, timestamp, messageId };
         emitUpdate();
         return;
       }
 
-      // AI message — save to IndexedDB + update status
-      const chatId = channel.getChatId(connectionId) || undefined;
-      void import('./messageDB').then(({ saveConversationMessages }) => {
-        void saveConversationMessages(connectionId, agentId, [
-          { id: messageId || `ai-${timestamp}`, sender: 'ai', text: trimmed, timestamp }
-        ], { chatId });
-      });
-
+      // AI message — update inbox status (persistence handled by ChatRoom's save timer)
       item.lastMessage = { text: trimmed, timestamp, messageId };
       item.status = 'pending_reply';
       item.unreadCount += 1;
@@ -359,17 +357,6 @@ function setupConnectionListeners(conn: ServerConnection) {
 
         if (isContentText(trimmed)) {
           item.lastMessage = { text: trimmed, timestamp, messageId };
-          // Only save to IndexedDB if it's from another client — our own sends
-          // are already saved by InboxItemDetail.handleSend or ChatRoom
-          const mySenderId = channel.getSenderId(connectionId);
-          if (senderId !== mySenderId) {
-            const chatId = channel.getChatId(connectionId) || undefined;
-            void import('./messageDB').then(({ saveConversationMessages }) => {
-              void saveConversationMessages(connectionId, agentId, [
-                { id: messageId || `user-${timestamp}`, sender: 'user', text: trimmed, timestamp }
-              ], { chatId });
-            });
-          }
         }
         item.status = 'idle';
         item.unreadCount = 0;
@@ -503,8 +490,8 @@ export async function refreshInbox() {
 }
 
 export function getInboxItems(): InboxItem[] {
-  const filtered = [...items.values()]
-    .filter(item => item.lastMessage || item.status === 'thinking' || item.status === 'pending_reply');
+  // Show all known agents — as long as they exist in the map, they stay in Inbox
+  const filtered = [...items.values()];
 
   // Deduplicate by agentId — keep the most recently active instance
   const byAgent = new Map<string, InboxItem>();
@@ -572,4 +559,4 @@ export function onInboxUpdate(callback: () => void): () => void {
   return () => window.removeEventListener(INBOX_UPDATED_EVENT, handler);
 }
 
-export { INBOX_UPDATED_EVENT };
+export { INBOX_UPDATED_EVENT, CONVERSATION_UPDATED_EVENT };

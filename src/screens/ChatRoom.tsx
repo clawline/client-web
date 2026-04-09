@@ -361,6 +361,21 @@ export default function ChatRoom({
     return () => window.removeEventListener('openclaw:sync-completed', handler);
   }, [connId, agentId, chatId]);
 
+  // Reload messages when agentInbox saves new messages (e.g. Inbox reply echo or AI message)
+  useEffect(() => {
+    if (!connId || !agentId) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.connectionId === connId && detail?.agentId === agentId) {
+        void loadConversationMessages(connId, agentId, { chatId, limit: DEFAULT_LOAD_LIMIT }).then((fresh) => {
+          setMessages((prev) => mergeMessages(fresh, prev));
+        });
+      }
+    };
+    window.addEventListener('openclaw:conversation-updated', handler);
+    return () => window.removeEventListener('openclaw:conversation-updated', handler);
+  }, [connId, agentId, chatId]);
+
   useEffect(() => {
     if (!draftKey) {
       setInputValue('');
@@ -540,6 +555,34 @@ export default function ChatRoom({
         }
         // Fallback: if server didn't send agentId, use streaming source tracking
         if (!packetAgentId && agentId && streamingSourceAgentRef.current && streamingSourceAgentRef.current !== agentId) {
+          return;
+        }
+
+        // Detect echo: user's own message echoed back by the relay
+        const echoSenderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
+        const mySenderId = channel.getSenderId(runtimeConnId);
+        const isEcho = packet.data.echo === true || (echoSenderId && mySenderId && echoSenderId === mySenderId);
+
+        if (isEcho) {
+          // User's own message — add as 'user' sender (e.g. sent from Inbox)
+          const msgId = (packet.data.messageId as string) || Date.now().toString();
+          const content = (packet.data.content as string) || '';
+          setMessages((prev) => {
+            // If already in state (sent from this ChatRoom), just update
+            if (prev.some((m) => m.id === msgId)) {
+              return prev.map((m) => m.id === msgId ? { ...m, text: content || m.text, deliveryStatus: 'delivered' as DeliveryStatus } : m);
+            }
+            // Not in state (sent from Inbox) — append as user message
+            return [...prev, {
+              id: msgId,
+              sender: 'user',
+              text: content,
+              replyTo: (packet.data.replyTo as string) || undefined,
+              quotedText: (packet.data.quotedText as string) || undefined,
+              timestamp: (packet.data.timestamp as number) || Date.now(),
+              deliveryStatus: 'delivered' as DeliveryStatus,
+            }];
+          });
           return;
         }
 

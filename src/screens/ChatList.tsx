@@ -1059,7 +1059,7 @@ export default function ChatList({
         {!reorderMode && (
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text/50 dark:text-text-inv/45" size={compact ? 14 : 16} />
-            <Input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search agents…"
+            <Input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { setSearchQuery(''); (e.target as HTMLInputElement).blur(); } }} placeholder="Search agents…"
               className={cn('pl-9 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] border-0 placeholder:text-text/30 dark:placeholder:text-text-inv/25',
                 compact ? 'h-8 py-0 text-[12px] pl-8' : 'h-10 py-0 text-[14px]')} />
           </div>

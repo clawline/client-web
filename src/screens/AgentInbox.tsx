@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Inbox as InboxIcon, Send, Sparkles, ExternalLink, Loader2 } from 'lucide-react';
+import { ArrowLeft, Inbox as InboxIcon, Send, Sparkles, ExternalLink, Loader2, ChevronDown, ChevronUp, MessageSquare, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Card } from '../components/ui/card';
@@ -109,7 +109,7 @@ function InboxItemDetail({
   onClose,
 }: {
   item: InboxItem;
-  onSend: (text: string) => void;
+  onSend: (text: string) => string | undefined;
   onOpenChat: () => void;
   onClose: () => void;
 }) {
@@ -121,9 +121,14 @@ function InboxItemDetail({
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const skipReloadRef = useRef(false);
 
   // Load recent conversation messages (both user and AI)
   useEffect(() => {
+    if (skipReloadRef.current) {
+      skipReloadRef.current = false;
+      return;
+    }
     let cancelled = false;
     void loadConversationMessages(item.connectionId, item.agentId, { limit: 20 }).then((allMessages) => {
       if (cancelled) return;
@@ -133,6 +138,18 @@ function InboxItemDetail({
     });
     return () => { cancelled = true; };
   }, [item.connectionId, item.agentId, item.lastMessage?.messageId]);
+
+  // Listen for inbox updates (AI replies) to refresh messages
+  useEffect(() => {
+    const unsub = onInboxUpdate(() => {
+      if (skipReloadRef.current) return;
+      void loadConversationMessages(item.connectionId, item.agentId, { limit: 20 }).then((allMessages) => {
+        const messages = allMessages.filter(isContentMessage);
+        setRecentMessages(messages.slice(-5));
+      });
+    });
+    return unsub;
+  }, [item.connectionId, item.agentId]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -171,16 +188,20 @@ function InboxItemDetail({
     const text = replyText.trim();
     if (!text || sending) return;
     setSending(true);
-    onSend(text);
+    // onSend returns the messageId from channel.sendText() so we can use the
+    // same ID for the local IndexedDB save — preventing duplication when the
+    // server echo arrives and agentInbox saves the echo with the same messageId.
+    const sentMsgId = onSend(text);
+    const ts = Date.now();
+    const msgId = sentMsgId || `inbox-${ts}-${Math.random().toString(36).slice(2, 6)}`;
     // Save to IndexedDB with correct chatId scope so ChatRoom can find it
     const chatId = channel.getChatId(item.connectionId) || undefined;
-    const msgId = `inbox-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const ts = Date.now();
     const msgEntry = { id: msgId, sender: 'user' as const, text, timestamp: ts };
     void import('../services/messageDB').then(({ saveConversationMessages }) => {
       void saveConversationMessages(item.connectionId, item.agentId, [msgEntry], { chatId });
     });
-    // Add to local display immediately
+    // Add to local display immediately and skip next reload
+    skipReloadRef.current = true;
     setRecentMessages((prev) => [...prev, { id: msgId, sender: 'user', text, timestamp: ts }]);
     setTimeout(() => {
       setReplyText('');
@@ -294,6 +315,162 @@ function InboxItemDetail({
   );
 }
 
+// ── Digest panel ──
+
+function DigestPanel({
+  items,
+  onNavigateToChat,
+}: {
+  items: InboxItem[];
+  onNavigateToChat: (connectionId: string, agentId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [digestText, setDigestText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const pendingItems = useMemo(() => items.filter(i => i.status === 'pending_reply'), [items]);
+  const staleItems = useMemo(() => {
+    const thirtyMinAgo = Date.now() - 30 * 60 * 1000;
+    return items.filter(i =>
+      i.status === 'idle' &&
+      i.lastMessage &&
+      i.lastMessage.timestamp < thirtyMinAgo
+    );
+  }, [items]);
+
+  const handleDigest = useCallback(async () => {
+    setLoading(true);
+    try {
+      const statusLines = items.map(i => {
+        const statusLabel = i.status === 'pending_reply' ? '待回复' : i.status === 'thinking' ? '思考中' : i.status === 'idle' ? '空闲' : '离线';
+        const lastMsg = i.lastMessage ? `"${i.lastMessage.text.slice(0, 80)}" (${formatRelativeTime(i.lastMessage.timestamp)})` : '无消息';
+        return `- ${i.agentEmoji || '🤖'} ${i.agentName}: 状态=${statusLabel}, 未读=${i.unreadCount}, 最新消息=${lastMsg}`;
+      }).join('\n');
+
+      const summary = `当前共 ${items.length} 个代理:\n${statusLines}\n\n请用简洁的中文总结各代理状态，指出需要关注的事项。`;
+      const connId = items[0]?.connectionId;
+      const reply = await draftReply([{ sender: 'ai', text: summary }], connId);
+      setDigestText(reply || '无法生成摘要');
+    } catch {
+      setDigestText('生成摘要失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [items]);
+
+  const handleDraftAndSend = useCallback(async (item: InboxItem) => {
+    setActionLoading(item.agentId);
+    try {
+      const allMessages = await loadConversationMessages(item.connectionId, item.agentId, { limit: 20 });
+      const messages = allMessages.filter(isContentMessage);
+      const mapped = messages.map(m => ({ sender: m.sender === 'user' ? 'user' : 'ai', text: m.text }));
+      const reply = await draftReply(mapped, item.connectionId);
+      if (reply) {
+        channel.selectAgent(item.agentId, item.connectionId);
+        channel.sendText(reply, item.agentId, item.connectionId);
+        recordUserMessage(item.connectionId, item.agentId, reply);
+      }
+    } catch { /* ignore */ }
+    setActionLoading(null);
+  }, []);
+
+  const handleNudge = useCallback((item: InboxItem) => {
+    const nudge = '有进展吗？请更新状态。';
+    try {
+      channel.selectAgent(item.agentId, item.connectionId);
+      channel.sendText(nudge, item.agentId, item.connectionId);
+      recordUserMessage(item.connectionId, item.agentId, nudge);
+    } catch { /* ignore */ }
+  }, []);
+
+  return (
+    <Card className="overflow-hidden">
+      <button
+        onClick={() => setExpanded(prev => !prev)}
+        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors"
+      >
+        <span className="text-[13px] font-semibold text-text/70 dark:text-text-inv/70 flex items-center gap-1.5">
+          <Sparkles size={14} className="text-primary" />
+          AI 摘要
+        </span>
+        {expanded ? <ChevronUp size={14} className="text-text/40" /> : <ChevronDown size={14} className="text-text/40" />}
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-3 space-y-2.5">
+              {!digestText && (
+                <button
+                  onClick={handleDigest}
+                  disabled={loading}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-medium transition-all',
+                    loading
+                      ? 'bg-primary/10 text-primary/60 cursor-wait'
+                      : 'bg-primary/10 text-primary hover:bg-primary/18 active:scale-95'
+                  )}
+                >
+                  {loading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                  {loading ? '生成中...' : '✨ 生成摘要'}
+                </button>
+              )}
+
+              {digestText && (
+                <div className="rounded-2xl bg-slate-50/80 dark:bg-white/[0.03] px-3 py-2.5 text-[13px] text-text/70 dark:text-text-inv/70 leading-relaxed">
+                  <MarkdownRenderer content={digestText} className="text-[13px] leading-relaxed [&_p]:my-0.5" />
+                </div>
+              )}
+
+              {/* Action buttons for agents needing attention */}
+              {(pendingItems.length > 0 || staleItems.length > 0) && (
+                <div className="space-y-1.5">
+                  {pendingItems.map(item => (
+                    <div key={item.agentId} className="flex items-center gap-2 text-[12px]">
+                      <span className="text-text/60 dark:text-text-inv/60 truncate flex-1">
+                        {item.agentEmoji} {item.agentName}
+                      </span>
+                      <button
+                        onClick={() => handleDraftAndSend(item)}
+                        disabled={actionLoading === item.agentId}
+                        className="flex items-center gap-1 rounded-lg px-2 py-1 bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500/18 transition-all text-[11px] font-medium shrink-0"
+                      >
+                        {actionLoading === item.agentId ? <Loader2 size={11} className="animate-spin" /> : <MessageSquare size={11} />}
+                        生成回复
+                      </button>
+                    </div>
+                  ))}
+                  {staleItems.map(item => (
+                    <div key={item.agentId} className="flex items-center gap-2 text-[12px]">
+                      <span className="text-text/60 dark:text-text-inv/60 truncate flex-1">
+                        {item.agentEmoji} {item.agentName}
+                      </span>
+                      <button
+                        onClick={() => handleNudge(item)}
+                        className="flex items-center gap-1 rounded-lg px-2 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/18 transition-all text-[11px] font-medium shrink-0"
+                      >
+                        <Bell size={11} />
+                        催更
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </Card>
+  );
+}
+
 // ── Inbox item card ──
 
 function InboxItemCard({
@@ -309,15 +486,17 @@ function InboxItemCard({
 }) {
   const config = statusConfig(item.status);
 
-  const handleSend = useCallback((text: string) => {
+  const handleSend = useCallback((text: string): string | undefined => {
     try {
       // Select the agent first — same as ChatRoom does — so the server
       // routes the reply back to this WS connection instead of buffering it.
       channel.selectAgent(item.agentId, item.connectionId);
-      channel.sendText(text, item.agentId, item.connectionId);
+      const payload = channel.sendText(text, item.agentId, item.connectionId);
       recordUserMessage(item.connectionId, item.agentId, text);
+      return payload.messageId;
     } catch {
       // Connection might not be ready
+      return undefined;
     }
   }, [item.connectionId, item.agentId]);
 
@@ -465,6 +644,13 @@ export default function AgentInbox() {
       <div className="mb-4">
         <SummaryBar items={items} />
       </div>
+
+      {/* Digest panel */}
+      {items.length > 0 && (
+        <div className="mb-4">
+          <DigestPanel items={items} onNavigateToChat={handleNavigateToChat} />
+        </div>
+      )}
 
       {/* Items list */}
       {items.length === 0 ? (
