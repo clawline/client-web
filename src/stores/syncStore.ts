@@ -12,7 +12,7 @@ const MAX_SYNC_PAGES = 5; // Max pagination rounds (5 × 200 = 1000 messages)
 export interface SyncState {
   syncStatus: Record<string, 'idle' | 'syncing' | 'done' | 'error'>;
   lastSyncTime: Record<string, number>;
-  syncConnection: (connectionId: string) => Promise<number>;
+  syncConnection: (connectionId: string, opts?: { force?: boolean }) => Promise<number>;
   syncAll: () => Promise<void>;
 }
 
@@ -33,12 +33,14 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
   syncStatus: {},
   lastSyncTime: {},
 
-  syncConnection: async (connectionId: string) => {
+  syncConnection: async (connectionId: string, opts?: { force?: boolean }) => {
     const state = get();
 
-    // Throttle: skip if synced recently
-    const lastSync = state.lastSyncTime[connectionId] || 0;
-    if (Date.now() - lastSync < MIN_SYNC_INTERVAL_MS) return 0;
+    // Throttle: skip if synced recently (unless forced)
+    if (!opts?.force) {
+      const lastSync = state.lastSyncTime[connectionId] || 0;
+      if (Date.now() - lastSync < MIN_SYNC_INTERVAL_MS) return 0;
+    }
 
     // Lock: skip if already syncing
     if (state.syncStatus[connectionId] === 'syncing') return 0;

@@ -365,6 +365,11 @@ export default function ChatRoom({
       if (cancelled) return;
       setMessages((currentMessages) => mergeMessages(cachedMessages, currentMessages));
       setHasLoadedMessages(true);
+
+      // After loading local cache, sync from remote to catch messages from other devices
+      void import('../stores/syncStore').then(({ useSyncStore }) => {
+        void useSyncStore.getState().syncConnection(connId, { force: true });
+      });
     }).catch(() => {
       if (!cancelled) {
         setHasLoadedMessages(true);
