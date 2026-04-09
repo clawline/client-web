@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, ChevronRight, Smile, Mic, Send, ArrowUp, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, Copy, Check, Shield, Keyboard, ArrowDown } from 'lucide-react';
 import { SpeechRecognitionSession } from '../services/volcASR';
@@ -105,6 +105,18 @@ export default function ChatRoom({
   const connId = activeConn?.id || '';
   const runtimeConnId = channelConnectionId || connId;
   const [messages, setMessages] = useState<Message[]>([]);
+
+  // Defensive dedup: ensure no two messages share the same ID at render time.
+  // Multiple async paths (WebSocket, IndexedDB reload, history.sync) can race
+  // and occasionally introduce duplicates with identical IDs.
+  const renderMessages = useMemo(() => {
+    const seen = new Map<string, number>();
+    return messages.filter((m, i) => {
+      if (seen.has(m.id)) return false;
+      seen.set(m.id, i);
+      return true;
+    });
+  }, [messages]);
 
   // Tick every 30s so "follow up" pill can appear after 2min without re-render trigger
   const [, setTick] = useState(0);
@@ -772,17 +784,7 @@ export default function ChatRoom({
             quotedText: m.quotedText,
           };
         });
-        setMessages((prev) => {
-          // Merge history — don't replace if we already have messages, to prevent disappearing
-          if (prev.length === 0) return history;
-          const existingIds = new Set(prev.map(m => m.id));
-          const newMsgs = history.filter(m => !existingIds.has(m.id));
-          if (newMsgs.length === 0) return prev; // no new messages, keep current
-          // If history has significantly more messages, it's a fresh load — use it
-          if (history.length > prev.length * 1.5) return history;
-          // Otherwise merge new messages and sort by timestamp
-          return [...prev, ...newMsgs].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
-        });
+        setMessages((prev) => mergeMessages(history, prev));
       } else if (packet.type === 'conversation.list') {
         const nextConversations = Array.isArray((packet.data as { conversations?: ConversationSummary[] }).conversations)
           ? [ ...((packet.data as { conversations?: ConversationSummary[] }).conversations || []) ].sort((a, b) => ((b.timestamp || b.lastTimestamp || 0) - (a.timestamp || a.lastTimestamp || 0)))
@@ -1781,12 +1783,12 @@ export default function ChatRoom({
             </div>
           </motion.div>
         )}
-        {messages.map((msg, i) => (
+        {renderMessages.map((msg, i) => (
           <MessageItem
             key={msg.id}
             msg={msg}
             index={i}
-            messages={messages}
+            messages={renderMessages}
             agentInfo={agentInfo}
             copiedMsgId={copiedMsgId}
             runtimeConnId={runtimeConnId}
