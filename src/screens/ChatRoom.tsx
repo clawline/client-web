@@ -221,6 +221,24 @@ export default function ChatRoom({
   const builtinSkillSet = new Set(agentInfo?.builtinSkills ?? []);
   const draftKey = connId && agentId ? `draft:${connId}:${agentId}` : null;
 
+  // Dynamic quick commands — sorted by recent usage
+  const ALL_QUICK_CMDS = ['/status', '/models', '/help', '/new', '/reset', '/compact', '/context', '/whoami'];
+  const RECENT_CMDS_KEY = 'clawline.recentCmds';
+  const [recentCmds, setRecentCmds] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(RECENT_CMDS_KEY) || '[]'); } catch { return []; }
+  });
+  const sortedQuickCmds = useMemo(() => {
+    const recencyMap = new Map(recentCmds.map((cmd, i) => [cmd, recentCmds.length - i]));
+    return [...ALL_QUICK_CMDS].sort((a, b) => (recencyMap.get(b) || 0) - (recencyMap.get(a) || 0));
+  }, [recentCmds]);
+  const trackCmd = useCallback((cmd: string) => {
+    setRecentCmds(prev => {
+      const next = [cmd, ...prev.filter(c => c !== cmd)].slice(0, 20);
+      try { localStorage.setItem(RECENT_CMDS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
   // B1: Retry pending message — dequeue first, send, re-enqueue on failure
   const retryMessage = async (msg: Message) => {
     if (retryingRef.current.has(msg.id)) return; // prevent double-tap
@@ -1275,6 +1293,8 @@ export default function ChatRoom({
     const trimmedInput = inputValue.trim();
     if (!trimmedInput) return;
     if (!agentReady) return; // Bug 1: Prevent sending before agent is ready
+    // Track slash commands for dynamic quick-command ordering
+    if (trimmedInput.startsWith('/')) trackCmd(trimmedInput.split(' ')[0]);
     if (trimmedInput === '/memory') {
       setShowMemory(true);
       setInputValue('');
@@ -1971,7 +1991,7 @@ export default function ChatRoom({
       />
 
       {/* Input Area */}
-      <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-1.5 bg-white px-2 pt-1.5 pb-3 dark:bg-[#11161d]">
+      <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-1.5 bg-white px-2 pt-1.5 dark:bg-[#11161d]">
         <AnimatePresence>
           {showSlashMenu && (
             <>
@@ -2196,7 +2216,7 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
-        <div className="relative flex flex-col gap-0.5 rounded-[20px] border border-border/50 bg-surface/50 px-1.5 py-1.5 dark:border-border-dark/50 dark:bg-white/[0.03]">
+        <div className="relative mb-3 flex flex-col gap-0.5 rounded-[20px] border border-border/50 bg-surface/50 px-1.5 py-1.5 dark:border-border-dark/50 dark:bg-white/[0.03]">
           {voiceMode ? (
             <>
               {/* Recognized text floating above bar */}
@@ -2455,12 +2475,12 @@ export default function ChatRoom({
               <span>{wsStatus === 'connected' ? (agentInfo?.model?.split('/').pop() || 'Ready') : wsStatus === 'connecting' ? 'Connecting...' : wsStatus === 'reconnecting' ? 'Reconnecting...' : 'Offline'}</span>
             </div>
 
-            {/* Quick commands — subtle, right-aligned */}
+            {/* Quick commands — dynamic, sorted by recent usage */}
             <div className="flex-1 flex items-center justify-end gap-0.5 overflow-x-auto scrollbar-hide">
-              {['/status', '/models', '/help', '/new', '/reset'].map((cmd) => (
+              {sortedQuickCmds.map((cmd) => (
                 <button
                   key={cmd}
-                  onClick={() => quickSend(cmd, { clearInput: false })}
+                  onClick={() => { trackCmd(cmd); quickSend(cmd, { clearInput: false }); }}
                   className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] text-text/30 transition-colors hover:text-text/55 hover:bg-text/[0.04] dark:text-text-inv/25 dark:hover:text-text-inv/45 dark:hover:bg-text-inv/[0.06]"
                 >
                   {cmd}
