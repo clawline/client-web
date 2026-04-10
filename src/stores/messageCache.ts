@@ -5,7 +5,8 @@
  * Architecture: Supabase is the source of truth. This cache avoids
  * repeated HTTP calls when navigating between agents/screens.
  */
-import { syncMissedMessages, syncMessageToLocal, type SyncMessage } from '../services/suggestions';
+import { fetchOlderMessages, syncMessageToLocal, type SyncMessage } from '../services/suggestions';
+import { saveAgentPreview } from '../components/chat/utils';
 
 export type CachedMessage = {
   id: string;
@@ -22,7 +23,6 @@ const cache = new Map<string, Map<string, CachedMessage[]>>();
 // Track which connections completed a full warm (separate from cache data)
 const warmedConnections = new Set<string>();
 
-const WARM_HOURS = 5;
 const WARM_LIMIT = 500;
 const MAX_CACHED_PER_AGENT = 500;
 
@@ -42,7 +42,6 @@ export function appendMessage(connId: string, agentId: string, msg: CachedMessag
   const msgs = connMap.get(agentId) ?? [];
   if (msgs.some((m) => m.id === msg.id)) return;
   msgs.push(msg);
-  // Evict oldest if over cap
   if (msgs.length > MAX_CACHED_PER_AGENT) msgs.splice(0, msgs.length - MAX_CACHED_PER_AGENT);
   connMap.set(agentId, msgs);
 }
@@ -67,36 +66,26 @@ export function isWarmed(connId: string): boolean {
 }
 
 /**
- * Bulk-load last 5 hours of messages for a connection (all agents).
- * Called once per connection on app startup. WS events arriving before
- * this completes do NOT prevent the bulk load (separate warmed flag).
+ * Bulk-load recent messages for a connection (all agents, no time filter).
+ * Uses `before=now` to fetch the most recent N messages regardless of age,
+ * ensuring every agent with history gets its last message for previews.
  */
 export async function warmCache(connId: string, channelId: string): Promise<void> {
   if (warmedConnections.has(connId)) return;
 
-  const afterTs = Date.now() - WARM_HOURS * 3600 * 1000;
-
-  // Paginate to get all messages (not just first 500)
-  const allMessages: SyncMessage[] = [];
-  let cursor = afterTs;
-  for (let page = 0; page < 5; page++) {
-    const result = await syncMissedMessages(channelId, cursor, WARM_LIMIT, connId);
-    if (result.messages.length === 0) break;
-    allMessages.push(...result.messages);
-    if (!result.hasMore) break;
-    cursor = result.messages[result.messages.length - 1].timestamp;
-  }
+  // Fetch most recent messages (no time filter — uses `before=now`, desc order)
+  const result = await fetchOlderMessages(channelId, Date.now() + 1, undefined, WARM_LIMIT, connId);
 
   // Group by agent_id
   const byAgent = new Map<string, SyncMessage[]>();
-  for (const msg of allMessages) {
+  for (const msg of result.messages) {
     const agId = msg.agent_id || 'unknown';
     const list = byAgent.get(agId);
     if (list) list.push(msg);
     else byAgent.set(agId, [msg]);
   }
 
-  // Convert and merge with any WS messages that arrived during fetch
+  // Convert, merge with WS messages, and update ChatList previews
   let connMap = cache.get(connId);
   if (!connMap) { connMap = new Map(); cache.set(connId, connMap); }
 
@@ -104,11 +93,13 @@ export async function warmCache(connId: string, channelId: string): Promise<void
     const existing = connMap.get(agId) ?? [];
     const existingIds = new Set(existing.map((m) => m.id));
     const converted = msgs.map(syncMessageToLocal);
-    // Merge: bulk data + any WS messages that arrived during fetch
     const merged = [...converted.filter((m) => !existingIds.has(m.id)), ...existing];
     merged.sort((a, b) => a.timestamp - b.timestamp);
     if (merged.length > MAX_CACHED_PER_AGENT) merged.splice(0, merged.length - MAX_CACHED_PER_AGENT);
     connMap.set(agId, merged);
+
+    // Update ChatList sidebar preview for this agent
+    saveAgentPreview(agId, connId, merged);
   }
 
   warmedConnections.add(connId);
