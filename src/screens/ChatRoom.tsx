@@ -150,6 +150,7 @@ export default function ChatRoom({
   const [toolCallHistory, setToolCallHistory] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number; endTime: number; resultSummary?: string }[]>([]);
   const [toolHistoryExpanded, setToolHistoryExpanded] = useState(false);
   const [thinkingText, setThinkingText] = useState('');
+  // Phase ref (not state) — every transition MUST accompany a state change to trigger re-render
   const streamingPhaseRef = useRef<'idle' | 'streaming_pre' | 'captured' | 'streaming_final'>('idle');
   const retryingRef = useRef<Set<string>>(new Set()); // B1: prevent double-tap retry
   const [voiceMode, setVoiceMode] = useState(() => localStorage.getItem('clawline:voiceMode') === 'true');
@@ -352,6 +353,8 @@ export default function ChatRoom({
     setHasMoreHistory(false);
     setLoadingMoreHistory(false);
     streamingSourceAgentRef.current = null; // Clear streaming source tracking on agent change
+    streamingPhaseRef.current = 'idle';
+    setThinkingText('');
 
     if (!connId || !agentId) {
       setHasLoadedMessages(true);
@@ -514,6 +517,8 @@ export default function ChatRoom({
     setActiveToolCalls([]);
     setToolCallHistory([]);
     setToolHistoryExpanded(false);
+    setThinkingText('');
+    streamingPhaseRef.current = 'idle';
     setShowHeaderMenu(false);
     setShowHistoryDrawer(false);
     setConversations([]);
@@ -638,36 +643,10 @@ export default function ChatRoom({
 
         // Clear streaming source on final message delivery
         streamingSourceAgentRef.current = null;
-        let content = (packet.data.content as string) || '';
+        const content = (packet.data.content as string) || '';
         const mediaUrl = packet.data.mediaUrl as string | undefined;
         const contentType = packet.data.contentType as string | undefined;
         const mimeType = packet.data.mimeType as string | undefined;
-
-        // Cross-agent delegate: parse <<DELEGATE:agentId>>message<</DELEGATE>> directives
-        const delegateRegex = /<<DELEGATE:([a-zA-Z0-9_-]+)>>([\s\S]*?)<<\/DELEGATE>>/g;
-        let delegateMatch: RegExpExecArray | null;
-        while ((delegateMatch = delegateRegex.exec(content)) !== null) {
-          const targetAgentId = delegateMatch[1];
-          const delegateMsg = delegateMatch[2].trim();
-          if (targetAgentId && delegateMsg) {
-            try {
-              channel.selectAgent(targetAgentId, runtimeConnId);
-              channel.sendText(delegateMsg, targetAgentId, runtimeConnId);
-              // Switch back to current agent
-              if (agentId) channel.selectAgent(agentId, runtimeConnId);
-              // Show a local notification in this chat
-              const noteId = `delegate-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-              setMessages(prev => [...prev, {
-                id: noteId,
-                sender: 'ai',
-                text: `📨 Task delegated to **${targetAgentId}**: ${delegateMsg.slice(0, 100)}${delegateMsg.length > 100 ? '...' : ''}`,
-                timestamp: Date.now(),
-              }]);
-            } catch { /* connection not ready, ignore */ }
-          }
-        }
-        // Strip delegate tags from displayed content
-        content = content.replace(delegateRegex, '').trim();
 
         // Determine media type from contentType or mimeType
         let mediaType: string | undefined;
@@ -881,6 +860,8 @@ export default function ChatRoom({
         setAgentPresence({ status: 'online' });
       } else if (packet.type === 'stream.resume') {
         // Stream resume after reconnection — restore accumulated streaming text
+        streamingPhaseRef.current = 'idle';
+        setThinkingText('');
         const resumeData = packet.data as { chatId?: string; agentId?: string; text?: string; isComplete?: boolean; startTime?: number };
         const resumeAgentId = resumeData.agentId;
         
@@ -926,10 +907,12 @@ export default function ChatRoom({
         const deltaData = packet.data as { chatId?: string; text?: string; done?: boolean; timestamp?: number };
         
         if (deltaData.done) {
-          // Streaming finished - clear source tracking.
+          // Streaming finished - clear source tracking and phase state.
           // Don't remove streaming placeholder yet — let message.send replace it
           // to avoid a 1-frame flash where the message disappears and reappears.
           streamingSourceAgentRef.current = null;
+          streamingPhaseRef.current = 'idle';
+          setThinkingText('');
           // Mark streaming message as done (remove cursor but keep content visible)
           setMessages((prev) => prev.map((m) =>
             m.isStreaming ? { ...m, isStreaming: false, streamingDone: true } : m
@@ -1487,6 +1470,8 @@ export default function ChatRoom({
       setVoiceFinalText('');
       setVoiceInterimText('');
       setVoiceMode(false);
+      setThinkingText('');
+      streamingPhaseRef.current = 'idle';
       setIsThinking(true);
     }, 50);
   }, [voiceFinalText, voiceInterimText, stopVoiceRecognition, agentId, runtimeConnId, replyingTo, messages]);
@@ -1881,9 +1866,10 @@ export default function ChatRoom({
           </div>
         )}
 
-        {/* Thinking indicator — show when thinking (not streaming) OR when we have captured thinking text */}
+        {/* Thinking indicator — show when thinking (not streaming) OR when buffering pre-tool text */}
         <AnimatePresence>
-          {((isThinking && !messages.some((m) => m.isStreaming)) || thinkingText) && (
+          {((isThinking && !messages.some((m) => m.isStreaming)) ||
+            (thinkingText && streamingPhaseRef.current !== 'streaming_final' && streamingPhaseRef.current !== 'idle')) && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
