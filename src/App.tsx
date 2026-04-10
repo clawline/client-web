@@ -167,7 +167,15 @@ function AppShell() {
   // (React Rules of Hooks — Error #310 fix)
 
   const initialFromUrl = pathToScreen(location.pathname, location.search);
-  const initialScreen: Screen = effectivelyAuthenticated ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
+  const hasLocalConnections = (() => {
+    try {
+      const raw = localStorage.getItem('openclaw.connections');
+      if (!raw) return false;
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) && arr.length > 0;
+    } catch { return false; }
+  })();
+  const initialScreen: Screen = (effectivelyAuthenticated || hasLocalConnections) ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
 
   // Navigation state from Zustand store
   const currentScreen = useNavigationStore((s) => s.currentScreen);
@@ -415,7 +423,16 @@ function AppShell() {
 
   const renderScreen = () => {
     // Redirect unauthenticated users to onboarding (except callback)
-    if (!effectivelyAuthenticated && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
+    // Skip onboarding for returning users (have connections saved locally)
+    const hasExistingConnections = (() => {
+      try {
+        const raw = localStorage.getItem('openclaw.connections');
+        if (!raw) return false;
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) && arr.length > 0;
+      } catch { return false; }
+    })();
+    if (!effectivelyAuthenticated && !hasExistingConnections && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
       return <Onboarding onGetStarted={() => navigate('chats')} />;
     }
     const content = (() => {
