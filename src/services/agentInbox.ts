@@ -9,9 +9,18 @@
 import { getConnections, type ServerConnection } from './connectionStore';
 import * as channel from './clawChannel';
 import type { AgentInfo } from './clawChannel';
-import { getMessages, appendMessage, warmCache, isWarmed, type CachedMessage } from '../stores/messageCache';
+import { getMessages, appendMessage, warmCache, isWarmed } from '../stores/messageCache';
 import { getUserId, getUserName } from '../App';
 import { playNewMessage } from '../hooks/useNotificationSound';
+import { saveAgentPreview } from '../components/chat/utils';
+
+/** Update sidebar preview from current cache for a given agent. */
+function updatePreview(connectionId: string, agentId: string) {
+  const msgs = getMessages(connectionId, agentId);
+  if (msgs.length > 0) {
+    saveAgentPreview(agentId, connectionId, msgs as Parameters<typeof saveAgentPreview>[2]);
+  }
+}
 
 // ── Types ──
 
@@ -324,6 +333,7 @@ function setupConnectionListeners(conn: ServerConnection) {
         // User's own echo — update inbox state only (no local persistence)
         item.lastMessage = { text: trimmed, timestamp, messageId };
         appendMessage(connectionId, agentId, { id: messageId, sender: 'user', text: trimmed, timestamp });
+        updatePreview(connectionId, agentId);
         emitUpdate();
         return;
       }
@@ -335,6 +345,7 @@ function setupConnectionListeners(conn: ServerConnection) {
       item.unreadCount += 1;
       item.suggestedReply = undefined;
       playNewMessage();
+      updatePreview(connectionId, agentId);
       emitUpdate();
       return;
     }
@@ -350,6 +361,7 @@ function setupConnectionListeners(conn: ServerConnection) {
         if (isContentText(trimmed)) {
           item.lastMessage = { text: trimmed, timestamp, messageId };
           appendMessage(connectionId, agentId, { id: messageId, sender: 'user', text: trimmed, timestamp });
+          updatePreview(connectionId, agentId);
         }
         item.status = 'idle';
         item.unreadCount = 0;
