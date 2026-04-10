@@ -399,7 +399,7 @@ export default function ChatRoom({
     return () => {
       cancelled = true;
     };
-  }, [agentId, chatId, connId, activeConn]);
+  }, [agentId, chatId, connId, activeConn?.channelId]);
 
 
   useEffect(() => {
