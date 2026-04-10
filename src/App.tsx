@@ -26,7 +26,6 @@ import { usePWAUpdate } from './hooks/usePWAUpdate';
 import { useIOSPWA } from './hooks/useIOSPWA';
 import { cn } from './lib/utils';
 import { MessageCircle, LayoutDashboard, Search as SearchIcon, User, Inbox as InboxIcon } from 'lucide-react';
-import { migrateFromLocalStorage } from './services/messageDB';
 import { initInbox, getUnreadTotal, onInboxUpdate } from './services/agentInbox';
 
 // Lazy-loaded heavy screens
@@ -50,7 +49,6 @@ function ScreenLoading() {
 
 const STORAGE_KEY_USER_ID = 'openclaw.userId';
 const STORAGE_KEY_USER_NAME = 'openclaw.userName';
-const INDEXED_DB_MIGRATED_KEY = 'openclaw.indexeddb.migrated';
 
 
 function createUserId() {
@@ -722,41 +720,9 @@ function AppShell() {
 }
 
 export default function App() {
-  useEffect(() => {
-    if (localStorage.getItem(INDEXED_DB_MIGRATED_KEY) === '1') {
-      return;
-    }
-
-    let cancelled = false;
-
-    void migrateFromLocalStorage().then(() => {
-      if (cancelled) return;
-      localStorage.setItem(INDEXED_DB_MIGRATED_KEY, '1');
-    }).catch(() => {
-      // Retry on next app launch if migration fails.
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Initialize the agent inbox service on app mount
   useEffect(() => {
     void initInbox();
-  }, []);
-
-  // Global sync: pull missed messages when page becomes visible
-  useEffect(() => {
-    const handler = () => {
-      if (document.visibilityState === 'visible') {
-        void import('./stores/syncStore').then(({ useSyncStore }) => {
-          void useSyncStore.getState().syncAll();
-        });
-      }
-    };
-    document.addEventListener('visibilitychange', handler);
-    return () => document.removeEventListener('visibilitychange', handler);
   }, []);
 
   return (

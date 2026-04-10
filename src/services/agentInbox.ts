@@ -9,7 +9,7 @@
 import { getConnections, type ServerConnection } from './connectionStore';
 import * as channel from './clawChannel';
 import type { AgentInfo } from './clawChannel';
-import { loadConversationMessages } from './messageDB';
+import { getMessages, appendMessage, warmCache, isWarmed, type CachedMessage } from '../stores/messageCache';
 import { getUserId, getUserName } from '../App';
 import { playNewMessage } from '../hooks/useNotificationSound';
 
@@ -199,11 +199,11 @@ async function populateAgentFromMessages(
   item.agentEmoji = agentEmoji;
   item.connectionName = connectionName;
 
-  // Load recent messages to determine last message and unread count
+  // Load recent messages from cache to determine last message and unread count
   try {
-    const allMessages = await loadConversationMessages(connectionId, agentId, { limit: 50 });
+    const allMessages = getMessages(connectionId, agentId);
     const messages = allMessages.filter(isContentMessage).filter(
-      (m) => !(m.sender === 'user' && m.text.trim().startsWith('/'))
+      (m: { sender: string; text: string }) => !(m.sender === 'user' && m.text.trim().startsWith('/'))
     );
     if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
@@ -321,24 +321,16 @@ function setupConnectionListeners(conn: ServerConnection) {
       const isEcho = packet.data.echo === true || (senderId && mySenderId && senderId === mySenderId);
 
       if (isEcho) {
-        // User's own echo — save as user message, don't increment unread
-        const chatId = channel.getChatId(connectionId) || undefined;
-        void import('./messageDB').then(({ saveConversationMessages }) => {
-          void saveConversationMessages(connectionId, agentId, [
-            { id: messageId || `user-${timestamp}`, sender: 'user', text: trimmed, timestamp }
-          ], { chatId }).then(() => {
-            window.dispatchEvent(new CustomEvent(CONVERSATION_UPDATED_EVENT, {
-              detail: { connectionId, agentId },
-            }));
-          });
-        });
+        // User's own echo — update inbox state only (no local persistence)
         item.lastMessage = { text: trimmed, timestamp, messageId };
+        appendMessage(connectionId, agentId, { id: messageId, sender: 'user', text: trimmed, timestamp });
         emitUpdate();
         return;
       }
 
       // AI message — update inbox status (persistence handled by ChatRoom's save timer)
       item.lastMessage = { text: trimmed, timestamp, messageId };
+      appendMessage(connectionId, agentId, { id: messageId, sender: 'ai', text: trimmed, timestamp });
       item.status = 'pending_reply';
       item.unreadCount += 1;
       item.suggestedReply = undefined;
@@ -357,20 +349,7 @@ function setupConnectionListeners(conn: ServerConnection) {
 
         if (isContentText(trimmed)) {
           item.lastMessage = { text: trimmed, timestamp, messageId };
-          // Save cross-client messages to IndexedDB (e.g. sent from phone)
-          const mySenderId = channel.getSenderId(connectionId);
-          if (senderId !== mySenderId) {
-            const chatId = channel.getChatId(connectionId) || undefined;
-            void import('./messageDB').then(({ saveConversationMessages }) => {
-              void saveConversationMessages(connectionId, agentId, [
-                { id: messageId || `peer-${timestamp}`, sender: 'user', text: trimmed, timestamp }
-              ], { chatId }).then(() => {
-                window.dispatchEvent(new CustomEvent(CONVERSATION_UPDATED_EVENT, {
-                  detail: { connectionId, agentId },
-                }));
-              });
-            });
-          }
+          appendMessage(connectionId, agentId, { id: messageId, sender: 'user', text: trimmed, timestamp });
         }
         item.status = 'idle';
         item.unreadCount = 0;
@@ -405,24 +384,6 @@ function setupConnectionListeners(conn: ServerConnection) {
     // Request agent list when connection comes alive to discover new agents
     if (status === 'connected') {
       try { channel.requestAgentList(connectionId); } catch { /* ignore */ }
-      // Trigger global sync for this connection
-      void import('../stores/syncStore').then(({ useSyncStore }) => {
-        void useSyncStore.getState().syncConnection(connectionId).then((count) => {
-          if (count > 0) {
-            // Re-populate inbox with fresh data after sync
-            const connections = getConnections();
-            const conn = connections.find((c) => c.id === connectionId);
-            if (conn) {
-              const agents = channel.loadCachedAgents(connectionId);
-              const connectionName = conn.displayName || conn.name || connectionId;
-              for (const agent of agents) {
-                void populateAgentFromMessages(connectionId, connectionName, agent);
-              }
-              emitUpdate();
-            }
-          }
-        });
-      });
     }
     if (changed) emitUpdate();
   }, connectionId);
@@ -488,6 +449,11 @@ export async function refreshInbox() {
   for (const conn of connections) {
     setupConnectionListeners(conn);
   }
+
+  // Warm message cache for each connection (one HTTP call per connection)
+  await Promise.all(
+    connections.map((conn) => warmCache(conn.id, conn.channelId))
+  );
 
   // Populate agent data from cached agent lists and message history
   const populatePromises: Promise<void>[] = [];

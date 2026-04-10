@@ -2,7 +2,18 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { AudioLines, Code2, FileImage, FileText, Loader2, Paperclip, X } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { searchMessages, type MessageRecord } from '../services/messageDB';
+
+type MessageRecord = {
+  id: string;
+  connectionId: string;
+  agentId: string;
+  sender: string;
+  text: string;
+  timestamp: number;
+  chatId?: string;
+  mediaType?: string;
+  mediaUrl?: string;
+};
 
 type GalleryTab = 'all' | 'image' | 'document' | 'audio' | 'code';
 type GalleryKind = Exclude<GalleryTab, 'all'> | 'other';
@@ -310,20 +321,8 @@ export default function FileGallery({
     let cancelled = false;
     setIsLoading(true);
 
-    void searchMessages('', {
-      connectionId,
-      agentId,
-      limit: GALLERY_LIMIT,
-    }).then((messages) => {
-      if (cancelled) return;
-      const nextItems = messages
-        .map(toGalleryItem)
-        .filter((item): item is GalleryItem => item !== null)
-        .sort((left, right) => right.timestamp - left.timestamp);
-
-      setItems(nextItems);
-      setIsLoading(false);
-    }).catch(() => {
+    // File gallery temporarily unavailable (IndexedDB removed, API search pending)
+    void Promise.resolve().then(() => {
       if (cancelled) return;
       setItems([]);
       setIsLoading(false);

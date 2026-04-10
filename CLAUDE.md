@@ -14,7 +14,9 @@ Clawline (OpenClaw) is a **React 19 SPA** that serves as a multi-agent chat clie
 - **Auth**: Logto (`@logto/react`) — endpoint at `logto.dr.restry.cn`
 - **Markdown**: `react-markdown` + `remark-gfm` + `rehype-raw` + `highlight.js`
 - **Icons**: `lucide-react`
-- **Storage**: localStorage (connections, settings) + IndexedDB (messages via `messageDB.ts`, offline outbox via `outbox.ts`)
+- **Storage**: localStorage (connections, settings, agent previews) + Supabase `cl_messages` (message history, single source of truth)
+- **Offline outbox**: In-memory Map backed by sessionStorage (`src/services/outbox.ts`)
+- **Message cache**: In-memory per-session cache populated on startup from Supabase (`src/stores/messageCache.ts`)
 - **Real-time**: WebSocket connections managed in `src/services/clawChannel.ts`
 
 ## Commands
@@ -71,9 +73,11 @@ npm run clean        # Remove dist/
 │   ├── services/
 │   │   ├── clawChannel.ts      # WebSocket management, agent discovery, message send/receive
 │   │   ├── connectionStore.ts  # Server connections CRUD (localStorage-backed)
-│   │   ├── messageDB.ts        # IndexedDB message persistence + localStorage migration
-│   │   ├── outbox.ts           # Offline message queue (IndexedDB)
-│   │   └── suggestions.ts      # AI-powered follow-up suggestion generation
+│   │   ├── outbox.ts           # Offline message queue (in-memory + sessionStorage)
+│   │   ├── suggestions.ts      # AI suggestions + Supabase message sync API + syncMessageToLocal
+│   │   └── agentInbox.ts       # Inbox state management across agents
+│   ├── stores/
+│   │   └── messageCache.ts     # In-memory message cache (warm on startup from Supabase)
 │   ├── hooks/
 │   │   ├── useIOSPWA.ts
 │   │   ├── usePWAUpdate.ts
@@ -103,9 +107,11 @@ Navigation uses a custom `Screen` type union (`'chats' | 'chat_room' | 'dashboar
 ### State Management
 No Redux/Zustand — state is managed via:
 - React `useState`/`useCallback` in `App.tsx` for navigation state
-- `localStorage` for connections, settings, dark mode
-- `IndexedDB` for message history and offline outbox
-- Custom events (`openclaw:connections-updated`) for cross-component sync
+- `localStorage` for connections, settings, dark mode, agent previews
+- **Supabase `cl_messages`** as the single source of truth for message history (via Gateway HTTP API)
+- **In-memory `messageCache`** populated on startup from Supabase (5h window), kept fresh by WS events
+- **In-memory outbox** (sessionStorage-backed) for offline message queue
+- Custom events (`openclaw:connections-updated`, `openclaw:inbox-updated`) for cross-component sync
 
 ### Styling Conventions
 - Tailwind CSS v4 with custom `@theme` variables in `index.css`
@@ -132,8 +138,8 @@ Heavy screens (`ChatRoom`, `Dashboard`, `Profile`, `Search`, `Preferences`, `Pai
 - **Imports**: Use `@/*` path alias for cross-directory imports. Relative imports within the same directory.
 - **Components**: Functional components only. No class components.
 - **Exports**: Default exports for screen components. Named exports for services, hooks, and utilities.
-- **localStorage keys**: Prefixed with `openclaw.` (e.g., `openclaw.darkMode`, `openclaw.connections`).
-- **IndexedDB databases**: `clawline-messages` (messages), `clawline-outbox` (offline queue).
+- **localStorage keys**: Prefixed with `openclaw.` (e.g., `openclaw.darkMode`, `openclaw.connections`, `openclaw.outbox`).
+- **Message storage**: Supabase `cl_messages` via Gateway `/api/messages/sync` endpoint. No IndexedDB.
 - **Comments**: Bilingual (English and Chinese) in some areas — this is intentional.
 - **Formatting**: 2-space indentation, single quotes, trailing commas.
 - **HTML sanitization**: All user/markdown content sanitized via `dompurify` before rendering.
@@ -202,38 +208,13 @@ $B goto http://localhost:4026/chats
 $B wait "text=main"          # WS connected when agents appear
 ```
 
-### Injecting messages (IndexedDB)
+### Message architecture (no IndexedDB)
 
-`messageDB.ts` schema — each record must include `key`, `scopeId`, and the standard fields:
-
-```javascript
-// scopeId = agentId when no chatId (e.g. 'main')
-// key = `${connectionId}::${scopeId}::${messageId}`
-$B js "(async()=>{
-  const cid='conn-fires-t1', aid='main', sid='main', ts=Date.now();
-  const msgs = [
-    {key:cid+'::'+sid+'::m1', scopeId:sid, id:'m1', connectionId:cid, agentId:aid,
-     sender:'user', text:'Hello', timestamp:ts-300000, reactions:[], isStreaming:false},
-    {key:cid+'::'+sid+'::m2', scopeId:sid, id:'m2', connectionId:cid, agentId:aid,
-     sender:'ai', text:'Real reply text', timestamp:ts-280000, reactions:[], isStreaming:false},
-  ];
-  return await new Promise((res,rej)=>{
-    const req=indexedDB.open('clawline-messages',1);
-    req.onsuccess=(e)=>{ const db=e.target.result;
-      const tx=db.transaction('messages','readwrite');
-      msgs.forEach(m=>tx.objectStore('messages').put(m));
-      tx.oncomplete=()=>res('ok'); tx.onerror=()=>rej('err');
-    }; req.onerror=()=>rej('db');
-  });
-})()"
-```
-
-DB name: `clawline-messages` v1, object store: `messages`, keyPath: `key`.  
-Indexes: `by-scope-timestamp` on `[connectionId, scopeId, timestamp]` — used by `loadConversationMessages`.
+Messages are stored only in Supabase `cl_messages` (via the Gateway relay). The client has NO local message database. On app startup, `messageCache.warmCache()` fetches the last 5 hours of messages per connection in a single HTTP call and caches in memory. When navigating to an agent chat, messages are loaded from this cache (zero HTTP calls). Scrolling up triggers `fetchOlderMessages()` to paginate from Supabase.
 
 ### Inbox-specific notes
 
-- Inbox only shows agents that have `lastMessage` OR status `thinking`/`pending_reply`. Agents with no message history are filtered out — "No Agents Yet" is correct when IndexedDB is empty.
+- Inbox only shows agents that have `lastMessage` OR status `thinking`/`pending_reply`. Agents with no message history are filtered out — "No Agents Yet" is correct when Supabase has no messages.
 - After injecting messages, navigate to Inbox via `$B click "button:has-text('Inbox')"` and wait for `$B wait "text=待回复"`.
 - System messages filtered from previews: `🐾 ...`, `[Image]`, `[image]`, `📎...`, `*[cancelled]*`, diagnostic dumps (`Model: ... Tokens: ...`).
 - **Desktop layout conflict**: On desktop, the sidebar (ChatList) is always visible alongside the Inbox. `button:has-text('main')` will match both the sidebar's "Chat with main" button AND the Inbox agent card. Use `button:has-text('Awaiting Reply')` to uniquely click an Inbox card.

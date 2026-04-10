@@ -7,7 +7,6 @@ import { CONNECTIONS_UPDATED_EVENT, getConnections, getConnectionById, setActive
 import * as channel from '../services/clawChannel';
 import type { AgentInfo, ConversationSummary, ChannelStatus } from '../services/clawChannel';
 import { getUserId } from '../App';
-import { getLatestMessagePreview } from '../services/messageDB';
 import AvatarUploader from '../components/AvatarUploader';
 
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
@@ -575,24 +574,14 @@ export default function ChatList({
   useEffect(() => {
     const targets = connections.flatMap(c => (agentMap[c.id] || []).map(a => ({ connectionId: c.id, agentId: a.id })));
     if (!targets.length) { setPreviewMap({}); return; }
-    let cancelled = false;
-    void Promise.all(targets.map(async ({ connectionId, agentId }) => {
-      const p = await getLatestMessagePreview(connectionId, agentId);
-      return [getPreviewStateKey(connectionId, agentId), p ?? getStoredPreview(agentId, connectionId)] as const;
-    })).then(entries => { if (!cancelled) setPreviewMap(Object.fromEntries(entries)); })
-      .catch(() => { if (!cancelled) setPreviewMap(Object.fromEntries(targets.map(t => [getPreviewStateKey(t.connectionId, t.agentId), getStoredPreview(t.agentId, t.connectionId)]))); });
-    return () => { cancelled = true; };
+    setPreviewMap(Object.fromEntries(targets.map(t => [getPreviewStateKey(t.connectionId, t.agentId), getStoredPreview(t.agentId, t.connectionId)])));
   }, [agentMap, connections]);
 
   useEffect(() => {
     const handler = (event: Event) => {
       const { connectionId, agentId } = (event as CustomEvent<{ connectionId?: string; agentId?: string }>).detail ?? {};
       if (!connectionId || !agentId) return;
-      void getLatestMessagePreview(connectionId, agentId).then(p => {
-        setPreviewMap(prev => ({ ...prev, [getPreviewStateKey(connectionId, agentId)]: p ?? getStoredPreview(agentId, connectionId) }));
-      }).catch(() => {
-        setPreviewMap(prev => ({ ...prev, [getPreviewStateKey(connectionId, agentId)]: getStoredPreview(agentId, connectionId) }));
-      });
+      setPreviewMap(prev => ({ ...prev, [getPreviewStateKey(connectionId, agentId)]: getStoredPreview(agentId, connectionId) }));
     };
     window.addEventListener(MESSAGE_PREVIEW_UPDATED_EVENT, handler);
     return () => window.removeEventListener(MESSAGE_PREVIEW_UPDATED_EVENT, handler);

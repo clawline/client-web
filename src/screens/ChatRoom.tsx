@@ -13,15 +13,15 @@ import AgentContextViewer from '../components/AgentContextViewer';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import MemorySheet from '../components/MemorySheet';
 import FileGallery from '../components/FileGallery';
-import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
 import * as outbox from '../services/outbox';
-import { refineVoiceText } from '../services/suggestions';
+import { refineVoiceText, fetchOlderMessages, syncMessageToLocal } from '../services/suggestions';
+import { getMessages as getCachedMessages, appendMessage, isWarmed } from '../stores/messageCache';
 import {
   type DeliveryStatus, type Message, type AgentInfo,
   QUICK_COMMANDS, EMOJI_LIST,
   formatTime, formatDate, formatLastSeen, formatToolName, formatToolArgSnippet, formatResultSummary, formatRelativeTime,
   isDifferentDay, isGroupedWithPrev, humanizeError, fileToDataUrl,
-  getPreviewKey, emitPreviewUpdated, saveAgentPreview, mergeMessages,
+  getPreviewKey, emitPreviewUpdated, mergeMessages,
   getConnectionDisplayName, getSkillDescription,
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
@@ -107,7 +107,7 @@ export default function ChatRoom({
   const [messages, setMessages] = useState<Message[]>([]);
 
   // Defensive dedup: ensure no two messages share the same ID at render time.
-  // Multiple async paths (WebSocket, IndexedDB reload, history.sync) can race
+  // Multiple async paths (WebSocket, messageCache, HTTP fallback, history.sync) can race
   // and occasionally introduce duplicates with identical IDs.
   const renderMessages = useMemo(() => {
     const seen = new Map<string, number>();
@@ -131,6 +131,7 @@ export default function ChatRoom({
   ));
   const [isContextLoading, setIsContextLoading] = useState(false);
   const [hasLoadedMessages, setHasLoadedMessages] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [thinkLevel, setThinkLevel] = useState<ThinkLevel>('off');
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -350,6 +351,7 @@ export default function ChatRoom({
   useEffect(() => {
     setMessages([]);
     setHasLoadedMessages(false);
+    setLoadError(false);
     setHasMoreHistory(false);
     setLoadingMoreHistory(false);
     streamingSourceAgentRef.current = null; // Clear streaming source tracking on agent change
@@ -361,60 +363,44 @@ export default function ChatRoom({
       return;
     }
 
+    const channelId = activeConn?.channelId;
+    if (!channelId) {
+      setHasLoadedMessages(true);
+      return;
+    }
+
     let cancelled = false;
 
-    void loadConversationMessages(connId, agentId, {
-      chatId,
-      limit: DEFAULT_LOAD_LIMIT,
-    }).then((cachedMessages) => {
-      if (cancelled) return;
-      setMessages((currentMessages) => mergeMessages(cachedMessages, currentMessages));
-      setHasLoadedMessages(true);
-
-      // After loading local cache, sync from remote to catch messages from other devices
-      void import('../stores/syncStore').then(({ useSyncStore }) => {
-        void useSyncStore.getState().syncConnection(connId, { force: true });
-      });
-    }).catch(() => {
-      if (!cancelled) {
-        setHasLoadedMessages(true);
+    // Try cache first (populated by warmCache on app startup)
+    const cached = getCachedMessages(connId, agentId || '');
+    if (cached.length > 0 || isWarmed(connId)) {
+      // Cache is warm — use whatever is there (may be empty for new agents)
+      if (cached.length > 0) {
+        setMessages(mergeMessages(cached, []));
       }
-    });
+      setHasLoadedMessages(true);
+      setHasMoreHistory(cached.length > 0);
+    } else {
+      // Cache not warmed yet (deep link / before warmCache ran) — HTTP fallback
+      void fetchOlderMessages(channelId, Date.now(), agentId, 50, connId).then(({ messages: remote, hasMore }) => {
+        if (cancelled) return;
+        const localMsgs = remote.map((m) => syncMessageToLocal(m));
+        setMessages((currentMessages) => mergeMessages(localMsgs, currentMessages));
+        setHasMoreHistory(hasMore);
+        setHasLoadedMessages(true);
+      }).catch(() => {
+        if (!cancelled) {
+          setLoadError(true);
+          setHasLoadedMessages(true);
+        }
+      });
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [agentId, chatId, connId]);
+  }, [agentId, chatId, connId, activeConn]);
 
-  // Reload messages when global sync completes for this connection
-  useEffect(() => {
-    if (!connId || !agentId) return;
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.connectionId === connId && detail?.count > 0) {
-        void loadConversationMessages(connId, agentId, { chatId, limit: DEFAULT_LOAD_LIMIT }).then((fresh) => {
-          setMessages((prev) => mergeMessages(fresh, prev));
-        });
-      }
-    };
-    window.addEventListener('openclaw:sync-completed', handler);
-    return () => window.removeEventListener('openclaw:sync-completed', handler);
-  }, [connId, agentId, chatId]);
-
-  // Reload messages when agentInbox saves new messages (e.g. Inbox reply echo or AI message)
-  useEffect(() => {
-    if (!connId || !agentId) return;
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.connectionId === connId && detail?.agentId === agentId) {
-        void loadConversationMessages(connId, agentId, { chatId, limit: DEFAULT_LOAD_LIMIT }).then((fresh) => {
-          setMessages((prev) => mergeMessages(fresh, prev));
-        });
-      }
-    };
-    window.addEventListener('openclaw:conversation-updated', handler);
-    return () => window.removeEventListener('openclaw:conversation-updated', handler);
-  }, [connId, agentId, chatId]);
 
   useEffect(() => {
     if (!draftKey) {
@@ -429,22 +415,8 @@ export default function ChatRoom({
     }
   }, [draftKey]);
 
-  // Persist messages on change (debounced to avoid thrashing IndexedDB)
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!connId || !agentId || !hasLoadedMessages) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      if (messages.length === 0) {
-        void clearConversationMessages(connId, agentId, { chatId });
-        return;
-      }
-      void saveConversationMessages(connId, agentId, messages, { chatId });
-      saveAgentPreview(agentId, connId, messages);
-    }, 500);
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [hasLoadedMessages, messages, agentId, connId, chatId]);
 
   useEffect(() => {
     if (!draftKey) return;
@@ -622,6 +594,7 @@ export default function ChatRoom({
           // User's own message — add as 'user' sender (e.g. sent from Inbox)
           const msgId = (packet.data.messageId as string) || Date.now().toString();
           const content = (packet.data.content as string) || '';
+          const ts = (packet.data.timestamp as number) || Date.now();
           setMessages((prev) => {
             // If already in state (sent from this ChatRoom), just update
             if (prev.some((m) => m.id === msgId)) {
@@ -634,10 +607,11 @@ export default function ChatRoom({
               text: content,
               replyTo: (packet.data.replyTo as string) || undefined,
               quotedText: (packet.data.quotedText as string) || undefined,
-              timestamp: (packet.data.timestamp as number) || Date.now(),
+              timestamp: ts,
               deliveryStatus: 'delivered' as DeliveryStatus,
             }];
           });
+          appendMessage(connId, agentId || '', { id: msgId, sender: 'user', text: content, timestamp: ts });
           return;
         }
 
@@ -686,6 +660,14 @@ export default function ChatRoom({
               mediaType,
             },
           ];
+        });
+
+        // Keep in-memory cache in sync for cross-screen navigation
+        const aiMsgId = (packet.data.messageId as string) || Date.now().toString();
+        const aiTs = (packet.data.timestamp as number) || Date.now();
+        appendMessage(connId, agentId || '', {
+          id: aiMsgId, sender: 'ai', text: content, timestamp: aiTs,
+          mediaType, mediaUrl,
         });
 
         // Push notification (browser)
@@ -810,9 +792,9 @@ export default function ChatRoom({
         if (historyAgentId && agentId && historyAgentId !== agentId) {
           return;
         }
+        // Initial history push from channel plugin — set hasMore for pagination
         const hasMore = Boolean(packet.data.hasMore);
         setHasMoreHistory(hasMore);
-        setLoadingMoreHistory(false);
         const history = (packet.data.messages as Array<{messageId?: string; content?: string; direction?: string; senderId?: string; timestamp?: number; mediaUrl?: string; contentType?: string; mimeType?: string; replyTo?: string; quotedText?: string}>).map((m) => {
           let mediaType: string | undefined;
           if (m.contentType === 'image' || m.mimeType?.startsWith('image/')) {
@@ -1025,8 +1007,7 @@ export default function ChatRoom({
           }
         }).catch(() => {});
 
-        // Sync missed messages handled by global syncStore (triggered on WS reconnect + visibilitychange)
-        // ChatRoom reloads from IndexedDB when sync completes
+        // Sync missed messages handled on WS reconnect + visibilitychange
       }
       prevWsStatusRef.current = status;
       setWsStatus(status);
@@ -1107,14 +1088,31 @@ export default function ChatRoom({
     }
   }, [activeConn, agentId, chatId, requestConversationList, runtimeConnId, showHistoryDrawer, wsStatus]);
 
-  // ── Load more history on scroll to top ──
-  const loadMoreHistory = useCallback(() => {
-    if (loadingMoreHistory || !hasMoreHistory || !chatId || !agentId || !runtimeConnId) return;
+  // ── Load more history on scroll to top (from Supabase via HTTP) ──
+  const loadMoreHistory = useCallback(async () => {
+    if (loadingMoreHistory || !hasMoreHistory || !agentId || !connId) return;
     const oldest = messages[0];
     if (!oldest?.timestamp) return;
     setLoadingMoreHistory(true);
-    channel.requestHistory(chatId, agentId, runtimeConnId, { limit: 20, before: oldest.timestamp });
-  }, [loadingMoreHistory, hasMoreHistory, chatId, agentId, runtimeConnId, messages]);
+    try {
+      const channelId = activeConn?.channelId;
+      if (!channelId) { setLoadingMoreHistory(false); return; }
+      const { messages: older, hasMore } = await fetchOlderMessages(channelId, oldest.timestamp, agentId, 20, connId);
+      if (older.length > 0) {
+        const localMsgs = older.map((m) => syncMessageToLocal(m));
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newMsgs = localMsgs.filter((m) => !existingIds.has(m.id));
+          return [...newMsgs, ...prev];
+        });
+      }
+      setHasMoreHistory(hasMore);
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingMoreHistory(false);
+    }
+  }, [loadingMoreHistory, hasMoreHistory, agentId, connId, activeConn, messages]);
 
   const scrollBtnRafRef = useRef<number>(0);
   useEffect(() => {
@@ -1684,7 +1682,6 @@ export default function ChatRoom({
           setMessages([]);
           setHasLoadedMessages(true);
           if (connId && agentId) {
-            void clearConversationMessages(connId, agentId, { chatId });
             localStorage.removeItem(getPreviewKey(connId, agentId));
             emitPreviewUpdated(connId, agentId);
           }
@@ -1803,6 +1800,40 @@ export default function ChatRoom({
                 </div>
               </div>
             ))}
+          </div>
+        )}
+        {loadError && (
+          <div className="flex flex-col items-center justify-center gap-2 p-6 text-center text-[var(--color-text-tertiary)]">
+            <p className="text-sm">Couldn't load messages</p>
+            <button
+              onClick={() => {
+                setLoadError(false);
+                setHasLoadedMessages(false);
+                // Re-trigger initial load
+                const channelId = activeConn?.channelId;
+                if (channelId && agentId && connId) {
+                  const cached = getCachedMessages(connId, agentId || '');
+                  if (cached.length > 0) {
+                    setMessages(mergeMessages(cached, []));
+                    setHasLoadedMessages(true);
+                    setHasMoreHistory(true);
+                  } else {
+                    void fetchOlderMessages(channelId, Date.now(), agentId, 50, connId).then(({ messages: remote, hasMore }) => {
+                      const localMsgs = remote.map((m) => syncMessageToLocal(m));
+                      setMessages((currentMessages) => mergeMessages(localMsgs, currentMessages));
+                      setHasMoreHistory(hasMore);
+                      setHasLoadedMessages(true);
+                    }).catch(() => {
+                      setLoadError(true);
+                      setHasLoadedMessages(true);
+                    });
+                  }
+                }
+              }}
+              className="text-xs text-[var(--color-primary)] underline"
+            >
+              Tap to retry
+            </button>
           </div>
         )}
         {hasLoadedMessages && messages.length === 0 && (

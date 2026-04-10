@@ -16,8 +16,8 @@ import {
   type AgentStatus,
 } from '../services/agentInbox';
 import * as channel from '../services/clawChannel';
-import { loadConversationMessages } from '../services/messageDB';
 import { draftReply } from '../services/suggestions';
+import { getMessages } from '../stores/messageCache';
 import { setActiveConnectionId } from '../services/connectionStore';
 import EmptyState from '../components/EmptyState';
 
@@ -129,27 +129,11 @@ function InboxItemDetail({
       skipReloadRef.current = false;
       return;
     }
-    let cancelled = false;
-    void loadConversationMessages(item.connectionId, item.agentId, { limit: 20 }).then((allMessages) => {
-      if (cancelled) return;
-      const messages = allMessages.filter(isContentMessage);
-      // Take last 5 messages for conversation context
-      setRecentMessages(messages.slice(-5));
-    });
-    return () => { cancelled = true; };
+    const allMessages = getMessages(item.connectionId, item.agentId);
+    const messages = allMessages.filter(isContentMessage);
+    // Take last 5 messages for conversation context
+    setRecentMessages(messages.slice(-5));
   }, [item.connectionId, item.agentId, item.lastMessage?.messageId]);
-
-  // Listen for inbox updates (AI replies) to refresh messages
-  useEffect(() => {
-    const unsub = onInboxUpdate(() => {
-      if (skipReloadRef.current) return;
-      void loadConversationMessages(item.connectionId, item.agentId, { limit: 20 }).then((allMessages) => {
-        const messages = allMessages.filter(isContentMessage);
-        setRecentMessages(messages.slice(-5));
-      });
-    });
-    return unsub;
-  }, [item.connectionId, item.agentId]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -162,8 +146,8 @@ function InboxItemDetail({
     setSuggesting(true);
     setSuggestError('');
     try {
-      const allMessages = await loadConversationMessages(item.connectionId, item.agentId, { limit: 20 });
-      const messages = allMessages.filter(isContentMessage);
+      const allMessages = getMessages(item.connectionId, item.agentId);
+      const messages = allMessages.filter(isContentMessage).slice(-20);
       if (messages.length === 0) {
         setSuggestError('No messages to draft from');
         return;
@@ -175,7 +159,7 @@ function InboxItemDetail({
         setReplyText(reply);
         setTimeout(() => textareaRef.current?.focus(), 100);
       } else {
-        setSuggestError('Failed to generate reply — check console for details');
+        setSuggestError('Failed to generate reply -- check console for details');
       }
     } catch (err) {
       setSuggestError(String(err instanceof Error ? err.message : err));
@@ -188,18 +172,9 @@ function InboxItemDetail({
     const text = replyText.trim();
     if (!text || sending) return;
     setSending(true);
-    // onSend returns the messageId from channel.sendText() so we can use the
-    // same ID for the local IndexedDB save — preventing duplication when the
-    // server echo arrives and agentInbox saves the echo with the same messageId.
     const sentMsgId = onSend(text);
     const ts = Date.now();
     const msgId = sentMsgId || `inbox-${ts}-${Math.random().toString(36).slice(2, 6)}`;
-    // Save to IndexedDB with correct chatId scope so ChatRoom can find it
-    const chatId = channel.getChatId(item.connectionId) || undefined;
-    const msgEntry = { id: msgId, sender: 'user' as const, text, timestamp: ts };
-    void import('../services/messageDB').then(({ saveConversationMessages }) => {
-      void saveConversationMessages(item.connectionId, item.agentId, [msgEntry], { chatId });
-    });
     // Add to local display immediately and skip next reload
     skipReloadRef.current = true;
     setRecentMessages((prev) => [...prev, { id: msgId, sender: 'user', text, timestamp: ts }]);
@@ -208,7 +183,7 @@ function InboxItemDetail({
       setSuggestedReply('');
       setSending(false);
     }, 300);
-  }, [replyText, sending, onSend, item.connectionId, item.agentId]);
+  }, [replyText, sending, onSend]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -362,8 +337,8 @@ function DigestPanel({
   const handleDraftAndSend = useCallback(async (item: InboxItem) => {
     setActionLoading(item.agentId);
     try {
-      const allMessages = await loadConversationMessages(item.connectionId, item.agentId, { limit: 20 });
-      const messages = allMessages.filter(isContentMessage);
+      const allMessages = getMessages(item.connectionId, item.agentId);
+      const messages = allMessages.filter(isContentMessage).slice(-20);
       const mapped = messages.map(m => ({ sender: m.sender === 'user' ? 'user' : 'ai', text: m.text }));
       const reply = await draftReply(mapped, item.connectionId);
       if (reply) {
