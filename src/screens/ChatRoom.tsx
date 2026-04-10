@@ -396,6 +396,20 @@ export default function ChatRoom({
       });
     }
 
+    // Background reconciliation: compare local messages with remote to catch any gaps
+    void fetchOlderMessages(channelId, Date.now() + 1, agentId, 50, connId).then(({ messages: remote, hasMore }) => {
+      if (cancelled || remote.length === 0) return;
+      const remoteMsgs = remote.map((m) => syncMessageToLocal(m));
+      setMessages((prev) => {
+        const localIds = new Set(prev.map((m) => m.id));
+        const missing = remoteMsgs.filter((m) => !localIds.has(m.id));
+        if (missing.length === 0) return prev;
+        const merged = [...prev, ...missing].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        return merged;
+      });
+      setHasMoreHistory((prev) => prev || hasMore);
+    }).catch(() => { /* reconciliation is best-effort */ });
+
     return () => {
       cancelled = true;
     };

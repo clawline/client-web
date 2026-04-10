@@ -117,6 +117,7 @@ type ChannelInstance = {
   statusListeners: Set<StatusListener>;
   messageListeners: Set<MessageListener>;
   lastTouchedAt: number;
+  lastMessageTimestamp: number;
 };
 
 function createStableId(prefix: string) {
@@ -161,6 +162,7 @@ function createInstance(connectionId: string): ChannelInstance {
     statusListeners: new Set<StatusListener>(),
     messageListeners: new Set<MessageListener>(),
     lastTouchedAt: 0,
+    lastMessageTimestamp: 0,
   };
 }
 
@@ -454,6 +456,46 @@ class ChannelManager {
     }
   }
 
+  /**
+   * After WS reconnect, fetch messages from Supabase that arrived during the disconnect gap.
+   * Dispatches them through messageListeners so ChatRoom/agentInbox handle dedup and display.
+   */
+  private async syncMissedAfterReconnect(instance: ChannelInstance) {
+    try {
+      const { syncMissedMessages, syncMessageToLocal } = await import('./suggestions');
+      const result = await syncMissedMessages(
+        instance.currentChannelId,
+        instance.lastMessageTimestamp,
+        500,
+        instance.connectionId,
+      );
+      if (result.messages.length === 0) return;
+      // Dispatch each missed message as a message.send packet through listeners
+      for (const msg of result.messages) {
+        const local = syncMessageToLocal(msg);
+        const packet: InboundPacket = {
+          type: 'message.send',
+          data: {
+            messageId: local.id,
+            content: local.text,
+            contentType: local.mediaType || 'text',
+            mediaUrl: local.mediaUrl,
+            agentId: msg.agent_id,
+            senderId: msg.sender_id,
+            timestamp: local.timestamp,
+            // Mark as echo if direction is inbound (user's own message)
+            echo: msg.direction === 'inbound',
+          },
+        };
+        const ts = typeof local.timestamp === 'number' ? local.timestamp : 0;
+        if (ts > instance.lastMessageTimestamp) instance.lastMessageTimestamp = ts;
+        instance.messageListeners.forEach((fn) => fn(packet));
+      }
+    } catch {
+      // Sync failed — non-critical, messages will load on next ChatRoom open
+    }
+  }
+
   private startHeartbeat(instance: ChannelInstance) {
     this.stopHeartbeat(instance);
     instance.heartbeatTimer = setInterval(() => {
@@ -611,10 +653,16 @@ class ChannelManager {
 
     socket.addEventListener('open', () => {
       if (instance.connectionToken !== token || instance.ws !== socket) return;
+      const wasReconnect = instance.reconnectAttempts > 0;
       instance.reconnectAttempts = 0;
       this.updateStatus(instance, 'connected');
       this.touch(instance);
       this.startHeartbeat(instance);
+
+      // On reconnect: pull missed messages from Supabase to fill the gap
+      if (wasReconnect && instance.lastMessageTimestamp > 0 && instance.currentChannelId) {
+        this.syncMissedAfterReconnect(instance);
+      }
     });
 
     socket.addEventListener('message', (event) => {
@@ -625,6 +673,11 @@ class ChannelManager {
 
       try {
         const packet: InboundPacket = JSON.parse(event.data as string);
+        // Track latest message timestamp for reconnect sync
+        if ((packet.type === 'message.send' || packet.type === 'message.receive') && packet.data?.timestamp) {
+          const ts = typeof packet.data.timestamp === 'number' ? packet.data.timestamp : 0;
+          if (ts > instance.lastMessageTimestamp) instance.lastMessageTimestamp = ts;
+        }
         // Heartbeat response — silently consume, don't forward to UI
         if (packet.type === 'pong') return;
         if (packet.type === 'connection.open' && packet.data?.chatId) {
