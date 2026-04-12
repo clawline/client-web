@@ -18,6 +18,7 @@ export type Message = {
   isStreaming?: boolean;
   streamingDone?: boolean;
   deliveryStatus?: DeliveryStatus;
+  threadId?: string;
 };
 
 export type ToolCall = {

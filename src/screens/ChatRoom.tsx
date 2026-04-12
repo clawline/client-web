@@ -25,7 +25,7 @@ import {
   getConnectionDisplayName, getSkillDescription,
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
-import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet } from '../components/chat';
+import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadSessionCard } from '../components/chat';
 
 function getAgentInfo(agentId: string | null | undefined, connectionId: string): AgentInfo | null {
   const list = channel.loadCachedAgents(connectionId);
@@ -117,6 +117,36 @@ export default function ChatRoom({
       return true;
     });
   }, [messages]);
+
+  // Group thread messages into thread cards while keeping insertion order
+  type RenderItem = { kind: 'msg'; msg: Message } | { kind: 'thread'; threadId: string; messages: Message[] };
+  const renderItems = useMemo<RenderItem[]>(() => {
+    const threads = new Map<string, Message[]>();
+    const items: RenderItem[] = [];
+    const threadPlaceholderIndex = new Map<string, number>();
+
+    for (const msg of renderMessages) {
+      if (msg.threadId) {
+        if (!threads.has(msg.threadId)) {
+          threads.set(msg.threadId, []);
+          threadPlaceholderIndex.set(msg.threadId, items.length);
+          items.push({ kind: 'thread', threadId: msg.threadId, messages: [] });
+        }
+        threads.get(msg.threadId)!.push(msg);
+      } else {
+        items.push({ kind: 'msg', msg });
+      }
+    }
+    // Back-fill thread messages
+    for (const item of items) {
+      if (item.kind === 'thread') {
+        item.messages = threads.get(item.threadId) || [];
+      }
+    }
+    return items;
+  }, [renderMessages]);
+
+  const hasThreadMessages = renderItems.some((item) => item.kind === 'thread');
 
   // Tick every 30s so "follow up" pill can appear after 2min without re-render trigger
   const [, setTick] = useState(0);
@@ -672,6 +702,7 @@ export default function ChatRoom({
               timestamp: (packet.data.timestamp as number) || Date.now(),
               mediaUrl,
               mediaType,
+              threadId: (packet.data.threadId as string) || undefined,
             },
           ];
         });
@@ -1877,32 +1908,78 @@ export default function ChatRoom({
             </div>
           </motion.div>
         )}
-        {renderMessages.map((msg, i) => (
-          <MessageItem
-            key={msg.id}
-            msg={msg}
-            index={i}
-            messages={renderMessages}
-            agentInfo={agentInfo}
-            copiedMsgId={copiedMsgId}
-            runtimeConnId={runtimeConnId}
-            streamingStatus={msg.isStreaming && isThinking ? (() => {
-              const latestActive = activeToolCalls[activeToolCalls.length - 1];
-              return latestActive ? `🔧 ${formatToolName(latestActive.toolName)}` : (thinkingPhase || undefined);
-            })() : undefined}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-            onRetry={retryMessage}
-            onReply={startReply}
-            onEdit={handleEditMessage}
-            onDelete={handleDeleteMessage}
-            onCopy={copyMessage}
-            onQuickSend={quickSend}
-            onReactionToggle={handleReactionToggle}
-            onReactionRemove={handleReactionRemove}
-            onOpenReactionPicker={openReactionPicker}
-          />
-        ))}
+        {hasThreadMessages ? (
+          renderItems.map((item, i) => {
+            if (item.kind === 'thread') {
+              const lastTs = item.messages[item.messages.length - 1]?.timestamp;
+              const isActive = lastTs ? Date.now() - lastTs < 60_000 : false;
+              return (
+                <ThreadSessionCard
+                  key={`thread-${item.threadId}`}
+                  threadId={item.threadId}
+                  messages={item.messages}
+                  agentInfo={agentInfo}
+                  isActive={isActive || item.messages.some((m) => m.isStreaming)}
+                />
+              );
+            }
+            const msg = item.msg;
+            const msgIndex = renderMessages.indexOf(msg);
+            return (
+              <MessageItem
+                key={msg.id}
+                msg={msg}
+                index={msgIndex >= 0 ? msgIndex : i}
+                messages={renderMessages}
+                agentInfo={agentInfo}
+                copiedMsgId={copiedMsgId}
+                runtimeConnId={runtimeConnId}
+                streamingStatus={msg.isStreaming && isThinking ? (() => {
+                  const latestActive = activeToolCalls[activeToolCalls.length - 1];
+                  return latestActive ? `🔧 ${formatToolName(latestActive.toolName)}` : (thinkingPhase || undefined);
+                })() : undefined}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onRetry={retryMessage}
+                onReply={startReply}
+                onEdit={handleEditMessage}
+                onDelete={handleDeleteMessage}
+                onCopy={copyMessage}
+                onQuickSend={quickSend}
+                onReactionToggle={handleReactionToggle}
+                onReactionRemove={handleReactionRemove}
+                onOpenReactionPicker={openReactionPicker}
+              />
+            );
+          })
+        ) : (
+          renderMessages.map((msg, i) => (
+            <MessageItem
+              key={msg.id}
+              msg={msg}
+              index={i}
+              messages={renderMessages}
+              agentInfo={agentInfo}
+              copiedMsgId={copiedMsgId}
+              runtimeConnId={runtimeConnId}
+              streamingStatus={msg.isStreaming && isThinking ? (() => {
+                const latestActive = activeToolCalls[activeToolCalls.length - 1];
+                return latestActive ? `🔧 ${formatToolName(latestActive.toolName)}` : (thinkingPhase || undefined);
+              })() : undefined}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+              onRetry={retryMessage}
+              onReply={startReply}
+              onEdit={handleEditMessage}
+              onDelete={handleDeleteMessage}
+              onCopy={copyMessage}
+              onQuickSend={quickSend}
+              onReactionToggle={handleReactionToggle}
+              onReactionRemove={handleReactionRemove}
+              onOpenReactionPicker={openReactionPicker}
+            />
+          ))
+        )}
         {/* Typing indicator */}
         {peerTyping && !isThinking && (
           <div className="flex items-center gap-2 px-2 text-[12px] text-slate-500 dark:text-slate-400">
