@@ -347,6 +347,11 @@ export async function fetchOlderMessages(
  * 'outbound' = server-to-client = AI response; 'inbound' = client-to-server = user message
  */
 export function syncMessageToLocal(msg: SyncMessage) {
+  // Parse meta from JSON string (stored as text in DB)
+  let parsedMeta: Record<string, unknown> | undefined;
+  if (msg.meta) {
+    try { parsedMeta = JSON.parse(msg.meta) as Record<string, unknown>; } catch { /* ignore */ }
+  }
   return {
     id: msg.message_id || msg.id,
     sender: (msg.direction === 'outbound' ? 'ai' : 'user') as 'user' | 'ai',
@@ -354,5 +359,6 @@ export function syncMessageToLocal(msg: SyncMessage) {
     timestamp: msg.timestamp,
     mediaType: msg.content_type !== 'text' ? msg.content_type : undefined,
     mediaUrl: msg.media_url || undefined,
+    meta: parsedMeta,
   };
 }

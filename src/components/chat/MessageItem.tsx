@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { motion } from 'motion/react';
-import { FileText, User, SmilePlus, CornerDownLeft, Copy, Check, Pencil, Trash2 } from 'lucide-react';
+import { FileText, User, SmilePlus, CornerDownLeft, Copy, Check, Pencil, Trash2, Zap } from 'lucide-react';
 import type { Message, AgentInfo } from './types';
 import { DeliveryTicks } from './DeliveryTicks';
 import { formatTime, formatDate, isDifferentDay, isGroupedWithPrev } from './utils';
@@ -92,6 +92,13 @@ function MessageItemInner({
               {!isUser && agentInfo?.model && (
                 <span className="text-[9px] text-text/35 dark:text-text-inv/30 font-medium bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px">
                   {agentInfo.model.split('/').pop()}
+                </span>
+              )}
+              {/* API direct connection badge */}
+              {msg.meta?.source === 'api' && (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 tracking-wide">
+                  <Zap size={8} />
+                  API
                 </span>
               )}
               {/* Inline reply reference — uses quotedText from message payload */}

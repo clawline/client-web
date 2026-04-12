@@ -703,6 +703,7 @@ export default function ChatRoom({
               mediaUrl,
               mediaType,
               threadId: (packet.data.threadId as string) || undefined,
+              meta: packet.data.meta as Record<string, unknown> | undefined,
             },
           ];
         });
@@ -858,6 +859,7 @@ export default function ChatRoom({
             mediaType,
             replyTo: m.replyTo,
             quotedText: m.quotedText,
+            meta: (m as { meta?: Record<string, unknown> }).meta,
           };
         });
         setMessages((prev) => mergeMessages(history, prev));
