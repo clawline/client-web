@@ -25,7 +25,7 @@ import {
   getConnectionDisplayName, getSkillDescription,
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
-import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadSessionCard } from '../components/chat';
+import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadSessionCard, AcpSessionBar, type AcpSessionInfo } from '../components/chat';
 
 function getAgentInfo(agentId: string | null | undefined, connectionId: string): AgentInfo | null {
   const list = channel.loadCachedAgents(connectionId);
@@ -147,6 +147,43 @@ export default function ChatRoom({
   }, [renderMessages]);
 
   const hasThreadMessages = renderItems.some((item) => item.kind === 'thread');
+
+  // Extract ACP session info from spawn messages for the session bar
+  const acpSessions = useMemo<AcpSessionInfo[]>(() => {
+    const sessionMap = new Map<string, AcpSessionInfo>();
+    for (const msg of renderMessages) {
+      if (msg.sender === 'ai' && msg.text.includes('Spawned ACP session') && msg.threadId) {
+        const keyMatch = msg.text.match(/agent:[^\s)]+/);
+        const modeMatch = msg.text.match(/\((\w+),/);
+        const backendMatch = msg.text.match(/backend\s+(\w+)/);
+        if (keyMatch) {
+          sessionMap.set(msg.threadId, {
+            sessionKey: keyMatch[0],
+            threadId: msg.threadId,
+            mode: modeMatch?.[1] || 'persistent',
+            backend: backendMatch?.[1] || 'acpx',
+            messageCount: 0,
+            lastTimestamp: msg.timestamp || Date.now(),
+          });
+        }
+      }
+    }
+    for (const msg of renderMessages) {
+      if (msg.threadId && sessionMap.has(msg.threadId)) {
+        const s = sessionMap.get(msg.threadId)!;
+        s.messageCount++;
+        if (msg.timestamp && msg.timestamp > s.lastTimestamp) s.lastTimestamp = msg.timestamp;
+      }
+    }
+    return [...sessionMap.values()].sort((a, b) => b.lastTimestamp - a.lastTimestamp);
+  }, [renderMessages]);
+
+  // Track active ACP thread — user messages sent while this is set get grouped into the thread
+  // Use ref for immediate access in sendTextMessage (state updates are async)
+  const activeThreadIdRef = useRef<string | undefined>(
+    [...renderMessages].reverse().find((m) => m.threadId)?.threadId
+  );
+  const setActiveThreadId = (id: string | undefined) => { activeThreadIdRef.current = id; };
 
   // Tick every 30s so "follow up" pill can appear after 2min without re-render trigger
   const [, setTick] = useState(0);
@@ -582,6 +619,7 @@ export default function ChatRoom({
     }
 
     const unsubMsg = channel.onMessage((packet) => {
+      console.log('[DEBUG WS] event=', packet.type, 'data.threadId=', packet.data?.threadId, 'data.agentId=', packet.data?.agentId);
       if (packet.type === 'connection.open') {
         // Connection established: select agent + request history + agent list
         try { channel.requestAgentList(runtimeConnId); } catch { /* ignore */ }
@@ -707,13 +745,20 @@ export default function ChatRoom({
             },
           ];
         });
+        console.log('[DEBUG message.send] threadId=', packet.data.threadId, 'full data keys=', Object.keys(packet.data));
+
+        // Track active thread for user message grouping
+        const incomingThreadId = (packet.data.threadId as string) || undefined;
+        if (incomingThreadId) {
+          setActiveThreadId(incomingThreadId);
+        }
 
         // Keep in-memory cache in sync for cross-screen navigation
         const aiMsgId = (packet.data.messageId as string) || Date.now().toString();
         const aiTs = (packet.data.timestamp as number) || Date.now();
         appendMessage(connId, agentId || '', {
           id: aiMsgId, sender: 'ai', text: content, timestamp: aiTs,
-          mediaType, mediaUrl,
+          mediaType, mediaUrl, threadId: (packet.data.threadId as string) || undefined,
         });
 
         // Push notification (browser)
@@ -841,7 +886,7 @@ export default function ChatRoom({
         // Initial history push from channel plugin — set hasMore for pagination
         const hasMore = Boolean(packet.data.hasMore);
         setHasMoreHistory(hasMore);
-        const history = (packet.data.messages as Array<{messageId?: string; content?: string; direction?: string; senderId?: string; timestamp?: number; mediaUrl?: string; contentType?: string; mimeType?: string; replyTo?: string; quotedText?: string}>).map((m) => {
+        const history = (packet.data.messages as Array<{messageId?: string; content?: string; direction?: string; senderId?: string; timestamp?: number; mediaUrl?: string; contentType?: string; mimeType?: string; replyTo?: string; quotedText?: string; threadId?: string}>).map((m) => {
           let mediaType: string | undefined;
           if (m.contentType === 'image' || m.mimeType?.startsWith('image/')) {
             mediaType = 'image';
@@ -860,6 +905,7 @@ export default function ChatRoom({
             replyTo: m.replyTo,
             quotedText: m.quotedText,
             meta: (m as { meta?: Record<string, unknown> }).meta,
+            threadId: m.threadId,
           };
         });
         setMessages((prev) => mergeMessages(history, prev));
@@ -1335,6 +1381,7 @@ export default function ChatRoom({
         quotedText: options?.replyQuotedText,
         timestamp: payload.timestamp || Date.now(),
         deliveryStatus: 'sent',
+        threadId: activeThreadIdRef.current,
       };
       setMessages((prev) => [...prev, userMsg]);
       // Immediately show thinking state after sending (unless it's a slash command)
@@ -1362,6 +1409,7 @@ export default function ChatRoom({
         quotedText: options?.replyQuotedText,
         timestamp: Date.now(),
         deliveryStatus: 'pending',
+        threadId: activeThreadIdRef.current,
       };
       setMessages((prev) => [...prev, userMsg]);
       outbox.enqueue({
@@ -1922,6 +1970,10 @@ export default function ChatRoom({
                   messages={item.messages}
                   agentInfo={agentInfo}
                   isActive={isActive || item.messages.some((m) => m.isStreaming)}
+                  onCloseSession={() => {
+                    sendTextMessage('/acp close');
+                    setActiveThreadId(undefined);
+                  }}
                 />
               );
             }
@@ -2361,6 +2413,15 @@ export default function ChatRoom({
           onSetInputValue={setInputValue}
           onQuickSend={quickSend}
         />
+
+        {/* ACP session chips */}
+        {acpSessions.length > 0 && (
+          <AcpSessionBar
+            sessions={acpSessions}
+            activeThreadId={activeThreadIdRef.current}
+            onSelectSession={(s) => setActiveThreadId(s.threadId)}
+          />
+        )}
 
         {/* Edit bar */}
         {editingMsg && (

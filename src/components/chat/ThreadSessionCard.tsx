@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronDown, ChevronRight, Zap } from 'lucide-react';
+import { ChevronDown, ChevronRight, Zap, Square } from 'lucide-react';
 import type { Message, AgentInfo } from './types';
 import { formatRelativeTime } from './utils';
 import MarkdownRenderer from '../MarkdownRenderer';
@@ -11,9 +11,29 @@ interface ThreadSessionCardProps {
   agentInfo: AgentInfo | null;
   isActive: boolean;
   defaultExpanded?: boolean;
+  onCloseSession?: (threadId: string) => void;
 }
 
 const MAX_VISIBLE_MESSAGES = 10;
+
+function parseSpawnInfo(messages: Message[]): {
+  sessionKey?: string;
+  mode?: string;
+  backend?: string;
+} {
+  const spawnMsg = messages.find(
+    (m) => m.sender === 'ai' && m.text.includes('Spawned ACP session'),
+  );
+  if (!spawnMsg) return {};
+  const keyMatch = spawnMsg.text.match(/agent:[^\s)]+/);
+  const modeMatch = spawnMsg.text.match(/\((\w+),/);
+  const backendMatch = spawnMsg.text.match(/backend\s+(\w+)/);
+  return {
+    sessionKey: keyMatch?.[0],
+    mode: modeMatch?.[1],
+    backend: backendMatch?.[1],
+  };
+}
 
 export function ThreadSessionCard({
   threadId,
@@ -21,6 +41,7 @@ export function ThreadSessionCard({
   agentInfo,
   isActive,
   defaultExpanded = true,
+  onCloseSession,
 }: ThreadSessionCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
@@ -29,6 +50,7 @@ export function ThreadSessionCard({
   const hasStreaming = messages.some((m) => m.isStreaming);
   const statusLabel = hasStreaming ? 'Streaming' : isActive ? 'Running' : 'Ended';
   const shortThreadId = threadId.replace(/^clawline-thread-/, '').slice(0, 8);
+  const spawnInfo = useMemo(() => parseSpawnInfo(messages), [messages]);
 
   const visibleMessages = useMemo(() => {
     if (messages.length <= MAX_VISIBLE_MESSAGES) return messages;
@@ -42,7 +64,7 @@ export function ThreadSessionCard({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="my-2 mx-1 overflow-hidden rounded-xl border border-primary/15 bg-primary/[0.04] dark:border-primary/20 dark:bg-primary/[0.06]"
+      className="my-2 mx-1 rounded-xl border border-primary/15 bg-primary/[0.04] dark:border-primary/20 dark:bg-primary/[0.06]"
     >
       {/* Header */}
       <button
@@ -59,6 +81,14 @@ export function ThreadSessionCard({
                 <span className="text-text/25 dark:text-text-inv/25">&middot;</span>
                 <span className="truncate font-medium text-text/70 dark:text-text-inv/60">
                   {agentInfo.name}
+                </span>
+              </>
+            )}
+            {spawnInfo.mode && (
+              <>
+                <span className="text-text/25 dark:text-text-inv/25">&middot;</span>
+                <span className="truncate text-[11px] font-normal text-text/50 dark:text-text-inv/40">
+                  {spawnInfo.mode}
                 </span>
               </>
             )}
@@ -104,8 +134,27 @@ export function ThreadSessionCard({
             <span className="font-mono text-text/25 dark:text-text-inv/20">{shortThreadId}</span>
           </div>
         </div>
-        <div className="shrink-0 text-text/30 dark:text-text-inv/25">
-          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <div className="flex shrink-0 items-center gap-1">
+          {isActive && onCloseSession && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                onCloseSession(threadId);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.stopPropagation(); onCloseSession(threadId); }
+              }}
+              className="rounded p-1 text-text/30 transition-colors hover:bg-red-500/10 hover:text-red-500 dark:text-text-inv/25 dark:hover:text-red-400"
+              title="End ACP session"
+            >
+              <Square size={13} />
+            </span>
+          )}
+          <span className="text-text/30 dark:text-text-inv/25">
+            {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </span>
         </div>
       </button>
 

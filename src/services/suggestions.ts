@@ -269,6 +269,7 @@ export type SyncMessage = {
   media_url: string | null;
   meta: string | null;
   timestamp: number;
+  thread_id?: string | null;
 };
 
 export type SyncResult = {
@@ -360,5 +361,6 @@ export function syncMessageToLocal(msg: SyncMessage) {
     mediaType: msg.content_type !== 'text' ? msg.content_type : undefined,
     mediaUrl: msg.media_url || undefined,
     meta: parsedMeta,
+    threadId: msg.thread_id || undefined,
   };
 }

@@ -15,6 +15,7 @@ export type CachedMessage = {
   timestamp: number;
   mediaType?: string;
   mediaUrl?: string;
+  threadId?: string;
 };
 
 // connectionId → agentId → CachedMessage[]
