@@ -65,12 +65,25 @@ type Props = {
   onSend: (text: string) => void;
 };
 
+const STORAGE_KEY = (code: string) => `cl.approval.${code}`;
+
+function loadActed(code: string): 'allow-once' | 'allow-always' | 'deny' | null {
+  try {
+    const v = localStorage.getItem(STORAGE_KEY(code));
+    if (v === 'allow-once' || v === 'allow-always' || v === 'deny') return v;
+  } catch {}
+  return null;
+}
+
 export default function ApprovalCard({ parsed, onSend }: Props) {
   const [showCommand, setShowCommand] = useState(false);
-  const [acted, setActed] = useState<'allow-once' | 'allow-always' | 'deny' | null>(null);
+  const [acted, setActed] = useState<'allow-once' | 'allow-always' | 'deny' | null>(
+    () => loadActed(parsed.code)
+  );
 
   const handle = (action: 'allow-once' | 'allow-always' | 'deny') => {
     setActed(action);
+    try { localStorage.setItem(STORAGE_KEY(parsed.code), action); } catch {}
     onSend(`/approve ${parsed.code} ${action}`);
   };
 
