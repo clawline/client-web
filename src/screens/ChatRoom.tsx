@@ -1718,10 +1718,44 @@ export default function ChatRoom({
   };
   const closeLongPress = () => setLongPressedMsgId(null);
 
+  // Thread creation dialog state
+  const [threadCreateMsgId, setThreadCreateMsgId] = useState<string | null>(null);
+  const [threadTitleInput, setThreadTitleInput] = useState('');
+  const threadTitleRef = useRef<HTMLInputElement>(null);
+
+  const handleCreateThread = useCallback((messageId: string) => {
+    // Check if a thread already exists for this message
+    const { threads } = useThreadStore.getState();
+    for (const t of threads.values()) {
+      if (t.parentMessageId === messageId && t.status !== 'deleted') {
+        // Thread exists — open it directly
+        useThreadStore.getState().openThread(t.id, runtimeConnId);
+        return;
+      }
+    }
+    // No thread exists — show title dialog
+    setThreadCreateMsgId(messageId);
+    setThreadTitleInput('');
+    setTimeout(() => threadTitleRef.current?.focus(), 100);
+  }, [runtimeConnId]);
+
+  const confirmCreateThread = useCallback(() => {
+    if (!threadCreateMsgId) return;
+    useThreadStore.getState().createThread(threadCreateMsgId, threadTitleInput.trim() || undefined, runtimeConnId);
+    setThreadCreateMsgId(null);
+    setThreadTitleInput('');
+  }, [threadCreateMsgId, threadTitleInput, runtimeConnId]);
+
+  const cancelCreateThread = useCallback(() => {
+    setThreadCreateMsgId(null);
+    setThreadTitleInput('');
+  }, []);
+
   // Global keyboard shortcuts (Escape to dismiss modals)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (threadCreateMsgId) { cancelCreateThread(); return; }
         if (showEmojiPicker) { setShowEmojiPicker(false); return; }
         if (showSlashMenu) { setShowSlashMenu(false); return; }
         if (showHeaderMenu) { setShowHeaderMenu(false); return; }
@@ -1734,7 +1768,7 @@ export default function ChatRoom({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showEmojiPicker, showSlashMenu, showHeaderMenu, replyingTo, editingMsg, showHistoryDrawer, showContextViewer, longPressedMsgId]);
+  }, [showEmojiPicker, showSlashMenu, showHeaderMenu, replyingTo, editingMsg, showHistoryDrawer, showContextViewer, longPressedMsgId, threadCreateMsgId, cancelCreateThread]);
 
   const openHistoryDrawer = () => {
     setShowHeaderMenu(false);
@@ -2040,6 +2074,7 @@ export default function ChatRoom({
                 onReactionToggle={handleReactionToggle}
                 onReactionRemove={handleReactionRemove}
                 onOpenReactionPicker={openReactionPicker}
+                onCreateThread={handleCreateThread}
               />
             );
           })
@@ -2068,6 +2103,7 @@ export default function ChatRoom({
               onReactionToggle={handleReactionToggle}
               onReactionRemove={handleReactionRemove}
               onOpenReactionPicker={openReactionPicker}
+              onCreateThread={handleCreateThread}
             />
           ))
         )}
@@ -2262,7 +2298,54 @@ export default function ChatRoom({
         onDelete={handleDeleteMessage}
         onReactionToggle={handleReactionToggle}
         onOpenReactionPicker={openReactionPicker}
+        onCreateThread={handleCreateThread}
       />
+
+      {/* Thread creation title dialog */}
+      <AnimatePresence>
+        {threadCreateMsgId && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[70]"
+              onClick={cancelCreateThread}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+              className="fixed inset-x-4 top-[25vh] z-[70] mx-auto max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-card-alt"
+            >
+              <h3 className="text-[16px] font-bold text-text dark:text-text-inv mb-1">Create Thread</h3>
+              <p className="text-[13px] text-text/50 dark:text-text-inv/45 mb-4">Add an optional title for this thread, or skip to create without one.</p>
+              <input
+                ref={threadTitleRef}
+                type="text"
+                value={threadTitleInput}
+                onChange={(e) => setThreadTitleInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') confirmCreateThread(); }}
+                placeholder="Thread title (optional)"
+                className="w-full rounded-xl border border-border px-3 py-2.5 text-[14px] text-text outline-none transition-colors focus:border-primary dark:border-border-dark dark:bg-surface-dark dark:text-text-inv dark:focus:border-primary"
+              />
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  onClick={cancelCreateThread}
+                  className="rounded-lg px-4 py-2 text-[14px] font-medium text-text/60 transition-colors hover:bg-text/5 dark:text-text-inv/60 dark:hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmCreateThread}
+                  className="rounded-lg bg-primary px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-primary-deep"
+                >
+                  Create
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Input Area */}
       <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-1.5 bg-white px-2 pt-1.5 dark:bg-surface-dark">

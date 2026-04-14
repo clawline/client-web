@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { SmilePlus, CornerDownLeft, Copy, Pencil, Trash2 } from 'lucide-react';
+import { SmilePlus, CornerDownLeft, Copy, Pencil, Trash2, MessageSquarePlus } from 'lucide-react';
 import type { Message } from './types';
 import { formatTime } from './utils';
 
@@ -14,11 +14,12 @@ interface ActionSheetProps {
   onDelete: (id: string) => void;
   onReactionToggle: (msgId: string, emoji: string, hasIt: boolean) => void;
   onOpenReactionPicker: (msgId: string) => void;
+  onCreateThread?: (messageId: string) => void;
 }
 
 function ActionSheetInner({
   longPressedMsgId, messages, onClose, onReply, onCopy, onEdit, onDelete,
-  onReactionToggle, onOpenReactionPicker,
+  onReactionToggle, onOpenReactionPicker, onCreateThread,
 }: ActionSheetProps) {
   if (!longPressedMsgId) return null;
 
@@ -108,6 +109,16 @@ function ActionSheetInner({
                 <CornerDownLeft size={20} className="text-text/40 dark:text-white/60" />
                 Reply
               </button>
+              {/* Create Thread — only shown on non-thread-reply messages */}
+              {!lMsg.threadId && onCreateThread && (
+                <button
+                  onClick={() => { onCreateThread(lMsg.id); onClose(); }}
+                  className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-text/85 dark:text-white/90 active:bg-text/5 dark:active:bg-white/10 transition-colors"
+                >
+                  <MessageSquarePlus size={20} className="text-text/40 dark:text-white/60" />
+                  Create Thread
+                </button>
+              )}
               <button
                 onClick={() => { onCopy(lMsg.id, lMsg.text); onClose(); }}
                 className="flex items-center gap-4 px-6 py-3.5 text-[16px] text-text/85 dark:text-white/90 active:bg-text/5 dark:active:bg-white/10 transition-colors"

@@ -1,6 +1,6 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { FileText, User, SmilePlus, CornerDownLeft, Copy, Check, Pencil, Trash2, Zap } from 'lucide-react';
+import { FileText, User, SmilePlus, CornerDownLeft, Copy, Check, Pencil, Trash2, Zap, MessageSquarePlus, MessageSquare } from 'lucide-react';
 import type { Message, AgentInfo } from './types';
 import { DeliveryTicks } from './DeliveryTicks';
 import { formatTime, formatDate, isDifferentDay, isGroupedWithPrev } from './utils';
@@ -9,6 +9,40 @@ import ActionCard from '../ActionCard';
 import SlashResponseCard, { parseSlashResponse } from './SlashResponseCard';
 import ApprovalCard, { parseApprovalMessage } from './ApprovalCard';
 import { ThreadPreviewBar } from './ThreadPreviewBar';
+import { useThreadStore } from '../../stores/threadStore';
+
+/** Thread action button — uses store to check if thread exists, then opens or creates */
+function ThreadHoverButton({ messageId, connectionId, onCreateThread }: {
+  messageId: string;
+  connectionId?: string;
+  onCreateThread: (messageId: string) => void;
+}) {
+  const thread = useThreadStore((s) => {
+    for (const t of s.threads.values()) {
+      if (t.parentMessageId === messageId && t.status !== 'deleted') return t;
+    }
+    return null;
+  });
+
+  const handleClick = useCallback(() => {
+    if (thread) {
+      useThreadStore.getState().openThread(thread.id, connectionId);
+    } else {
+      onCreateThread(messageId);
+    }
+  }, [thread, connectionId, messageId, onCreateThread]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="w-7 h-7 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-primary hover:bg-primary/10 rounded-md transition-colors"
+      title={thread ? 'Open Thread' : 'Create Thread'}
+    >
+      {thread ? <MessageSquare size={14} /> : <MessageSquarePlus size={14} />}
+    </button>
+  );
+}
 
 interface MessageItemProps {
   msg: Message;
@@ -29,12 +63,14 @@ interface MessageItemProps {
   onReactionToggle: (msgId: string, emoji: string, hasIt: boolean) => void;
   onReactionRemove: (msgId: string, emoji: string) => void;
   onOpenReactionPicker: (msgId: string) => void;
+  onCreateThread?: (messageId: string) => void;
 }
 
 function MessageItemInner({
   msg, index, messages, agentInfo, copiedMsgId, runtimeConnId, streamingStatus,
   onTouchStart, onTouchEnd, onRetry, onReply, onEdit, onDelete,
   onCopy, onQuickSend, onReactionToggle, onReactionRemove, onOpenReactionPicker,
+  onCreateThread,
 }: MessageItemProps) {
   const isUser = msg.sender === 'user';
   const isStreaming = msg.isStreaming;
@@ -235,6 +271,10 @@ function MessageItemInner({
         {/* Hover actions (desktop) */}
         {!isStreaming && (
           <div className="hidden md:flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity absolute right-1 top-0.5">
+            {/* Thread action button — not shown on thread reply messages */}
+            {!msg.threadId && onCreateThread && (
+              <ThreadHoverButton messageId={msg.id} connectionId={runtimeConnId} onCreateThread={onCreateThread} />
+            )}
             {!isUser && (
               <div className="relative group/emoji">
                 <button type="button" className="w-6 h-6 flex items-center justify-center text-text/25 dark:text-text-inv/20 hover:text-text/50 dark:hover:text-text-inv/45 rounded transition-colors">
