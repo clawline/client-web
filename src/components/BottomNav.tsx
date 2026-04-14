@@ -43,14 +43,14 @@ export default function BottomNav({ currentScreen, onNavigate, unreadChats = 0 }
               aria-label={item.badge > 0 ? `${item.label} (${item.badge} unread)` : item.label}
               aria-current={isActive ? 'page' : undefined}
               className={cn(
-                "p-2 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors relative min-w-[52px] min-h-[44px]",
+                "p-2 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors relative min-w-[52px] min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                 isActive ? 'text-primary drop-shadow-[0_1px_2px_rgba(239,90,35,0.3)]' : 'text-text/35 dark:text-text-inv/35 hover:text-text/55 dark:hover:text-text-inv/55'
               )}
             >
               <div className="relative">
                 <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
                 {item.badge > 0 && !isActive && (
-                  <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-primary text-white text-[9px] font-bold px-1 shadow-sm shadow-primary/30">
+                  <span className="absolute -top-1.5 -right-2.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-white text-[10px] font-bold px-1 shadow-sm shadow-primary/30">
                     {item.badge > 99 ? '99+' : item.badge}
                   </span>
                 )}
