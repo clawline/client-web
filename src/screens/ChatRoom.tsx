@@ -25,7 +25,7 @@ import {
   getConnectionDisplayName, getSkillDescription,
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
-import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadSessionCard, AcpSessionBar, ThreadPanel, type AcpSessionInfo } from '../components/chat';
+import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadPanel } from '../components/chat';
 import { useThreadStore, subscribeThreadEvents } from '../stores/threadStore';
 
 function getAgentInfo(agentId: string | null | undefined, connectionId: string): AgentInfo | null {
@@ -123,73 +123,6 @@ export default function ChatRoom({
       return true;
     });
   }, [messages]);
-
-  // Group thread messages into thread cards while keeping insertion order
-  type RenderItem = { kind: 'msg'; msg: Message } | { kind: 'thread'; threadId: string; messages: Message[] };
-  const renderItems = useMemo<RenderItem[]>(() => {
-    const threads = new Map<string, Message[]>();
-    const items: RenderItem[] = [];
-    const threadPlaceholderIndex = new Map<string, number>();
-
-    for (const msg of renderMessages) {
-      if (msg.threadId) {
-        if (!threads.has(msg.threadId)) {
-          threads.set(msg.threadId, []);
-          threadPlaceholderIndex.set(msg.threadId, items.length);
-          items.push({ kind: 'thread', threadId: msg.threadId, messages: [] });
-        }
-        threads.get(msg.threadId)!.push(msg);
-      } else {
-        items.push({ kind: 'msg', msg });
-      }
-    }
-    // Back-fill thread messages
-    for (const item of items) {
-      if (item.kind === 'thread') {
-        item.messages = threads.get(item.threadId) || [];
-      }
-    }
-    return items;
-  }, [renderMessages]);
-
-  const hasThreadMessages = renderItems.some((item) => item.kind === 'thread');
-
-  // Extract ACP session info from spawn messages for the session bar
-  const acpSessions = useMemo<AcpSessionInfo[]>(() => {
-    const sessionMap = new Map<string, AcpSessionInfo>();
-    for (const msg of renderMessages) {
-      if (msg.sender === 'ai' && msg.text.includes('Spawned ACP session') && msg.threadId) {
-        const keyMatch = msg.text.match(/agent:[^\s)]+/);
-        const modeMatch = msg.text.match(/\((\w+),/);
-        const backendMatch = msg.text.match(/backend\s+(\w+)/);
-        if (keyMatch) {
-          sessionMap.set(msg.threadId, {
-            sessionKey: keyMatch[0],
-            threadId: msg.threadId,
-            mode: modeMatch?.[1] || 'persistent',
-            backend: backendMatch?.[1] || 'acpx',
-            messageCount: 0,
-            lastTimestamp: msg.timestamp || Date.now(),
-          });
-        }
-      }
-    }
-    for (const msg of renderMessages) {
-      if (msg.threadId && sessionMap.has(msg.threadId)) {
-        const s = sessionMap.get(msg.threadId)!;
-        s.messageCount++;
-        if (msg.timestamp && msg.timestamp > s.lastTimestamp) s.lastTimestamp = msg.timestamp;
-      }
-    }
-    return [...sessionMap.values()].sort((a, b) => b.lastTimestamp - a.lastTimestamp);
-  }, [renderMessages]);
-
-  // Track active ACP thread — user messages sent while this is set get grouped into the thread
-  // Use ref for immediate access in sendTextMessage (state updates are async)
-  const activeThreadIdRef = useRef<string | undefined>(
-    [...renderMessages].reverse().find((m) => m.threadId)?.threadId
-  );
-  const setActiveThreadId = (id: string | undefined) => { activeThreadIdRef.current = id; };
 
   // Tick every 30s so "follow up" pill can appear after 2min without re-render trigger
   const [, setTick] = useState(0);
@@ -854,12 +787,6 @@ export default function ChatRoom({
         });
         console.log('[DEBUG message.send] threadId=', packet.data.threadId, 'full data keys=', Object.keys(packet.data));
 
-        // Track active thread for user message grouping
-        const incomingThreadId = (packet.data.threadId as string) || undefined;
-        if (incomingThreadId) {
-          setActiveThreadId(incomingThreadId);
-        }
-
         // Keep in-memory cache in sync for cross-screen navigation
         const aiMsgId = (packet.data.messageId as string) || Date.now().toString();
         const aiTs = (packet.data.timestamp as number) || Date.now();
@@ -1492,7 +1419,6 @@ export default function ChatRoom({
         quotedText: options?.replyQuotedText,
         timestamp: payload.timestamp || Date.now(),
         deliveryStatus: 'sent',
-        threadId: activeThreadIdRef.current,
       };
       setMessages((prev) => [...prev, userMsg]);
       // Immediately show thinking state after sending (unless it's a slash command)
@@ -1520,7 +1446,6 @@ export default function ChatRoom({
         quotedText: options?.replyQuotedText,
         timestamp: Date.now(),
         deliveryStatus: 'pending',
-        threadId: activeThreadIdRef.current,
       };
       setMessages((prev) => [...prev, userMsg]);
       outbox.enqueue({
@@ -2117,57 +2042,7 @@ export default function ChatRoom({
             </div>
           </motion.div>
         )}
-        {hasThreadMessages ? (
-          renderItems.map((item, i) => {
-            if (item.kind === 'thread') {
-              const lastTs = item.messages[item.messages.length - 1]?.timestamp;
-              const isActive = lastTs ? Date.now() - lastTs < 60_000 : false;
-              return (
-                <ThreadSessionCard
-                  key={`thread-${item.threadId}`}
-                  threadId={item.threadId}
-                  messages={item.messages}
-                  agentInfo={agentInfo}
-                  isActive={isActive || item.messages.some((m) => m.isStreaming)}
-                  onCloseSession={() => {
-                    sendTextMessage('/acp close');
-                    setActiveThreadId(undefined);
-                  }}
-                />
-              );
-            }
-            const msg = item.msg;
-            const msgIndex = renderMessages.indexOf(msg);
-            return (
-              <MessageItem
-                key={msg.id}
-                msg={msg}
-                index={msgIndex >= 0 ? msgIndex : i}
-                messages={renderMessages}
-                agentInfo={agentInfo}
-                copiedMsgId={copiedMsgId}
-                runtimeConnId={runtimeConnId}
-                streamingStatus={msg.isStreaming && isThinking ? (() => {
-                  const latestActive = activeToolCalls[activeToolCalls.length - 1];
-                  return latestActive ? `🔧 ${formatToolName(latestActive.toolName)}` : (thinkingPhase || undefined);
-                })() : undefined}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-                onRetry={retryMessage}
-                onReply={startReply}
-                onEdit={handleEditMessage}
-                onDelete={handleDeleteMessage}
-                onCopy={copyMessage}
-                onQuickSend={quickSend}
-                onReactionToggle={handleReactionToggle}
-                onReactionRemove={handleReactionRemove}
-                onOpenReactionPicker={openReactionPicker}
-                onCreateThread={handleCreateThread}
-              />
-            );
-          })
-        ) : (
-          renderMessages.map((msg, i) => (
+        {renderMessages.map((msg, i) => (
             <MessageItem
               key={msg.id}
               msg={msg}
@@ -2193,8 +2068,7 @@ export default function ChatRoom({
               onOpenReactionPicker={openReactionPicker}
               onCreateThread={handleCreateThread}
             />
-          ))
-        )}
+          ))}
         {/* Typing indicator */}
         {peerTyping && !isThinking && (
           <div className="flex items-center gap-2 px-2 text-[12px] text-slate-500 dark:text-slate-400">
@@ -2621,15 +2495,6 @@ export default function ChatRoom({
           onSetInputValue={setInputValue}
           onQuickSend={quickSend}
         />
-
-        {/* ACP session chips */}
-        {acpSessions.length > 0 && (
-          <AcpSessionBar
-            sessions={acpSessions}
-            activeThreadId={activeThreadIdRef.current}
-            onSelectSession={(s) => setActiveThreadId(s.threadId)}
-          />
-        )}
 
         {/* Edit bar */}
         {editingMsg && (
