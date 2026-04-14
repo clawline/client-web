@@ -189,6 +189,15 @@ function AppShell() {
   const splitPanes = useNavigationStore((s) => s.splitPanes);
   const setSplitPanes = useNavigationStore((s) => s.setSplitPanes);
 
+  // Map from "connectionId|agentId" → focus function registered by the split ChatRoom pane
+  const splitPaneFocusMap = useRef<Map<string, () => void>>(new Map());
+  const registerSplitPaneFocus = useCallback((connectionId: string, agentId: string, fn: () => void) => {
+    splitPaneFocusMap.current.set(`${connectionId}|${agentId}`, fn);
+  }, []);
+  const focusSplitPane = useCallback((connectionId: string, agentId: string) => {
+    splitPaneFocusMap.current.get(`${connectionId}|${agentId}`)?.();
+  }, []);
+
   // Initialize screen from URL on first render
   const initializedRef = useRef(false);
   useEffect(() => {
@@ -493,6 +502,7 @@ function AppShell() {
             isDesktop
             isSplitPane
             onCloseSplit={() => closeSplitPane(idx)}
+            onFocusInput={(fn) => registerSplitPaneFocus(pane.connectionId, pane.agentId, fn)}
           />
         );
       }
@@ -608,6 +618,7 @@ function AppShell() {
             <ChatList
               onOpenChat={(connectionId, agentId, chatId) => navigate('chat_room', agentId, chatId, connectionId)}
               onOpenSplitChat={openSplitChat}
+              onFocusSplitPane={focusSplitPane}
               onAddServer={() => navigate('pairing')}
               compact
               activeAgentId={activeAgentId}

@@ -87,6 +87,7 @@ export default function ChatRoom({
   isSplitPane,
   onToggleSplit,
   onCloseSplit,
+  onFocusInput,
 }: {
   agentId?: string | null;
   chatId?: string | null;
@@ -100,6 +101,7 @@ export default function ChatRoom({
   isSplitPane?: boolean;
   onToggleSplit?: () => void;
   onCloseSplit?: () => void;
+  onFocusInput?: (focusFn: () => void) => void;
 }) {
   const activeConn = connectionId ? getConnectionById(connectionId) : getActiveConnection();
   const connId = activeConn?.id || '';
@@ -285,6 +287,14 @@ export default function ChatRoom({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
+
+  // Register focus function with parent (for split-pane focus-on-click)
+  useEffect(() => {
+    if (onFocusInput) {
+      onFocusInput(() => textInputRef.current?.focus());
+    }
+  }, [onFocusInput]);
 
   const skills = agentInfo?.skills ?? [];
   const configuredSkills = agentInfo?.configuredSkills ?? [];
@@ -2688,6 +2698,7 @@ export default function ChatRoom({
             </motion.button>
 
             <input
+              ref={textInputRef}
               type="text"
               value={inputValue}
               onChange={handleInputChange}

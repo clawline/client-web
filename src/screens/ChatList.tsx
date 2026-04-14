@@ -322,10 +322,11 @@ function buildLoadingMap(connections: ServerConnection[]) {
 export default function ChatList({
   onOpenChat, onOpenSplitChat, onAddServer, compact,
   activeAgentId, activeConnectionId, splitEnabled, splitAwaitingAgent,
-  splitPanes,
+  splitPanes, onFocusSplitPane,
 }: {
   onOpenChat: (connectionId: string, agentId: string, chatId?: string) => void;
   onOpenSplitChat?: (connectionId: string, agentId: string, chatId?: string) => void;
+  onFocusSplitPane?: (connectionId: string, agentId: string) => void;
   onAddServer: () => void;
   compact?: boolean;
   activeAgentId?: string | null;
@@ -638,8 +639,11 @@ export default function ChatList({
     const isCurrentlyActive = activeConnectionId === connection.id && activeAgentId === agent.id;
     const isAlreadyInSplit = (splitPanes ?? []).some((p) => p.connectionId === connection.id && p.agentId === agent.id);
 
-    // Already open in a split pane — ignore click (already visible, no need to re-open)
-    if (isAlreadyInSplit) return;
+    // Already open in a split pane — focus that pane's input instead
+    if (isAlreadyInSplit) {
+      onFocusSplitPane?.(connection.id, agent.id);
+      return;
+    }
 
     const target: PendingOpen['target'] = (splitAwaitingAgent && !isCurrentlyActive && !isAlreadyInSplit && onOpenSplitChat)
       ? 'split'
