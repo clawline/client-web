@@ -7,6 +7,7 @@ import * as channel from '../../services/clawChannel';
 import { formatTime } from './utils';
 import MarkdownRenderer from '../MarkdownRenderer';
 import { MessageItem } from './MessageItem';
+import { ThreadListView } from './ThreadListView';
 import type { AgentInfo } from './types';
 
 interface ThreadPanelProps {
@@ -16,6 +17,8 @@ interface ThreadPanelProps {
   connId?: string;
   /** Agent ID for looking up parent message from cache */
   agentId?: string;
+  /** Channel ID for thread list loading */
+  channelId?: string;
 }
 
 /** Overlapping avatar circles for thread participants (max 3 shown) */
@@ -448,11 +451,11 @@ function ThreadOptionsMenu({
  * Adaptive thread panel — sidebar on wide screens, fullscreen overlay on narrow.
  * US-010: Shell. US-011: Header with parent message. US-012: Message list with scroll loading.
  */
-function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
+function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelProps) {
   const {
     isThreadPanelOpen, activeThreadId, closeThread, threads,
     threadMessages, isLoadingMessages, isLoadingOlderMessages,
-    hasMoreMessages, loadOlderMessages,
+    hasMoreMessages, loadOlderMessages, threadPanelMode,
   } = useThreadStore();
 
   // Options menu state
@@ -568,6 +571,17 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
     }
   }, [isLoadingOlderMessages, messages.length]);
 
+  // Back to list view (when in detail mode and panel was opened from list)
+  const handleBackToList = useCallback(() => {
+    useThreadStore.setState({ activeThreadId: null, threadPanelMode: 'list', isLoadingMessages: false });
+  }, []);
+
+  // Close the entire panel
+  const handleClosePanel = useCallback(() => {
+    closeThread();
+    useThreadStore.setState({ threadPanelMode: 'detail' });
+  }, [closeThread]);
+
   // Close on Escape key
   useEffect(() => {
     if (!isThreadPanelOpen) return;
@@ -575,14 +589,17 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
       if (e.key === 'Escape') {
         if (showOptionsMenu) {
           setShowOptionsMenu(false);
+        } else if (threadPanelMode === 'list' && activeThreadId) {
+          // In detail view from list — go back to list
+          handleBackToList();
         } else {
-          closeThread();
+          handleClosePanel();
         }
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isThreadPanelOpen, closeThread, showOptionsMenu]);
+  }, [isThreadPanelOpen, handleClosePanel, showOptionsMenu, threadPanelMode, activeThreadId, handleBackToList]);
 
   if (!isThreadPanelOpen) return null;
 
@@ -777,6 +794,9 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
     </div>
   );
 
+  // ── List mode: show thread list view ──
+  const isListMode = threadPanelMode === 'list' && !activeThreadId;
+
   // ── Wide screen: in-flow right sidebar ──
   if (isWide) {
     return (
@@ -787,61 +807,95 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
         transition={{ type: 'spring', stiffness: 320, damping: 30 }}
         className="relative flex h-full flex-shrink-0 flex-col overflow-hidden border-l border-border/70 bg-white dark:border-border-dark/70 dark:bg-surface-dark"
       >
-        {/* Header */}
-        <div className="flex flex-col border-b border-border/70 px-4 py-3 dark:border-border-dark/70">
-          <div className="flex items-center justify-between">
-            <h3 className="flex-1 truncate text-[15px] font-semibold text-text dark:text-text-inv">
-              {headerTitle}
-            </h3>
-            <div className="relative flex items-center gap-1" ref={optionsMenuAnchorRef}>
-              {activeThread && (
-                <motion.button
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => setShowOptionsMenu(!showOptionsMenu)}
-                  className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
-                  title="Thread options"
-                >
-                  <MoreVertical size={16} />
-                </motion.button>
-              )}
+        {isListMode ? (
+          <>
+            {/* List mode header */}
+            <div className="flex items-center justify-between border-b border-border/70 px-4 py-3 dark:border-border-dark/70">
+              <h3 className="text-[15px] font-semibold text-text dark:text-text-inv">
+                Threads
+              </h3>
               <motion.button
                 whileTap={{ scale: 0.9 }}
-                onClick={closeThread}
+                onClick={handleClosePanel}
                 className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
               >
                 <X size={18} />
               </motion.button>
-              <AnimatePresence>
-                {showOptionsMenu && activeThread && (
-                  <ThreadOptionsMenu
-                    thread={activeThread}
-                    onClose={() => setShowOptionsMenu(false)}
-                    connectionId={connId}
-                  />
-                )}
-              </AnimatePresence>
             </div>
-          </div>
-          {headerMeta && <div className="mt-1.5">{headerMeta}</div>}
-        </div>
-
-        {/* Pinned parent message */}
-        {parentMessageView}
-
-        {/* Body (thread messages) */}
-        {body}
-
-        {/* Input box — hidden for archived, locked message for locked */}
-        {activeThreadId && activeThread?.status === 'locked' ? (
-          <div className="border-t border-border/70 px-4 py-3 dark:border-border-dark/70">
-            <div className="flex items-center justify-center gap-2 rounded-[16px] bg-slate-100/80 py-2.5 text-[13px] text-text/50 dark:bg-white/[0.04] dark:text-text-inv/40">
-              <Lock size={14} />
-              This thread is locked
+            <ThreadListView connId={connId} channelId={channelId} />
+          </>
+        ) : (
+          <>
+            {/* Detail mode header */}
+            <div className="flex flex-col border-b border-border/70 px-4 py-3 dark:border-border-dark/70">
+              <div className="flex items-center justify-between">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                  {/* Back arrow: return to list if came from list, otherwise not shown */}
+                  {threadPanelMode === 'list' && (
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      onClick={handleBackToList}
+                      className="shrink-0 rounded-xl bg-slate-900/[0.04] p-1.5 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
+                      title="Back to thread list"
+                    >
+                      <ArrowLeft size={16} />
+                    </motion.button>
+                  )}
+                  <h3 className="flex-1 truncate text-[15px] font-semibold text-text dark:text-text-inv">
+                    {headerTitle}
+                  </h3>
+                </div>
+                <div className="relative flex items-center gap-1" ref={optionsMenuAnchorRef}>
+                  {activeThread && (
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                      className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
+                      title="Thread options"
+                    >
+                      <MoreVertical size={16} />
+                    </motion.button>
+                  )}
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={handleClosePanel}
+                    className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
+                  >
+                    <X size={18} />
+                  </motion.button>
+                  <AnimatePresence>
+                    {showOptionsMenu && activeThread && (
+                      <ThreadOptionsMenu
+                        thread={activeThread}
+                        onClose={() => setShowOptionsMenu(false)}
+                        connectionId={connId}
+                      />
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+              {headerMeta && <div className="mt-1.5">{headerMeta}</div>}
             </div>
-          </div>
-        ) : activeThreadId && activeThread?.status !== 'archived' ? (
-          <ThreadInput connId={connId} agentId={agentId} />
-        ) : null}
+
+            {/* Pinned parent message */}
+            {parentMessageView}
+
+            {/* Body (thread messages) */}
+            {body}
+
+            {/* Input box — hidden for archived, locked message for locked */}
+            {activeThreadId && activeThread?.status === 'locked' ? (
+              <div className="border-t border-border/70 px-4 py-3 dark:border-border-dark/70">
+                <div className="flex items-center justify-center gap-2 rounded-[16px] bg-slate-100/80 py-2.5 text-[13px] text-text/50 dark:bg-white/[0.04] dark:text-text-inv/40">
+                  <Lock size={14} />
+                  This thread is locked
+                </div>
+              </div>
+            ) : activeThreadId && activeThread?.status !== 'archived' ? (
+              <ThreadInput connId={connId} agentId={agentId} />
+            ) : null}
+          </>
+        )}
       </motion.div>
     );
   }
@@ -855,61 +909,82 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
       transition={{ type: 'spring', stiffness: 320, damping: 30 }}
       className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-surface-dark"
     >
-      {/* Header with back button */}
-      <div className="flex flex-col border-b border-border/70 px-3 py-3 dark:border-border-dark/70">
-        <div className="flex items-center gap-3">
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={closeThread}
-            className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
-          >
-            <ArrowLeft size={18} />
-          </motion.button>
-          <h3 className="flex-1 truncate text-[15px] font-semibold text-text dark:text-text-inv">
-            {headerTitle}
-          </h3>
-          <div className="relative">
-            {activeThread && (
+      {isListMode ? (
+        <>
+          {/* List mode header */}
+          <div className="flex items-center gap-3 border-b border-border/70 px-3 py-3 dark:border-border-dark/70">
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={handleClosePanel}
+              className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
+            >
+              <ArrowLeft size={18} />
+            </motion.button>
+            <h3 className="flex-1 text-[15px] font-semibold text-text dark:text-text-inv">
+              Threads
+            </h3>
+          </div>
+          <ThreadListView connId={connId} channelId={channelId} />
+        </>
+      ) : (
+        <>
+          {/* Detail mode header with back button */}
+          <div className="flex flex-col border-b border-border/70 px-3 py-3 dark:border-border-dark/70">
+            <div className="flex items-center gap-3">
               <motion.button
                 whileTap={{ scale: 0.9 }}
-                onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                onClick={threadPanelMode === 'list' ? handleBackToList : handleClosePanel}
                 className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
-                title="Thread options"
               >
-                <MoreVertical size={16} />
+                <ArrowLeft size={18} />
               </motion.button>
-            )}
-            <AnimatePresence>
-              {showOptionsMenu && activeThread && (
-                <ThreadOptionsMenu
-                  thread={activeThread}
-                  onClose={() => setShowOptionsMenu(false)}
-                  connectionId={connId}
-                />
-              )}
-            </AnimatePresence>
+              <h3 className="flex-1 truncate text-[15px] font-semibold text-text dark:text-text-inv">
+                {headerTitle}
+              </h3>
+              <div className="relative">
+                {activeThread && (
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                    className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
+                    title="Thread options"
+                  >
+                    <MoreVertical size={16} />
+                  </motion.button>
+                )}
+                <AnimatePresence>
+                  {showOptionsMenu && activeThread && (
+                    <ThreadOptionsMenu
+                      thread={activeThread}
+                      onClose={() => setShowOptionsMenu(false)}
+                      connectionId={connId}
+                    />
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+            {headerMeta && <div className="mt-1.5 pl-12">{headerMeta}</div>}
           </div>
-        </div>
-        {headerMeta && <div className="mt-1.5 pl-12">{headerMeta}</div>}
-      </div>
 
-      {/* Pinned parent message */}
-      {parentMessageView}
+          {/* Pinned parent message */}
+          {parentMessageView}
 
-      {/* Body (thread messages) */}
-      {body}
+          {/* Body (thread messages) */}
+          {body}
 
-      {/* Input box — hidden for archived, locked message for locked */}
-      {activeThreadId && activeThread?.status === 'locked' ? (
-        <div className="border-t border-border/70 px-4 py-3 dark:border-border-dark/70">
-          <div className="flex items-center justify-center gap-2 rounded-[16px] bg-slate-100/80 py-2.5 text-[13px] text-text/50 dark:bg-white/[0.04] dark:text-text-inv/40">
-            <Lock size={14} />
-            This thread is locked
-          </div>
-        </div>
-      ) : activeThreadId && activeThread?.status !== 'archived' ? (
-        <ThreadInput connId={connId} agentId={agentId} />
-      ) : null}
+          {/* Input box — hidden for archived, locked message for locked */}
+          {activeThreadId && activeThread?.status === 'locked' ? (
+            <div className="border-t border-border/70 px-4 py-3 dark:border-border-dark/70">
+              <div className="flex items-center justify-center gap-2 rounded-[16px] bg-slate-100/80 py-2.5 text-[13px] text-text/50 dark:bg-white/[0.04] dark:text-text-inv/40">
+                <Lock size={14} />
+                This thread is locked
+              </div>
+            </div>
+          ) : activeThreadId && activeThread?.status !== 'archived' ? (
+            <ThreadInput connId={connId} agentId={agentId} />
+          ) : null}
+        </>
+      )}
     </motion.div>
   );
 }

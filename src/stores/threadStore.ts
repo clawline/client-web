@@ -40,6 +40,8 @@ export interface ThreadListFilter {
 
 // ── Store state & actions ──
 
+export type ThreadPanelMode = 'list' | 'detail';
+
 interface ThreadState {
   /** All known threads keyed by thread ID */
   threads: Map<string, Thread>;
@@ -53,6 +55,8 @@ interface ThreadState {
   threadListFilter: ThreadListFilter;
   /** Whether the thread panel is open */
   isThreadPanelOpen: boolean;
+  /** Panel mode: 'list' shows all threads, 'detail' shows a single thread */
+  threadPanelMode: ThreadPanelMode;
   /** Total thread count from last list query (for pagination) */
   threadListTotal: number;
   /** Loading state for thread list */
@@ -71,6 +75,7 @@ interface ThreadState {
   // ── Actions ──
   createThread: (parentMessageId: string, title?: string, connectionId?: string) => void;
   openThread: (threadId: string, connectionId?: string) => void;
+  openThreadList: (channelId?: string, connectionId?: string) => void;
   closeThread: () => void;
   setActiveThread: (threadId: string | null) => void;
   loadThreadList: (filter?: Partial<ThreadListFilter>, connectionId?: string) => void;
@@ -99,6 +104,7 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
   threadReadStatus: new Map(),
   threadListFilter: { channelId: '', status: 'all', page: 1, pageSize: 20 },
   isThreadPanelOpen: false,
+  threadPanelMode: 'detail' as ThreadPanelMode,
   threadListTotal: 0,
   isLoadingThreadList: false,
   isLoadingMessages: false,
@@ -120,7 +126,8 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
 
   openThread(threadId, connectionId) {
     const requestId = `thread-get-${Date.now()}`;
-    set({ activeThreadId: threadId, isThreadPanelOpen: true, isLoadingMessages: true, hasMoreMessages: true });
+    const wasListMode = get().threadPanelMode === 'list';
+    set({ activeThreadId: threadId, isThreadPanelOpen: true, threadPanelMode: wasListMode ? 'list' : 'detail', isLoadingMessages: true, hasMoreMessages: true });
 
     channel.sendRaw({
       type: 'thread.get',
@@ -131,8 +138,15 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
     get().markThreadRead(threadId, connectionId);
   },
 
+  openThreadList(channelId, connectionId) {
+    set({ isThreadPanelOpen: true, threadPanelMode: 'list', activeThreadId: null });
+    if (channelId) {
+      get().loadThreadList({ channelId, status: 'all', page: 1, pageSize: 20 }, connectionId);
+    }
+  },
+
   closeThread() {
-    set({ activeThreadId: null, isThreadPanelOpen: false });
+    set({ activeThreadId: null, isThreadPanelOpen: false, threadPanelMode: 'detail' as ThreadPanelMode });
   },
 
   setActiveThread(threadId) {

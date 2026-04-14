@@ -1,6 +1,6 @@
 import { memo } from 'react';
-import { motion } from 'motion/react';
-import { ChevronLeft, MoreHorizontal, Columns2, X, Loader2, WifiOff, RefreshCw } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { ChevronLeft, MoreHorizontal, Columns2, X, Loader2, WifiOff, RefreshCw, MessageSquareText } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { AgentInfo } from '../../services/clawChannel';
 import { formatLastSeen } from './utils';
@@ -17,12 +17,14 @@ interface ChatHeaderProps {
   isSplitPane?: boolean;
   splitActive?: boolean;
   showSplitButton?: boolean;
+  totalThreadUnread?: number;
   onBack: () => void;
   onMenuOpen: () => void;
   onToggleSplit?: () => void;
   onCloseSplit?: () => void;
   onAvatarClick?: () => void;
   onReconnect?: () => void;
+  onOpenThreadList?: () => void;
 }
 
 const BTN =
@@ -39,12 +41,14 @@ function ChatHeaderInner({
   isSplitPane,
   splitActive,
   showSplitButton,
+  totalThreadUnread,
   onBack,
   onMenuOpen,
   onToggleSplit,
   onCloseSplit,
   onAvatarClick,
   onReconnect,
+  onOpenThreadList,
 }: ChatHeaderProps) {
   const displayName = agentInfo
     ? `${agentInfo.identityEmoji || '🤖'} ${agentInfo.name}`
@@ -159,6 +163,29 @@ function ChatHeaderInner({
         {isSplitPane && onCloseSplit && (
           <motion.button whileTap={{ scale: 0.9 }} onClick={onCloseSplit} className={BTN} aria-label="Close split view">
             <X size={20} />
+          </motion.button>
+        )}
+        {/* Threads button */}
+        {onOpenThreadList && (
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={onOpenThreadList}
+            className={cn(BTN, 'relative')}
+            aria-label="Open thread list"
+          >
+            <MessageSquareText size={19} />
+            <AnimatePresence>
+              {(totalThreadUnread ?? 0) > 0 && (
+                <motion.span
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-info px-1 text-[9px] font-bold text-white"
+                >
+                  {totalThreadUnread! > 99 ? '99+' : totalThreadUnread}
+                </motion.span>
+              )}
+            </AnimatePresence>
           </motion.button>
         )}
         <motion.button whileTap={{ scale: 0.9 }} onClick={onMenuOpen} className={cn(BTN, 'mr-1')} aria-label="More options">

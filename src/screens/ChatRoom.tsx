@@ -249,6 +249,11 @@ export default function ChatRoom({
 
   // Thread panel state — read from Zustand store
   const isThreadPanelOpen = useThreadStore((s) => s.isThreadPanelOpen);
+  const totalThreadUnread = useThreadStore((s) => {
+    let total = 0;
+    for (const count of s.unreadCounts.values()) total += count;
+    return total;
+  });
   // Wide enough for sidebar layout (>=768px)
   const [isWideViewport, setIsWideViewport] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768);
   useEffect(() => {
@@ -1739,6 +1744,11 @@ export default function ChatRoom({
     setTimeout(() => threadTitleRef.current?.focus(), 100);
   }, [runtimeConnId]);
 
+  // Open thread list panel
+  const handleOpenThreadList = useCallback(() => {
+    useThreadStore.getState().openThreadList(activeConn?.channelId, runtimeConnId);
+  }, [activeConn?.channelId, runtimeConnId]);
+
   const confirmCreateThread = useCallback(() => {
     if (!threadCreateMsgId) return;
     useThreadStore.getState().createThread(threadCreateMsgId, threadTitleInput.trim() || undefined, runtimeConnId);
@@ -1829,6 +1839,8 @@ export default function ChatRoom({
         onCloseSplit={onCloseSplit}
         onAvatarClick={() => setShowAgentDetail(true)}
         onReconnect={() => channel.reconnect(runtimeConnId)}
+        totalThreadUnread={totalThreadUnread}
+        onOpenThreadList={handleOpenThreadList}
       />
 
       {/* Header context menu */}
@@ -2914,7 +2926,7 @@ export default function ChatRoom({
 
     {/* Thread panel — sidebar on wide screens, fullscreen overlay on narrow */}
     <AnimatePresence>
-      {isThreadPanelOpen && <ThreadPanel isWide={isWideViewport} connId={connId} agentId={agentId || undefined} />}
+      {isThreadPanelOpen && <ThreadPanel isWide={isWideViewport} connId={connId} agentId={agentId || undefined} channelId={activeConn?.channelId} />}
     </AnimatePresence>
     </div>
   );
