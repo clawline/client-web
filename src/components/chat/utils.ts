@@ -114,6 +114,20 @@ export function formatToolArgSnippet(args?: Record<string, unknown>): string {
   return oneline.length > 40 ? oneline.slice(0, 40) + '…' : oneline;
 }
 
+/** Strip markdown formatting for message previews (chat list, inbox cards). */
+export function stripMarkdownForPreview(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')   // **bold**
+    .replace(/\*(.+?)\*/g, '$1')       // *italic*
+    .replace(/~~(.+?)~~/g, '$1')       // ~~strikethrough~~
+    .replace(/`(.+?)`/g, '$1')         // `code`
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [text](url)
+    .replace(/^#{1,6}\s+/gm, '')       // # headings
+    .replace(/^>\s?/gm, '')            // > blockquotes
+    .replace(/\n/g, ' ')
+    .trim();
+}
+
 export function isDifferentDay(ts1?: number, ts2?: number) {
   if (!ts1 || !ts2) return true;
   return new Date(ts1).toDateString() !== new Date(ts2).toDateString();

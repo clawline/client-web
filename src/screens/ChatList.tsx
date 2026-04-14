@@ -8,6 +8,7 @@ import * as channel from '../services/clawChannel';
 import type { AgentInfo, ConversationSummary, ChannelStatus } from '../services/clawChannel';
 import { getUserId } from '../App';
 import AvatarUploader from '../components/AvatarUploader';
+import { stripMarkdownForPreview } from '../components/chat/utils';
 
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
 const EXPANDED_KEY = 'openclaw.chatlist.expandedIds';
@@ -746,7 +747,8 @@ export default function ChatList({
     const isSplitActive = (splitPanes ?? []).some((p) => p.connectionId === connection.id && p.agentId === agent.id);
     const previewKey = getPreviewStateKey(connection.id, agent.id);
     const lastMessage = Object.prototype.hasOwnProperty.call(previewMap, previewKey) ? previewMap[previewKey] : getStoredPreview(agent.id, connection.id);
-    const preview = lastMessage?.text ? (lastMessage.text.length > 50 ? `${lastMessage.text.slice(0, 50)}…` : lastMessage.text) : null;
+    const rawPreview = lastMessage?.text ? stripMarkdownForPreview(lastMessage.text) : null;
+    const preview = rawPreview ? (rawPreview.length > 50 ? `${rawPreview.slice(0, 50)}…` : rawPreview) : null;
     const isTyping = typingAgents.has(previewKey);
     const isThinking = thinkingAgents.has(previewKey);
     const showStatus = isThinking || isTyping;
@@ -877,7 +879,7 @@ export default function ChatList({
               <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">Typing... <TypingDots /></div>
             ) : lastMessage?.text ? (
               <p className="mt-1 text-[10px] text-text/45 dark:text-text-inv/40 truncate w-full max-w-full">
-                {lastMessage.text.length > 24 ? `${lastMessage.text.slice(0, 24)}…` : lastMessage.text}
+                {(() => { const t = stripMarkdownForPreview(lastMessage.text); return t.length > 24 ? `${t.slice(0, 24)}…` : t; })()}
               </p>
             ) : agent.model ? (
               <span className="text-[9px] text-text/50 dark:text-text-inv/40 truncate w-full mt-1">{agent.model.split('/').pop()}</span>
