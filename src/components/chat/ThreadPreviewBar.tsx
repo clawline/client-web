@@ -65,6 +65,7 @@ export function ThreadPreviewBar({ messageId, connectionId }: ThreadPreviewBarPr
     return null;
   });
   const preview = useThreadStore((s) => thread ? s.threadReplyPreviews.get(thread.id) : undefined);
+  const unreadCount = useThreadStore((s) => thread ? (s.unreadCounts.get(thread.id) ?? 0) : 0);
 
   const handleClick = useCallback(() => {
     if (!thread) return;
@@ -101,6 +102,13 @@ export function ThreadPreviewBar({ messageId, connectionId }: ThreadPreviewBarPr
           </span>
         )}
       </div>
+
+      {/* Unread badge */}
+      {unreadCount > 0 && (
+        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-info px-1.5 text-[10px] font-bold text-white">
+          {unreadCount > 99 ? '99+' : unreadCount}
+        </span>
+      )}
     </button>
   );
 }

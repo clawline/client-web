@@ -65,6 +65,8 @@ interface ThreadState {
   hasMoreMessages: boolean;
   /** Latest reply preview text per thread (from thread.new_reply events) */
   threadReplyPreviews: Map<string, string>;
+  /** Unread reply count per thread */
+  unreadCounts: Map<string, number>;
 
   // ── Actions ──
   createThread: (parentMessageId: string, title?: string, connectionId?: string) => void;
@@ -103,6 +105,7 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
   isLoadingOlderMessages: false,
   hasMoreMessages: true,
   threadReplyPreviews: new Map(),
+  unreadCounts: new Map(),
 
   // ── Actions ──
 
@@ -123,7 +126,9 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
       type: 'thread.get',
       data: { requestId, threadId },
     }, connectionId);
-    // Response handled by the WS listener that processes thread.get responses
+
+    // Mark thread as read when opening
+    get().markThreadRead(threadId, connectionId);
   },
 
   closeThread() {
@@ -280,7 +285,9 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
         lastReadAt: new Date().toISOString(),
         lastReadMessageId: existing?.lastReadMessageId ?? null,
       });
-      return { threadReadStatus: newReadStatus };
+      const newUnreadCounts = new Map(state.unreadCounts);
+      newUnreadCounts.set(threadId, 0);
+      return { threadReadStatus: newReadStatus, unreadCounts: newUnreadCounts };
     });
   },
 
@@ -339,6 +346,16 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
         const newPreviews = new Map(s.threadReplyPreviews);
         newPreviews.set(data.threadId, data.preview);
         return { threadReplyPreviews: newPreviews };
+      });
+    }
+
+    // Increment unread count if not currently viewing this thread
+    const isViewing = state.activeThreadId === data.threadId && state.isThreadPanelOpen;
+    if (!isViewing) {
+      set((s) => {
+        const newUnreadCounts = new Map(s.unreadCounts);
+        newUnreadCounts.set(data.threadId, (newUnreadCounts.get(data.threadId) ?? 0) + 1);
+        return { unreadCounts: newUnreadCounts };
       });
     }
   },
@@ -448,7 +465,9 @@ export function subscribeThreadEvents(connectionId?: string): () => void {
                 lastReadAt: existing?.lastReadAt ?? '',
                 lastReadMessageId: existing?.lastReadMessageId ?? null,
               });
-              return { threadReadStatus: newReadStatus };
+              const newUnreadCounts = new Map(state.unreadCounts);
+              newUnreadCounts.set(thread.id, unreadCount);
+              return { threadReadStatus: newReadStatus, unreadCounts: newUnreadCounts };
             });
           }
 
@@ -494,24 +513,28 @@ export function subscribeThreadEvents(connectionId?: string): () => void {
           useThreadStore.setState((state) => {
             const newThreads = new Map(state.threads);
             const newReadStatus = new Map(state.threadReadStatus);
+            const newUnreadCounts = new Map(state.unreadCounts);
 
             for (const t of threads) {
               newThreads.set(t.id, t);
-              // Track unread counts (store as pseudo-read-status for access)
-              if (typeof t.unreadCount === 'number' && t.unreadCount > 0) {
-                const existing = newReadStatus.get(t.id);
-                newReadStatus.set(t.id, {
-                  userId: existing?.userId ?? '',
-                  threadId: t.id,
-                  lastReadAt: existing?.lastReadAt ?? '',
-                  lastReadMessageId: existing?.lastReadMessageId ?? null,
-                });
+              if (typeof t.unreadCount === 'number') {
+                newUnreadCounts.set(t.id, t.unreadCount);
+                if (t.unreadCount > 0) {
+                  const existing = newReadStatus.get(t.id);
+                  newReadStatus.set(t.id, {
+                    userId: existing?.userId ?? '',
+                    threadId: t.id,
+                    lastReadAt: existing?.lastReadAt ?? '',
+                    lastReadMessageId: existing?.lastReadMessageId ?? null,
+                  });
+                }
               }
             }
 
             return {
               threads: newThreads,
               threadReadStatus: newReadStatus,
+              unreadCounts: newUnreadCounts,
               threadListTotal: total ?? threads.length,
               isLoadingThreadList: false,
             };
@@ -532,6 +555,11 @@ export function subscribeThreadEvents(connectionId?: string): () => void {
         break;
       }
 
+      case 'thread.mark_read': {
+        // Server confirmed mark-read — already handled optimistically by markThreadRead()
+        break;
+      }
+
       // Handle incoming thread messages from the main message flow
       default: {
         if (
@@ -547,6 +575,12 @@ export function subscribeThreadEvents(connectionId?: string): () => void {
             threadId,
           };
           store._appendMessage(threadId, msg);
+
+          // Auto-mark as read if this thread is currently open
+          const currentState = useThreadStore.getState();
+          if (currentState.activeThreadId === threadId && currentState.isThreadPanelOpen) {
+            store.markThreadRead(threadId, connectionId);
+          }
         }
         break;
       }
