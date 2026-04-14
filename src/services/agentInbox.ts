@@ -12,6 +12,8 @@ import type { AgentInfo } from './clawChannel';
 import { getMessages, appendMessage, warmCache, isWarmed } from '../stores/messageCache';
 import { getUserId, getUserName } from '../App';
 import { playNewMessage } from '../hooks/useNotificationSound';
+import { isNotifActive } from '../hooks/useNotificationPermission';
+import { useNavigationStore } from '../stores/navigationStore';
 import { saveAgentPreview } from '../components/chat/utils';
 
 /** Update sidebar preview from current cache for a given agent. */
@@ -344,7 +346,27 @@ function setupConnectionListeners(conn: ServerConnection) {
       item.status = 'pending_reply';
       item.unreadCount += 1;
       item.suggestedReply = undefined;
-      playNewMessage();
+
+      // Only play sound if user is NOT actively viewing this agent's chat
+      const navState = useNavigationStore.getState();
+      const isViewingThisAgent =
+        !document.hidden &&
+        document.hasFocus() &&
+        navState.activeConnectionId === connectionId &&
+        navState.activeAgentId === agentId;
+      if (!isViewingThisAgent) {
+        playNewMessage();
+      }
+
+      // Push notification: send when window is hidden or lacks focus (PC: unfocused tab/window)
+      if (isNotifActive() && (document.hidden || !document.hasFocus())) {
+        new Notification(item.agentName || 'OpenClaw', {
+          body: trimmed.slice(0, 100),
+          icon: '/icon-192.png',
+          tag: `clawline-${connectionId}-${agentId}`, // collapse duplicate notifications
+        });
+      }
+
       updatePreview(connectionId, agentId);
       emitUpdate();
       return;

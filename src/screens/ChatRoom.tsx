@@ -761,14 +761,6 @@ export default function ChatRoom({
           mediaType, mediaUrl, threadId: (packet.data.threadId as string) || undefined,
         });
 
-        // Push notification (browser)
-        if (localStorage.getItem('openclaw.pushNotif') !== '0' && 'Notification' in window && Notification.permission === 'granted' && document.hidden) {
-          new Notification(agentInfo?.name || 'OpenClaw', {
-            body: content.slice(0, 100),
-            icon: '/icon-192.svg',
-          });
-        }
-
         // Clear thinking indicator on final message delivery
         setIsThinking(false);
         if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
