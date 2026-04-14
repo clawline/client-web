@@ -1,8 +1,9 @@
-import { memo, useEffect, useMemo, useRef, useCallback, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useCallback, useState, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ArrowLeft, MessageSquareText, MoreVertical, MessageCircle, Users, User, Loader2, ArrowDown } from 'lucide-react';
+import { X, ArrowLeft, MessageSquareText, MoreVertical, MessageCircle, Users, User, Loader2, ArrowDown, Plus, ArrowUp, Paperclip, Image, FileText } from 'lucide-react';
 import { useThreadStore } from '../../stores/threadStore';
 import { getMessages as getCachedMessages } from '../../stores/messageCache';
+import * as channel from '../../services/clawChannel';
 import { formatTime } from './utils';
 import MarkdownRenderer from '../MarkdownRenderer';
 import { MessageItem } from './MessageItem';
@@ -48,6 +49,259 @@ function ParticipantAvatars({ participantIds }: { participantIds: string[] }) {
 
 /** Threshold in pixels — if user is within this distance from bottom, auto-scroll on new messages */
 const AUTO_SCROLL_THRESHOLD = 80;
+
+/** Convert a File to base64 data URL */
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Thread input box — text + image/file upload */
+function ThreadInput({ connId, agentId }: { connId?: string; agentId?: string }) {
+  const { sendThreadMessage, sendThreadMedia, activeThreadId } = useThreadStore();
+  const [inputValue, setInputValue] = useState('');
+  const [pendingFile, setPendingFile] = useState<{ file: File; dataUrl: string; isImage: boolean } | null>(null);
+  const [fileCaption, setFileCaption] = useState('');
+  const [showMoreIcons, setShowMoreIcons] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
+  }, [inputValue]);
+
+  // Reset input when thread changes
+  useEffect(() => {
+    setInputValue('');
+    setPendingFile(null);
+    setFileCaption('');
+    setShowMoreIcons(false);
+  }, [activeThreadId]);
+
+  const handleSend = useCallback(() => {
+    const trimmed = inputValue.trim();
+    if (!trimmed) return;
+    sendThreadMessage(trimmed, agentId, connId);
+    setInputValue('');
+    // Reset textarea height
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+  }, [inputValue, sendThreadMessage, agentId, connId]);
+
+  const handleImageSelected = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    const dataUrl = await fileToDataUrl(file);
+    setPendingFile({ file, dataUrl, isImage: true });
+    setFileCaption('');
+  }, []);
+
+  const handleFileSelected = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    const dataUrl = await fileToDataUrl(file);
+    const isImage = file.type.startsWith('image/');
+    setPendingFile({ file, dataUrl, isImage });
+    setFileCaption('');
+  }, []);
+
+  const handleSendPendingFile = useCallback(async () => {
+    if (!pendingFile) return;
+    const { file, dataUrl } = pendingFile;
+    const caption = fileCaption.trim();
+
+    let finalUrl = dataUrl;
+    // Upload large files to relay to save WS bandwidth
+    if (file.size > 100 * 1024) {
+      try {
+        finalUrl = await channel.uploadFile(file, connId);
+      } catch {
+        // Fall back to base64
+      }
+    }
+
+    sendThreadMedia({
+      content: caption || file.name,
+      mediaUrl: finalUrl,
+      mimeType: file.type,
+      fileName: file.name,
+    }, agentId, connId);
+
+    setPendingFile(null);
+    setFileCaption('');
+    setShowMoreIcons(false);
+  }, [pendingFile, fileCaption, sendThreadMedia, agentId, connId]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      if (pendingFile) {
+        handleSendPendingFile();
+      } else {
+        handleSend();
+      }
+    }
+  }, [handleSend, handleSendPendingFile, pendingFile]);
+
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file') {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const dataUrl = await fileToDataUrl(file);
+        const isImage = file.type.startsWith('image/');
+        setPendingFile({ file, dataUrl, isImage });
+        setFileCaption(inputValue.trim());
+        return;
+      }
+    }
+  }, [inputValue]);
+
+  return (
+    <div className="border-t border-border/70 px-3 py-2 dark:border-border-dark/70">
+      {/* Hidden file inputs */}
+      <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelected} />
+      <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelected} />
+
+      {/* Pending file/image preview */}
+      <AnimatePresence>
+        {pendingFile && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-2 overflow-hidden"
+          >
+            <div className="flex items-start gap-3 rounded-[16px] border border-border/60 bg-white/96 p-2.5 dark:border-border-dark/60 dark:bg-card-alt/96">
+              {pendingFile.isImage ? (
+                <img src={pendingFile.dataUrl} alt="Preview" className="h-10 w-10 rounded-lg border border-border object-cover dark:border-border-dark" />
+              ) : (
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface text-primary dark:border-border-dark dark:bg-surface-dark">
+                  <FileText size={18} />
+                </div>
+              )}
+              <div className="flex min-w-0 flex-1 flex-col justify-center">
+                <div className="flex items-center justify-between">
+                  <span className="truncate pr-2 text-[12px] font-medium text-text dark:text-text-inv">{pendingFile.file.name}</span>
+                  <button onClick={() => { setPendingFile(null); setFileCaption(''); }} className="rounded-full p-1 text-text/50 transition-colors hover:bg-surface dark:text-text-inv/50 dark:hover:bg-surface-dark">
+                    <X size={12} />
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={fileCaption}
+                  onChange={(e) => setFileCaption(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      handleSendPendingFile();
+                    }
+                  }}
+                  placeholder="Add a caption..."
+                  className="w-full bg-transparent text-[11px] text-slate-600 outline-none placeholder:text-slate-400 dark:text-slate-300 dark:placeholder:text-slate-500"
+                  autoFocus
+                />
+              </div>
+              <button onClick={handleSendPendingFile} className="self-center rounded-full bg-primary p-1.5 text-white shadow-sm transition-all hover:scale-105">
+                <ArrowUp size={12} strokeWidth={2.5} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="relative flex items-end gap-0.5 rounded-[18px] border border-border/50 bg-surface/50 px-1.5 py-1 dark:border-border-dark/50 dark:bg-white/[0.03]">
+        {/* Action menu popover */}
+        <AnimatePresence>
+          {showMoreIcons && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="fixed inset-0 z-20"
+                onClick={() => setShowMoreIcons(false)}
+              />
+              <motion.div
+                initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                className="absolute bottom-full left-0 z-30 mb-2 flex min-w-[120px] flex-col gap-0.5 rounded-2xl border border-border/70 bg-white/96 p-1.5 shadow-lg dark:border-border-dark/70 dark:bg-card-alt/96"
+              >
+                <button
+                  onClick={() => { imageInputRef.current?.click(); setShowMoreIcons(false); }}
+                  className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] text-text transition-colors hover:bg-slate-50 dark:text-text-inv dark:hover:bg-white/[0.05]"
+                >
+                  <Image size={16} />
+                  Image
+                </button>
+                <button
+                  onClick={() => { fileInputRef.current?.click(); setShowMoreIcons(false); }}
+                  className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] text-text transition-colors hover:bg-slate-50 dark:text-text-inv dark:hover:bg-white/[0.05]"
+                >
+                  <Paperclip size={16} />
+                  File
+                </button>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        {/* + button */}
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={() => setShowMoreIcons(!showMoreIcons)}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/40 hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60'}`}
+          aria-label="Attach"
+        >
+          <Plus size={16} />
+        </motion.button>
+
+        {/* Text input */}
+        <textarea
+          ref={textareaRef}
+          rows={1}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onPaste={handlePaste}
+          onKeyDown={handleKeyDown}
+          placeholder="Reply in thread..."
+          aria-label="Reply in thread"
+          className="flex-1 min-w-0 resize-none overflow-y-auto bg-transparent border-none px-1 py-1 text-[13px] text-text placeholder:text-[13px] placeholder:text-text/30 focus:outline-none dark:text-text-inv dark:placeholder:text-text-inv/25 leading-[1.45]"
+        />
+
+        {/* Send button */}
+        <AnimatePresence>
+          {inputValue.trim() && (
+            <motion.button
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={handleSend}
+              aria-label="Send message"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white shadow-sm"
+            >
+              <ArrowUp size={14} strokeWidth={2.5} />
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Adaptive thread panel — sidebar on wide screens, fullscreen overlay on narrow.
@@ -401,6 +655,9 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
 
         {/* Body (thread messages) */}
         {body}
+
+        {/* Input box */}
+        {activeThreadId && <ThreadInput connId={connId} agentId={agentId} />}
       </motion.div>
     );
   }
@@ -443,6 +700,9 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
 
       {/* Body (thread messages) */}
       {body}
+
+      {/* Input box */}
+      {activeThreadId && <ThreadInput connId={connId} agentId={agentId} />}
     </motion.div>
   );
 }

@@ -73,6 +73,7 @@ interface ThreadState {
   loadThreadMessages: (threadId: string, opts?: { before?: number; limit?: number }, connectionId?: string) => void;
   loadOlderMessages: (connectionId?: string) => void;
   sendThreadMessage: (content: string, agentId?: string, connectionId?: string) => void;
+  sendThreadMedia: (opts: { content: string; mediaUrl: string; mimeType: string; fileName?: string }, agentId?: string, connectionId?: string) => void;
   markThreadRead: (threadId: string, connectionId?: string) => void;
   updateThread: (threadId: string, payload: { title?: string; status?: ThreadStatus }, connectionId?: string) => void;
   deleteThread: (threadId: string, connectionId?: string) => void;
@@ -211,6 +212,48 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
       id: messageId,
       sender: 'user',
       text: content,
+      timestamp,
+      threadId: activeThreadId,
+      deliveryStatus: 'pending',
+    };
+    get()._appendMessage(activeThreadId, optimisticMsg);
+  },
+
+  sendThreadMedia(opts, agentId, connectionId) {
+    const { activeThreadId } = get();
+    if (!activeThreadId) return;
+
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const timestamp = Date.now();
+
+    channel.sendRaw({
+      type: 'message.receive',
+      data: {
+        messageId,
+        chatId: channel.getChatId(connectionId),
+        chatType: 'direct',
+        senderId: channel.getSenderId(connectionId),
+        senderName: '',
+        messageType: 'file',
+        content: opts.content || opts.fileName || 'File',
+        mediaUrl: opts.mediaUrl,
+        mimeType: opts.mimeType,
+        timestamp,
+        threadId: activeThreadId,
+        ...(agentId || channel.getCurrentAgentId(connectionId)
+          ? { agentId: agentId || channel.getCurrentAgentId(connectionId) }
+          : {}),
+      },
+    }, connectionId);
+
+    // Optimistic update
+    const isImage = opts.mimeType?.startsWith('image/');
+    const optimisticMsg: Message = {
+      id: messageId,
+      sender: 'user',
+      text: opts.content || (isImage ? '' : `📎 ${opts.fileName || 'File'}`),
+      mediaType: isImage ? 'image' : 'file',
+      mediaUrl: opts.mediaUrl,
       timestamp,
       threadId: activeThreadId,
       deliveryStatus: 'pending',
