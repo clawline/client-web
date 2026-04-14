@@ -25,7 +25,8 @@ import {
   getConnectionDisplayName, getSkillDescription,
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
-import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadSessionCard, AcpSessionBar, type AcpSessionInfo } from '../components/chat';
+import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadSessionCard, AcpSessionBar, ThreadPanel, type AcpSessionInfo } from '../components/chat';
+import { useThreadStore } from '../stores/threadStore';
 
 function getAgentInfo(agentId: string | null | undefined, connectionId: string): AgentInfo | null {
   const list = channel.loadCachedAgents(connectionId);
@@ -245,6 +246,17 @@ export default function ChatRoom({
   const [showContextViewer, setShowContextViewer] = useState(false);
   const [showMoreIcons, setShowMoreIcons] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+
+  // Thread panel state — read from Zustand store
+  const isThreadPanelOpen = useThreadStore((s) => s.isThreadPanelOpen);
+  // Wide enough for sidebar layout (>=768px)
+  const [isWideViewport, setIsWideViewport] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const handler = (e: MediaQueryListEvent) => setIsWideViewport(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   const copyMessage = useCallback((msgId: string, text: string) => {
     const showFeedback = () => {
@@ -1751,7 +1763,12 @@ export default function ChatRoom({
   const hasSkillMatches = filteredWorkspaceSkills.length > 0 || filteredGlobalSkills.length > 0 || filteredBuiltinSkills.length > 0;
 
   return (
-    <div className="relative flex h-full flex-col bg-white dark:bg-surface-dark">
+    <div className="relative flex h-full flex-row">
+    {/* Main chat column — shrinks when thread panel is open on wide screens */}
+    <div
+      className="relative flex h-full min-w-0 flex-1 flex-col bg-white dark:bg-surface-dark"
+      onClick={isThreadPanelOpen && isWideViewport ? () => useThreadStore.getState().closeThread() : undefined}
+    >
       {/* Header */}
       {/* Chat header — sticky, always visible, same bg as page */}
       <ChatHeader
@@ -2802,6 +2819,12 @@ export default function ChatRoom({
         wsStatus={wsStatus as 'connected' | 'connecting' | 'reconnecting' | 'disconnected'}
         presence={agentPresence}
       />
+    </div>
+
+    {/* Thread panel — sidebar on wide screens, fullscreen overlay on narrow */}
+    <AnimatePresence>
+      {isThreadPanelOpen && <ThreadPanel isWide={isWideViewport} />}
+    </AnimatePresence>
     </div>
   );
 }

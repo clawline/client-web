@@ -35,3 +35,4 @@ export { AgentHeaderCard } from './AgentHeaderCard';
 export { AgentDetailSheet } from './AgentDetailSheet';
 export { ThreadSessionCard } from './ThreadSessionCard';
 export { AcpSessionBar, type AcpSessionInfo } from './AcpSessionBar';
+export { ThreadPanel } from './ThreadPanel';
