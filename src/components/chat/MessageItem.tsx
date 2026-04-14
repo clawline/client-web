@@ -8,6 +8,7 @@ import MarkdownRenderer from '../MarkdownRenderer';
 import ActionCard from '../ActionCard';
 import SlashResponseCard, { parseSlashResponse } from './SlashResponseCard';
 import ApprovalCard, { parseApprovalMessage } from './ApprovalCard';
+import { ThreadPreviewBar } from './ThreadPreviewBar';
 
 interface MessageItemProps {
   msg: Message;
@@ -223,6 +224,9 @@ function MessageItemInner({
               ))}
             </div>
           )}
+
+          {/* Thread preview bar — shown on messages that are thread parents */}
+          {!msg.threadId && <ThreadPreviewBar messageId={msg.id} connectionId={runtimeConnId} />}
 
           {/* Action Card for AI messages */}
           {!isUser && !isStreaming && <ActionCard text={msg.text} onSend={onQuickSend} />}

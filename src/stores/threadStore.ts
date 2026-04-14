@@ -63,6 +63,8 @@ interface ThreadState {
   isLoadingOlderMessages: boolean;
   /** Whether the current thread has more older messages to load */
   hasMoreMessages: boolean;
+  /** Latest reply preview text per thread (from thread.new_reply events) */
+  threadReplyPreviews: Map<string, string>;
 
   // ── Actions ──
   createThread: (parentMessageId: string, title?: string, connectionId?: string) => void;
@@ -100,6 +102,7 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
   isLoadingMessages: false,
   isLoadingOlderMessages: false,
   hasMoreMessages: true,
+  threadReplyPreviews: new Map(),
 
   // ── Actions ──
 
@@ -329,6 +332,15 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
         : [...thread.participantIds, data.senderId],
     };
     get()._setThread(updatedThread);
+
+    // Store latest reply preview text
+    if (data.preview) {
+      set((s) => {
+        const newPreviews = new Map(s.threadReplyPreviews);
+        newPreviews.set(data.threadId, data.preview);
+        return { threadReplyPreviews: newPreviews };
+      });
+    }
   },
 
   // ── Internal helpers ──

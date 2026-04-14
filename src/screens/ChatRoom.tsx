@@ -26,7 +26,7 @@ import {
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
 import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadSessionCard, AcpSessionBar, ThreadPanel, type AcpSessionInfo } from '../components/chat';
-import { useThreadStore } from '../stores/threadStore';
+import { useThreadStore, subscribeThreadEvents } from '../stores/threadStore';
 
 function getAgentInfo(agentId: string | null | undefined, connectionId: string): AgentInfo | null {
   const list = channel.loadCachedAgents(connectionId);
@@ -665,6 +665,10 @@ export default function ChatRoom({
         if (effectiveChatId) {
           try { channel.requestHistory(effectiveChatId, agentId || undefined, runtimeConnId, { limit: 20 }); } catch { /* ignore */ }
         }
+        // Load thread list for this channel so ThreadPreviewBars can render
+        if (activeConn?.channelId) {
+          useThreadStore.getState().loadThreadList({ channelId: activeConn.channelId, status: 'all', page: 1, pageSize: 100 }, runtimeConnId);
+        }
       } else if (packet.type === 'agent.selected') {
         // Bug 1: Server confirmed agent selection
         if (agentReadyTimeoutRef.current) {
@@ -1145,10 +1149,14 @@ export default function ChatRoom({
     };
     window.addEventListener(outbox.OUTBOX_OVERFLOW_EVENT, handleOutboxOverflow);
 
+    // Subscribe to thread events (thread.updated, thread.new_reply, etc.)
+    const unsubThreadEvents = subscribeThreadEvents(runtimeConnId);
+
     return () => {
       unsubMsg();
       unsubStatus();
       unsubError();
+      unsubThreadEvents();
       window.removeEventListener(outbox.OUTBOX_OVERFLOW_EVENT, handleOutboxOverflow);
       if (agentReadyTimeoutRef.current) {
         clearTimeout(agentReadyTimeoutRef.current);
