@@ -7,6 +7,7 @@ import { formatTime, formatDate, isDifferentDay, isGroupedWithPrev } from './uti
 import MarkdownRenderer from '../MarkdownRenderer';
 import ActionCard from '../ActionCard';
 import SlashResponseCard, { parseSlashResponse } from './SlashResponseCard';
+import ApprovalCard, { parseApprovalMessage } from './ApprovalCard';
 
 interface MessageItemProps {
   msg: Message;
@@ -166,11 +167,16 @@ function MessageItemInner({
               </div>
             ) : (
               <div>
-                {!isUser && !isStreaming && parseSlashResponse(msg.text) ? (
-                  <SlashResponseCard text={msg.text} />
-                ) : (
-                  <MarkdownRenderer content={msg.text} />
-                )}
+                {(() => {
+                  const approval = !isStreaming ? parseApprovalMessage(msg.text) : null;
+                  if (approval) {
+                    return <ApprovalCard parsed={approval} onSend={onQuickSend} />;
+                  }
+                  if (!isStreaming && parseSlashResponse(msg.text)) {
+                    return <SlashResponseCard text={msg.text} />;
+                  }
+                  return <MarkdownRenderer content={msg.text} />;
+                })()}
                 {isStreaming && (
                   <span className="inline-flex items-center gap-1.5 align-middle ml-0.5">
                     <span className="inline-block w-2 h-4 bg-primary animate-pulse" />
