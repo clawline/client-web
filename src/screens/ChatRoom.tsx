@@ -1448,6 +1448,8 @@ export default function ChatRoom({
     setShowSlashMenu(false);
     setReplyingTo(null);
     if (draftKey) localStorage.removeItem(draftKey);
+    // Dismiss mobile keyboard after sending
+    (document.activeElement as HTMLElement)?.blur();
     sendTextMessage(capturedInput, { replyId, replyQuotedText });
   };
 
