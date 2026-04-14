@@ -1751,7 +1751,7 @@ export default function ChatRoom({
   const hasSkillMatches = filteredWorkspaceSkills.length > 0 || filteredGlobalSkills.length > 0 || filteredBuiltinSkills.length > 0;
 
   return (
-    <div className="relative flex h-full flex-col bg-white dark:bg-[#11161d]">
+    <div className="relative flex h-full flex-col bg-white dark:bg-surface-dark">
       {/* Header */}
       {/* Chat header — sticky, always visible, same bg as page */}
       <ChatHeader
@@ -1873,7 +1873,7 @@ export default function ChatRoom({
       <div className="relative flex flex-1 flex-col min-h-0">
       <div
         ref={scrollContainerRef}
-        className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-white px-4 pt-4 pb-4 overscroll-contain dark:bg-[#11161d]"
+        className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-white px-4 pt-4 pb-4 overscroll-contain dark:bg-surface-dark"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {/* Load more indicator */}
@@ -2240,7 +2240,7 @@ export default function ChatRoom({
       />
 
       {/* Input Area */}
-      <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-1.5 bg-white px-2 pt-1.5 dark:bg-[#11161d]">
+      <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-1.5 bg-white px-2 pt-1.5 dark:bg-surface-dark">
         <AnimatePresence>
           {showSlashMenu && (
             <>
@@ -2712,7 +2712,7 @@ export default function ChatRoom({
               onChange={handleInputChange}
               onPaste={handlePaste}
               onFocus={() => { setShowEmojiPicker(false); }}
-              onBlur={() => { window.scrollTo(0, 0); }}
+              onBlur={() => { if (!isDesktop && window.visualViewport) { window.scrollTo(0, 0); } }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && agentReady) {
                   e.preventDefault();
