@@ -249,6 +249,8 @@ export default function ChatRoom({
 
   // Thread panel state — read from Zustand store
   const isThreadPanelOpen = useThreadStore((s) => s.isThreadPanelOpen);
+  const activeStoreThreadId = useThreadStore((s) => s.activeThreadId);
+  const threadNotFound = useThreadStore((s) => s.threadNotFound);
   const totalThreadUnread = useThreadStore((s) => {
     let total = 0;
     for (const count of s.unreadCounts.values()) total += count;
@@ -262,6 +264,30 @@ export default function ChatRoom({
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, []);
+
+  // ── Thread URL sync ──
+
+  // Sync thread state → URL: append/remove ?thread= param using replaceState
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (isThreadPanelOpen && activeStoreThreadId) {
+      url.searchParams.set('thread', activeStoreThreadId);
+    } else {
+      url.searchParams.delete('thread');
+    }
+    if (url.href !== window.location.href) {
+      window.history.replaceState(window.history.state, '', url.toString());
+    }
+  }, [isThreadPanelOpen, activeStoreThreadId]);
+
+  // Thread not found: remove ?thread param and close panel
+  useEffect(() => {
+    if (threadNotFound) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('thread');
+      window.history.replaceState(window.history.state, '', url.toString());
+    }
+  }, [threadNotFound]);
 
   const copyMessage = useCallback((msgId: string, text: string) => {
     const showFeedback = () => {
@@ -673,6 +699,11 @@ export default function ChatRoom({
         // Load thread list for this channel so ThreadPreviewBars can render
         if (activeConn?.channelId) {
           useThreadStore.getState().loadThreadList({ channelId: activeConn.channelId, status: 'all', page: 1, pageSize: 100 }, runtimeConnId);
+        }
+        // Restore thread from URL ?thread= param on connection open
+        const urlThreadId = new URLSearchParams(window.location.search).get('thread');
+        if (urlThreadId && !useThreadStore.getState().isThreadPanelOpen) {
+          useThreadStore.getState().openThread(urlThreadId, runtimeConnId);
         }
       } else if (packet.type === 'agent.selected') {
         // Bug 1: Server confirmed agent selection

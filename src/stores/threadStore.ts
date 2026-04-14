@@ -80,6 +80,8 @@ interface ThreadState {
   isSearching: boolean;
   /** Currently highlighted search result index */
   searchResultIndex: number;
+  /** Whether the last thread.get returned 'not found' (deleted or invalid) */
+  threadNotFound: boolean;
 
   // ── Actions ──
   createThread: (parentMessageId: string, title?: string, connectionId?: string) => void;
@@ -98,6 +100,7 @@ interface ThreadState {
   searchThread: (query: string, connectionId?: string) => void;
   clearSearch: () => void;
   setSearchResultIndex: (index: number) => void;
+  clearThreadNotFound: () => void;
 
   // ── WebSocket event handlers (called from listener) ──
   onThreadUpdated: (thread: Thread) => void;
@@ -128,6 +131,7 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
   threadSearchResults: [],
   isSearching: false,
   searchResultIndex: -1,
+  threadNotFound: false,
 
   // ── Actions ──
 
@@ -143,7 +147,7 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
   openThread(threadId, connectionId) {
     const requestId = `thread-get-${Date.now()}`;
     const wasListMode = get().threadPanelMode === 'list';
-    set({ activeThreadId: threadId, isThreadPanelOpen: true, threadPanelMode: wasListMode ? 'list' : 'detail', isLoadingMessages: true, hasMoreMessages: true });
+    set({ activeThreadId: threadId, isThreadPanelOpen: true, threadPanelMode: wasListMode ? 'list' : 'detail', isLoadingMessages: true, hasMoreMessages: true, threadNotFound: false });
 
     channel.sendRaw({
       type: 'thread.get',
@@ -359,6 +363,10 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
     set({ searchResultIndex: index });
   },
 
+  clearThreadNotFound() {
+    set({ threadNotFound: false });
+  },
+
   // ── WebSocket event handlers ──
 
   onThreadUpdated(thread) {
@@ -504,6 +512,11 @@ export function subscribeThreadEvents(connectionId?: string): () => void {
         const unreadCount = data.unreadCount as number | undefined;
 
         if (thread) {
+          // If thread is deleted, treat as not found
+          if (thread.status === 'deleted') {
+            useThreadStore.setState({ isLoadingMessages: false, threadNotFound: true });
+            break;
+          }
           store.onThreadUpdated(thread);
 
           // Store unread status
@@ -552,6 +565,9 @@ export function subscribeThreadEvents(connectionId?: string): () => void {
           }
 
           useThreadStore.setState({ isLoadingMessages: false });
+        } else {
+          // Thread not found or deleted — signal to UI
+          useThreadStore.setState({ isLoadingMessages: false, threadNotFound: true });
         }
         break;
       }

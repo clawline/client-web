@@ -573,7 +573,7 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
   const {
     isThreadPanelOpen, activeThreadId, closeThread, threads,
     threadMessages, isLoadingMessages, isLoadingOlderMessages,
-    hasMoreMessages, loadOlderMessages, threadPanelMode,
+    hasMoreMessages, loadOlderMessages, threadPanelMode, threadNotFound,
   } = useThreadStore();
 
   // Options menu state
@@ -850,8 +850,26 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
     return new Set(threadSearchResults.map((m) => m.id));
   }, [threadSearchQuery, threadSearchResults]);
 
-  // ── Body content: thread message list or empty/loading state ──
-  const body = activeThreadId ? (
+  // ── Body content: thread message list or empty/loading/not-found state ──
+  const body = threadNotFound ? (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100 dark:bg-red-900/20">
+        <MessageSquareText size={24} className="text-red-500" />
+      </div>
+      <p className="text-center text-[13px] text-text/50 dark:text-text-inv/50">
+        Thread not found
+      </p>
+      <button
+        onClick={() => {
+          useThreadStore.getState().clearThreadNotFound();
+          closeThread();
+        }}
+        className="mt-1 rounded-lg bg-primary/10 px-4 py-1.5 text-[13px] font-medium text-primary hover:bg-primary/20 transition-colors"
+      >
+        Close
+      </button>
+    </div>
+  ) : activeThreadId ? (
     <div className="relative flex flex-1 flex-col overflow-hidden">
       {/* Scrollable message list */}
       <div
