@@ -1,12 +1,13 @@
 import { memo } from 'react';
 import { motion } from 'motion/react';
-import { FileText, User, SmilePlus, CornerDownLeft, Copy, Check, Pencil, Trash2 } from 'lucide-react';
+import { FileText, User, SmilePlus, CornerDownLeft, Copy, Check, Pencil, Trash2, Zap } from 'lucide-react';
 import type { Message, AgentInfo } from './types';
 import { DeliveryTicks } from './DeliveryTicks';
 import { formatTime, formatDate, isDifferentDay, isGroupedWithPrev } from './utils';
 import MarkdownRenderer from '../MarkdownRenderer';
 import ActionCard from '../ActionCard';
 import SlashResponseCard, { parseSlashResponse } from './SlashResponseCard';
+import ApprovalCard, { parseApprovalMessage } from './ApprovalCard';
 
 interface MessageItemProps {
   msg: Message;
@@ -94,6 +95,13 @@ function MessageItemInner({
                   {agentInfo.model.split('/').pop()}
                 </span>
               )}
+              {/* API direct connection badge */}
+              {msg.meta?.source === 'api' && (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 tracking-wide">
+                  <Zap size={8} />
+                  API
+                </span>
+              )}
               {/* Inline reply reference — uses quotedText from message payload */}
               {msg.replyTo && (() => {
                 const prevRef = index > 0 ? messages[index - 1] : null;
@@ -159,11 +167,16 @@ function MessageItemInner({
               </div>
             ) : (
               <div>
-                {!isUser && !isStreaming && parseSlashResponse(msg.text) ? (
-                  <SlashResponseCard text={msg.text} />
-                ) : (
-                  <MarkdownRenderer content={msg.text} />
-                )}
+                {(() => {
+                  const approval = !isStreaming ? parseApprovalMessage(msg.text) : null;
+                  if (approval) {
+                    return <ApprovalCard parsed={approval} onSend={onQuickSend} />;
+                  }
+                  if (!isStreaming && parseSlashResponse(msg.text)) {
+                    return <SlashResponseCard text={msg.text} />;
+                  }
+                  return <MarkdownRenderer content={msg.text} />;
+                })()}
                 {isStreaming && (
                   <span className="inline-flex items-center gap-1.5 align-middle ml-0.5">
                     <span className="inline-block w-2 h-4 bg-primary animate-pulse" />

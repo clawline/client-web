@@ -26,7 +26,6 @@ import { usePWAUpdate } from './hooks/usePWAUpdate';
 import { useIOSPWA } from './hooks/useIOSPWA';
 import { cn } from './lib/utils';
 import { MessageCircle, LayoutDashboard, Search as SearchIcon, User, Inbox as InboxIcon } from 'lucide-react';
-import { migrateFromLocalStorage } from './services/messageDB';
 import { initInbox, getUnreadTotal, onInboxUpdate } from './services/agentInbox';
 
 // Lazy-loaded heavy screens
@@ -50,7 +49,6 @@ function ScreenLoading() {
 
 const STORAGE_KEY_USER_ID = 'openclaw.userId';
 const STORAGE_KEY_USER_NAME = 'openclaw.userName';
-const INDEXED_DB_MIGRATED_KEY = 'openclaw.indexeddb.migrated';
 
 
 function createUserId() {
@@ -169,7 +167,15 @@ function AppShell() {
   // (React Rules of Hooks — Error #310 fix)
 
   const initialFromUrl = pathToScreen(location.pathname, location.search);
-  const initialScreen: Screen = effectivelyAuthenticated ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
+  const hasLocalConnections = (() => {
+    try {
+      const raw = localStorage.getItem('openclaw.connections');
+      if (!raw) return false;
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) && arr.length > 0;
+    } catch { return false; }
+  })();
+  const initialScreen: Screen = (effectivelyAuthenticated || hasLocalConnections) ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
 
   // Navigation state from Zustand store
   const currentScreen = useNavigationStore((s) => s.currentScreen);
@@ -182,6 +188,15 @@ function AppShell() {
   const setActiveConnectionState = useNavigationStore((s) => s.setActiveConnectionId);
   const splitPanes = useNavigationStore((s) => s.splitPanes);
   const setSplitPanes = useNavigationStore((s) => s.setSplitPanes);
+
+  // Map from "connectionId|agentId" → focus function registered by the split ChatRoom pane
+  const splitPaneFocusMap = useRef<Map<string, () => void>>(new Map());
+  const registerSplitPaneFocus = useCallback((connectionId: string, agentId: string, fn: () => void) => {
+    splitPaneFocusMap.current.set(`${connectionId}|${agentId}`, fn);
+  }, []);
+  const focusSplitPane = useCallback((connectionId: string, agentId: string) => {
+    splitPaneFocusMap.current.get(`${connectionId}|${agentId}`)?.();
+  }, []);
 
   // Initialize screen from URL on first render
   const initializedRef = useRef(false);
@@ -356,6 +371,8 @@ function AppShell() {
   const openSplitChat = useCallback((connectionId: string, agentId: string, chatId?: string) => {
     if (!isSplitViewport) return;
     setSplitPanes((prev) => {
+      // Already open in a pane — no-op (don't duplicate)
+      if (prev.some((p) => p.connectionId === connectionId && p.agentId === agentId)) return prev;
       // Fill the first empty pane, or append
       const emptyIdx = prev.findIndex((p) => p.agentId === EMPTY_SPLIT_VALUE);
       if (emptyIdx >= 0) {
@@ -417,7 +434,16 @@ function AppShell() {
 
   const renderScreen = () => {
     // Redirect unauthenticated users to onboarding (except callback)
-    if (!effectivelyAuthenticated && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
+    // Skip onboarding for returning users (have connections saved locally)
+    const hasExistingConnections = (() => {
+      try {
+        const raw = localStorage.getItem('openclaw.connections');
+        if (!raw) return false;
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) && arr.length > 0;
+      } catch { return false; }
+    })();
+    if (!effectivelyAuthenticated && !hasExistingConnections && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
       return <Onboarding onGetStarted={() => navigate('chats')} />;
     }
     const content = (() => {
@@ -476,6 +502,7 @@ function AppShell() {
             isDesktop
             isSplitPane
             onCloseSplit={() => closeSplitPane(idx)}
+            onFocusInput={(fn) => registerSplitPaneFocus(pane.connectionId, pane.agentId, fn)}
           />
         );
       }
@@ -591,6 +618,7 @@ function AppShell() {
             <ChatList
               onOpenChat={(connectionId, agentId, chatId) => navigate('chat_room', agentId, chatId, connectionId)}
               onOpenSplitChat={openSplitChat}
+              onFocusSplitPane={focusSplitPane}
               onAddServer={() => navigate('pairing')}
               compact
               activeAgentId={activeAgentId}
@@ -722,25 +750,6 @@ function AppShell() {
 }
 
 export default function App() {
-  useEffect(() => {
-    if (localStorage.getItem(INDEXED_DB_MIGRATED_KEY) === '1') {
-      return;
-    }
-
-    let cancelled = false;
-
-    void migrateFromLocalStorage().then(() => {
-      if (cancelled) return;
-      localStorage.setItem(INDEXED_DB_MIGRATED_KEY, '1');
-    }).catch(() => {
-      // Retry on next app launch if migration fails.
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Initialize the agent inbox service on app mount
   useEffect(() => {
     void initInbox();

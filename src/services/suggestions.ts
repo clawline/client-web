@@ -269,6 +269,12 @@ export type SyncMessage = {
   media_url: string | null;
   meta: string | null;
   timestamp: number;
+  thread_id?: string | null;
+};
+
+export type SyncResult = {
+  messages: SyncMessage[];
+  hasMore: boolean;
 };
 
 export async function syncMissedMessages(
@@ -276,9 +282,9 @@ export async function syncMissedMessages(
   afterTimestamp: number,
   limit = 100,
   connectionId?: string,
-): Promise<SyncMessage[]> {
+): Promise<SyncResult> {
   const baseUrl = getGatewayHttpUrl(connectionId);
-  if (!baseUrl) return [];
+  if (!baseUrl) return { messages: [], hasMore: false };
 
   try {
     const params = new URLSearchParams({
@@ -289,10 +295,72 @@ export async function syncMissedMessages(
     const res = await fetch(`${baseUrl}/api/messages/sync?${params}`, {
       headers: getAuthHeaders(connectionId),
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { messages: [], hasMore: false };
     const data = await res.json();
-    return Array.isArray(data.messages) ? data.messages : [];
+    return {
+      messages: Array.isArray(data.messages) ? data.messages : [],
+      hasMore: data.hasMore === true,
+    };
   } catch {
-    return [];
+    return { messages: [], hasMore: false };
   }
+}
+
+/**
+ * Fetch older messages from Supabase for backward pagination (scrolling up).
+ * Uses `before` timestamp to get messages older than the given point.
+ */
+export async function fetchOlderMessages(
+  channelId: string,
+  beforeTimestamp: number,
+  agentId?: string,
+  limit = 20,
+  connectionId?: string,
+): Promise<SyncResult> {
+  const baseUrl = getGatewayHttpUrl(connectionId);
+  if (!baseUrl) return { messages: [], hasMore: false };
+
+  try {
+    const params = new URLSearchParams({
+      channelId,
+      before: String(beforeTimestamp),
+      limit: String(limit),
+    });
+    if (agentId) params.set('agentId', agentId);
+    const res = await fetch(`${baseUrl}/api/messages/sync?${params}`, {
+      headers: getAuthHeaders(connectionId),
+    });
+    if (!res.ok) return { messages: [], hasMore: false };
+    const data = await res.json();
+    return {
+      messages: Array.isArray(data.messages) ? data.messages : [],
+      hasMore: data.hasMore === true,
+    };
+  } catch {
+    return { messages: [], hasMore: false };
+  }
+}
+
+/**
+ * Convert a remote SyncMessage to the local message format used by React state.
+ *
+ * Direction mapping:
+ * 'outbound' = server-to-client = AI response; 'inbound' = client-to-server = user message
+ */
+export function syncMessageToLocal(msg: SyncMessage) {
+  // Parse meta from JSON string (stored as text in DB)
+  let parsedMeta: Record<string, unknown> | undefined;
+  if (msg.meta) {
+    try { parsedMeta = JSON.parse(msg.meta) as Record<string, unknown>; } catch { /* ignore */ }
+  }
+  return {
+    id: msg.message_id || msg.id,
+    sender: (msg.direction === 'outbound' ? 'ai' : 'user') as 'user' | 'ai',
+    text: msg.content || '',
+    timestamp: msg.timestamp,
+    mediaType: msg.content_type !== 'text' ? msg.content_type : undefined,
+    mediaUrl: msg.media_url || undefined,
+    meta: parsedMeta,
+    threadId: msg.thread_id || undefined,
+  };
 }

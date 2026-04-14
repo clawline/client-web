@@ -3,9 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { Search as SearchIcon, Command, FileText, MessageSquare, Clock, Image, Mic, Filter, X, ArrowUpDown, History, Server } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { motion, AnimatePresence } from 'motion/react';
-import { searchMessages, type MessageRecord } from '../services/messageDB';
 
-type SearchResult = MessageRecord;
+type SearchResult = {
+  id: string;
+  connectionId: string;
+  agentId: string;
+  sender: string;
+  text: string;
+  timestamp: number;
+  chatId?: string;
+  mediaType?: string;
+  mediaUrl?: string;
+  serverName?: string;
+};
 
 type FilterType = 'all' | 'user' | 'ai' | 'image' | 'voice' | 'command';
 type SortMode = 'relevance' | 'timeline';
@@ -218,31 +228,9 @@ export default function Search() {
       return;
     }
 
-    let cancelled = false;
-
-    const searchOptions = (() => {
-      if (activeFilter === 'user') return { sender: 'user' as const, limit: 100 };
-      if (activeFilter === 'ai') return { sender: 'ai' as const, limit: 100 };
-      if (activeFilter === 'image') return { mediaType: 'image', limit: 100 };
-      if (activeFilter === 'voice') return { mediaType: 'voice', limit: 100 };
-      if (activeFilter === 'command') return { commandOnly: true, limit: 100 };
-      return { limit: 100 };
-    })();
-
-    setIsSearching(true);
-    void searchMessages(query, searchOptions).then((nextResults) => {
-      if (cancelled) return;
-      setResults(nextResults);
-      setIsSearching(false);
-    }).catch(() => {
-      if (cancelled) return;
-      setResults([]);
-      setIsSearching(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    // Search temporarily unavailable (IndexedDB removed, API search pending)
+    setResults([]);
+    setIsSearching(false);
   }, [activeFilter, hasInput, query]);
 
   return (

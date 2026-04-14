@@ -18,6 +18,9 @@ export type Message = {
   isStreaming?: boolean;
   streamingDone?: boolean;
   deliveryStatus?: DeliveryStatus;
+  threadId?: string;
+  /** Optional metadata. meta.source="api" marks messages sent via POST /api/chat direct endpoint. */
+  meta?: Record<string, unknown>;
 };
 
 export type ToolCall = {

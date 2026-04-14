@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type ChangeEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, ChevronRight, Smile, Mic, Send, ArrowUp, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, Copy, Check, Shield, Keyboard, ArrowDown } from 'lucide-react';
 import { SpeechRecognitionSession } from '../services/volcASR';
@@ -13,19 +13,19 @@ import AgentContextViewer from '../components/AgentContextViewer';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import MemorySheet from '../components/MemorySheet';
 import FileGallery from '../components/FileGallery';
-import { clearConversationMessages, DEFAULT_LOAD_LIMIT, loadConversationMessages, saveConversationMessages } from '../services/messageDB';
 import * as outbox from '../services/outbox';
-import { refineVoiceText, syncMissedMessages } from '../services/suggestions';
+import { refineVoiceText, fetchOlderMessages, syncMessageToLocal } from '../services/suggestions';
+import { getMessages as getCachedMessages, appendMessage, isWarmed } from '../stores/messageCache';
 import {
   type DeliveryStatus, type Message, type AgentInfo,
   QUICK_COMMANDS, EMOJI_LIST,
   formatTime, formatDate, formatLastSeen, formatToolName, formatToolArgSnippet, formatResultSummary, formatRelativeTime,
   isDifferentDay, isGroupedWithPrev, humanizeError, fileToDataUrl,
-  getPreviewKey, emitPreviewUpdated, saveAgentPreview, mergeMessages,
+  getPreviewKey, emitPreviewUpdated, mergeMessages,
   getConnectionDisplayName, getSkillDescription,
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
-import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet } from '../components/chat';
+import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadSessionCard, AcpSessionBar, type AcpSessionInfo } from '../components/chat';
 
 function getAgentInfo(agentId: string | null | undefined, connectionId: string): AgentInfo | null {
   const list = channel.loadCachedAgents(connectionId);
@@ -87,6 +87,7 @@ export default function ChatRoom({
   isSplitPane,
   onToggleSplit,
   onCloseSplit,
+  onFocusInput,
 }: {
   agentId?: string | null;
   chatId?: string | null;
@@ -100,11 +101,91 @@ export default function ChatRoom({
   isSplitPane?: boolean;
   onToggleSplit?: () => void;
   onCloseSplit?: () => void;
+  onFocusInput?: (focusFn: () => void) => void;
 }) {
   const activeConn = connectionId ? getConnectionById(connectionId) : getActiveConnection();
   const connId = activeConn?.id || '';
   const runtimeConnId = channelConnectionId || connId;
   const [messages, setMessages] = useState<Message[]>([]);
+
+  // Defensive dedup: ensure no two messages share the same ID at render time.
+  // Multiple async paths (WebSocket, messageCache, HTTP fallback, history.sync) can race
+  // and occasionally introduce duplicates with identical IDs.
+  const renderMessages = useMemo(() => {
+    const seen = new Map<string, number>();
+    return messages.filter((m, i) => {
+      if (seen.has(m.id)) return false;
+      seen.set(m.id, i);
+      return true;
+    });
+  }, [messages]);
+
+  // Group thread messages into thread cards while keeping insertion order
+  type RenderItem = { kind: 'msg'; msg: Message } | { kind: 'thread'; threadId: string; messages: Message[] };
+  const renderItems = useMemo<RenderItem[]>(() => {
+    const threads = new Map<string, Message[]>();
+    const items: RenderItem[] = [];
+    const threadPlaceholderIndex = new Map<string, number>();
+
+    for (const msg of renderMessages) {
+      if (msg.threadId) {
+        if (!threads.has(msg.threadId)) {
+          threads.set(msg.threadId, []);
+          threadPlaceholderIndex.set(msg.threadId, items.length);
+          items.push({ kind: 'thread', threadId: msg.threadId, messages: [] });
+        }
+        threads.get(msg.threadId)!.push(msg);
+      } else {
+        items.push({ kind: 'msg', msg });
+      }
+    }
+    // Back-fill thread messages
+    for (const item of items) {
+      if (item.kind === 'thread') {
+        item.messages = threads.get(item.threadId) || [];
+      }
+    }
+    return items;
+  }, [renderMessages]);
+
+  const hasThreadMessages = renderItems.some((item) => item.kind === 'thread');
+
+  // Extract ACP session info from spawn messages for the session bar
+  const acpSessions = useMemo<AcpSessionInfo[]>(() => {
+    const sessionMap = new Map<string, AcpSessionInfo>();
+    for (const msg of renderMessages) {
+      if (msg.sender === 'ai' && msg.text.includes('Spawned ACP session') && msg.threadId) {
+        const keyMatch = msg.text.match(/agent:[^\s)]+/);
+        const modeMatch = msg.text.match(/\((\w+),/);
+        const backendMatch = msg.text.match(/backend\s+(\w+)/);
+        if (keyMatch) {
+          sessionMap.set(msg.threadId, {
+            sessionKey: keyMatch[0],
+            threadId: msg.threadId,
+            mode: modeMatch?.[1] || 'persistent',
+            backend: backendMatch?.[1] || 'acpx',
+            messageCount: 0,
+            lastTimestamp: msg.timestamp || Date.now(),
+          });
+        }
+      }
+    }
+    for (const msg of renderMessages) {
+      if (msg.threadId && sessionMap.has(msg.threadId)) {
+        const s = sessionMap.get(msg.threadId)!;
+        s.messageCount++;
+        if (msg.timestamp && msg.timestamp > s.lastTimestamp) s.lastTimestamp = msg.timestamp;
+      }
+    }
+    return [...sessionMap.values()].sort((a, b) => b.lastTimestamp - a.lastTimestamp);
+  }, [renderMessages]);
+
+  // Track active ACP thread — user messages sent while this is set get grouped into the thread
+  // Use ref for immediate access in sendTextMessage (state updates are async)
+  const activeThreadIdRef = useRef<string | undefined>(
+    [...renderMessages].reverse().find((m) => m.threadId)?.threadId
+  );
+  const setActiveThreadId = (id: string | undefined) => { activeThreadIdRef.current = id; };
 
   // Tick every 30s so "follow up" pill can appear after 2min without re-render trigger
   const [, setTick] = useState(0);
@@ -119,6 +200,7 @@ export default function ChatRoom({
   ));
   const [isContextLoading, setIsContextLoading] = useState(false);
   const [hasLoadedMessages, setHasLoadedMessages] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [thinkLevel, setThinkLevel] = useState<ThinkLevel>('off');
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -137,6 +219,9 @@ export default function ChatRoom({
   const [activeToolCalls, setActiveToolCalls] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number }[]>([]);
   const [toolCallHistory, setToolCallHistory] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number; endTime: number; resultSummary?: string }[]>([]);
   const [toolHistoryExpanded, setToolHistoryExpanded] = useState(false);
+  const [thinkingText, setThinkingText] = useState('');
+  // Phase ref (not state) — every transition MUST accompany a state change to trigger re-render
+  const streamingPhaseRef = useRef<'idle' | 'streaming_pre' | 'captured' | 'streaming_final'>('idle');
   const retryingRef = useRef<Set<string>>(new Set()); // B1: prevent double-tap retry
   const [voiceMode, setVoiceMode] = useState(() => localStorage.getItem('clawline:voiceMode') === 'true');
   const [voiceListening, setVoiceListening] = useState(false);
@@ -198,17 +283,50 @@ export default function ChatRoom({
   const agentReadyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevAgentIdRef = useRef<string | null | undefined>(undefined);
   const streamingSourceAgentRef = useRef<string | null>(null); // Track which agent owns current streaming
-  const lastTypingSentRef = useRef(0);
   const fileInputRef2 = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Register focus function with parent (for split-pane focus-on-click)
+  useEffect(() => {
+    if (onFocusInput) {
+      onFocusInput(() => textInputRef.current?.focus());
+    }
+  }, [onFocusInput]);
+
+  // Auto-resize textarea to fit content (max ~6 lines)
+  useEffect(() => {
+    const el = textInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
+  }, [inputValue]);
 
   const skills = agentInfo?.skills ?? [];
   const configuredSkills = agentInfo?.configuredSkills ?? [];
   const configuredSkillSet = new Set(configuredSkills);
   const builtinSkillSet = new Set(agentInfo?.builtinSkills ?? []);
   const draftKey = connId && agentId ? `draft:${connId}:${agentId}` : null;
+
+  // Dynamic quick commands — sorted by recent usage
+  const ALL_QUICK_CMDS = ['/status', '/models', '/help', '/new', '/reset', '/compact', '/context', '/whoami'];
+  const RECENT_CMDS_KEY = 'clawline.recentCmds';
+  const [recentCmds, setRecentCmds] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(RECENT_CMDS_KEY) || '[]'); } catch { return []; }
+  });
+  const sortedQuickCmds = useMemo(() => {
+    const recencyMap = new Map(recentCmds.map((cmd, i) => [cmd, recentCmds.length - i]));
+    return [...ALL_QUICK_CMDS].sort((a, b) => (recencyMap.get(b) || 0) - (recencyMap.get(a) || 0));
+  }, [recentCmds]);
+  const trackCmd = useCallback((cmd: string) => {
+    setRecentCmds(prev => {
+      const next = [cmd, ...prev.filter(c => c !== cmd)].slice(0, 20);
+      try { localStorage.setItem(RECENT_CMDS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   // B1: Retry pending message — dequeue first, send, re-enqueue on failure
   const retryMessage = async (msg: Message) => {
@@ -318,34 +436,70 @@ export default function ChatRoom({
   useEffect(() => {
     setMessages([]);
     setHasLoadedMessages(false);
+    setLoadError(false);
     setHasMoreHistory(false);
     setLoadingMoreHistory(false);
     streamingSourceAgentRef.current = null; // Clear streaming source tracking on agent change
+    streamingPhaseRef.current = 'idle';
+    setThinkingText('');
 
     if (!connId || !agentId) {
       setHasLoadedMessages(true);
       return;
     }
 
+    const channelId = activeConn?.channelId;
+    if (!channelId) {
+      setHasLoadedMessages(true);
+      return;
+    }
+
     let cancelled = false;
 
-    void loadConversationMessages(connId, agentId, {
-      chatId,
-      limit: DEFAULT_LOAD_LIMIT,
-    }).then((cachedMessages) => {
-      if (cancelled) return;
-      setMessages((currentMessages) => mergeMessages(cachedMessages, currentMessages));
-      setHasLoadedMessages(true);
-    }).catch(() => {
-      if (!cancelled) {
-        setHasLoadedMessages(true);
+    // Try cache first (populated by warmCache on app startup)
+    const cached = getCachedMessages(connId, agentId || '');
+    if (cached.length > 0 || isWarmed(connId)) {
+      // Cache is warm — use whatever is there (may be empty for new agents)
+      if (cached.length > 0) {
+        setMessages(mergeMessages(cached, []));
       }
-    });
+      setHasLoadedMessages(true);
+      setHasMoreHistory(cached.length > 0);
+    } else {
+      // Cache not warmed yet (deep link / before warmCache ran) — HTTP fallback
+      void fetchOlderMessages(channelId, Date.now(), agentId, 50, connId).then(({ messages: remote, hasMore }) => {
+        if (cancelled) return;
+        const localMsgs = remote.map((m) => syncMessageToLocal(m));
+        setMessages((currentMessages) => mergeMessages(localMsgs, currentMessages));
+        setHasMoreHistory(hasMore);
+        setHasLoadedMessages(true);
+      }).catch(() => {
+        if (!cancelled) {
+          setLoadError(true);
+          setHasLoadedMessages(true);
+        }
+      });
+    }
+
+    // Background reconciliation: compare local messages with remote to catch any gaps
+    void fetchOlderMessages(channelId, Date.now() + 1, agentId, 50, connId).then(({ messages: remote, hasMore }) => {
+      if (cancelled || remote.length === 0) return;
+      const remoteMsgs = remote.map((m) => syncMessageToLocal(m));
+      setMessages((prev) => {
+        const localIds = new Set(prev.map((m) => m.id));
+        const missing = remoteMsgs.filter((m) => !localIds.has(m.id));
+        if (missing.length === 0) return prev;
+        const merged = [...prev, ...missing].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        return merged;
+      });
+      setHasMoreHistory((prev) => prev || hasMore);
+    }).catch(() => { /* reconciliation is best-effort */ });
 
     return () => {
       cancelled = true;
     };
-  }, [agentId, chatId, connId]);
+  }, [agentId, chatId, connId, activeConn?.channelId]);
+
 
   useEffect(() => {
     if (!draftKey) {
@@ -360,22 +514,8 @@ export default function ChatRoom({
     }
   }, [draftKey]);
 
-  // Persist messages on change (debounced to avoid thrashing IndexedDB)
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!connId || !agentId || !hasLoadedMessages) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      if (messages.length === 0) {
-        void clearConversationMessages(connId, agentId, { chatId });
-        return;
-      }
-      void saveConversationMessages(connId, agentId, messages, { chatId });
-      saveAgentPreview(agentId, connId, messages);
-    }, 500);
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [hasLoadedMessages, messages, agentId, connId, chatId]);
 
   useEffect(() => {
     if (!draftKey) return;
@@ -448,6 +588,8 @@ export default function ChatRoom({
     setActiveToolCalls([]);
     setToolCallHistory([]);
     setToolHistoryExpanded(false);
+    setThinkingText('');
+    streamingPhaseRef.current = 'idle';
     setShowHeaderMenu(false);
     setShowHistoryDrawer(false);
     setConversations([]);
@@ -495,6 +637,7 @@ export default function ChatRoom({
     }
 
     const unsubMsg = channel.onMessage((packet) => {
+      console.log('[DEBUG WS] event=', packet.type, 'data.threadId=', packet.data?.threadId, 'data.agentId=', packet.data?.agentId);
       if (packet.type === 'connection.open') {
         // Connection established: select agent + request history + agent list
         try { channel.requestAgentList(runtimeConnId); } catch { /* ignore */ }
@@ -517,6 +660,19 @@ export default function ChatRoom({
           agentReadyTimeoutRef.current = null;
         }
         setAgentReady(true);
+      } else if (packet.type === 'message.receive' && packet.data?.content) {
+        // Cross-device sync: user message sent from another client (phone/tablet)
+        const peerSenderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
+        const mySenderId = channel.getSenderId(runtimeConnId);
+        if (peerSenderId && mySenderId && peerSenderId !== mySenderId) {
+          const msgId = (packet.data.messageId as string) || `peer-${Date.now()}`;
+          const content = (packet.data.content as string) || '';
+          const ts = (packet.data.timestamp as number) || Date.now();
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === msgId)) return prev;
+            return [...prev, { id: msgId, sender: 'user', text: content, timestamp: ts, deliveryStatus: 'delivered' as DeliveryStatus }];
+          });
+        }
       } else if (packet.type === 'message.send' && (packet.data?.content || packet.data?.mediaUrl)) {
         // Message isolation: only accept messages for current agent
         const packetAgentId = (packet.data.agentId as string | undefined) || undefined;
@@ -526,6 +682,36 @@ export default function ChatRoom({
         }
         // Fallback: if server didn't send agentId, use streaming source tracking
         if (!packetAgentId && agentId && streamingSourceAgentRef.current && streamingSourceAgentRef.current !== agentId) {
+          return;
+        }
+
+        // Detect echo: user's own message echoed back by the relay
+        const echoSenderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
+        const mySenderId = channel.getSenderId(runtimeConnId);
+        const isEcho = packet.data.echo === true || (echoSenderId && mySenderId && echoSenderId === mySenderId);
+
+        if (isEcho) {
+          // User's own message — add as 'user' sender (e.g. sent from Inbox)
+          const msgId = (packet.data.messageId as string) || Date.now().toString();
+          const content = (packet.data.content as string) || '';
+          const ts = (packet.data.timestamp as number) || Date.now();
+          setMessages((prev) => {
+            // If already in state (sent from this ChatRoom), just update
+            if (prev.some((m) => m.id === msgId)) {
+              return prev.map((m) => m.id === msgId ? { ...m, text: content || m.text, deliveryStatus: 'delivered' as DeliveryStatus } : m);
+            }
+            // Not in state (sent from Inbox) — append as user message
+            return [...prev, {
+              id: msgId,
+              sender: 'user',
+              text: content,
+              replyTo: (packet.data.replyTo as string) || undefined,
+              quotedText: (packet.data.quotedText as string) || undefined,
+              timestamp: ts,
+              deliveryStatus: 'delivered' as DeliveryStatus,
+            }];
+          });
+          appendMessage(connId, agentId || '', { id: msgId, sender: 'user', text: content, timestamp: ts });
           return;
         }
 
@@ -572,17 +758,26 @@ export default function ChatRoom({
               timestamp: (packet.data.timestamp as number) || Date.now(),
               mediaUrl,
               mediaType,
+              threadId: (packet.data.threadId as string) || undefined,
+              meta: packet.data.meta as Record<string, unknown> | undefined,
             },
           ];
         });
+        console.log('[DEBUG message.send] threadId=', packet.data.threadId, 'full data keys=', Object.keys(packet.data));
 
-        // Push notification (browser)
-        if (localStorage.getItem('openclaw.pushNotif') !== '0' && 'Notification' in window && Notification.permission === 'granted' && document.hidden) {
-          new Notification(agentInfo?.name || 'OpenClaw', {
-            body: content.slice(0, 100),
-            icon: '/icon-192.svg',
-          });
+        // Track active thread for user message grouping
+        const incomingThreadId = (packet.data.threadId as string) || undefined;
+        if (incomingThreadId) {
+          setActiveThreadId(incomingThreadId);
         }
+
+        // Keep in-memory cache in sync for cross-screen navigation
+        const aiMsgId = (packet.data.messageId as string) || Date.now().toString();
+        const aiTs = (packet.data.timestamp as number) || Date.now();
+        appendMessage(connId, agentId || '', {
+          id: aiMsgId, sender: 'ai', text: content, timestamp: aiTs,
+          mediaType, mediaUrl, threadId: (packet.data.threadId as string) || undefined,
+        });
 
         // Clear thinking indicator on final message delivery
         setIsThinking(false);
@@ -599,6 +794,8 @@ export default function ChatRoom({
         setActiveToolCalls([]); // S3: Clear stale tool calls on final message
         setToolCallHistory([]);
         setToolHistoryExpanded(false);
+        setThinkingText('');
+        streamingPhaseRef.current = 'idle';
         setMessages((prev) => {
           let changed = false;
           const next = prev.map((m) => {
@@ -647,6 +844,10 @@ export default function ChatRoom({
         // Only accept thinking for current agent (ignore events without agentId or from other agents)
         const thinkAgentId = (packet.data as { agentId?: string }).agentId;
         if (!thinkAgentId || !agentId || thinkAgentId === agentId) {
+          // Mark phase as captured — thinkingText is already buffered by text.delta handler
+          if (streamingPhaseRef.current === 'streaming_pre' || streamingPhaseRef.current === 'idle') {
+            streamingPhaseRef.current = 'captured';
+          }
           setIsThinking(true);
           setThinkingPhase('Thinking');
           thinkingStartRef.current = Date.now();
@@ -692,10 +893,10 @@ export default function ChatRoom({
         if (historyAgentId && agentId && historyAgentId !== agentId) {
           return;
         }
+        // Initial history push from channel plugin — set hasMore for pagination
         const hasMore = Boolean(packet.data.hasMore);
         setHasMoreHistory(hasMore);
-        setLoadingMoreHistory(false);
-        const history = (packet.data.messages as Array<{messageId?: string; content?: string; direction?: string; senderId?: string; timestamp?: number; mediaUrl?: string; contentType?: string; mimeType?: string; replyTo?: string; quotedText?: string}>).map((m) => {
+        const history = (packet.data.messages as Array<{messageId?: string; content?: string; direction?: string; senderId?: string; timestamp?: number; mediaUrl?: string; contentType?: string; mimeType?: string; replyTo?: string; quotedText?: string; threadId?: string}>).map((m) => {
           let mediaType: string | undefined;
           if (m.contentType === 'image' || m.mimeType?.startsWith('image/')) {
             mediaType = 'image';
@@ -713,19 +914,11 @@ export default function ChatRoom({
             mediaType,
             replyTo: m.replyTo,
             quotedText: m.quotedText,
+            meta: (m as { meta?: Record<string, unknown> }).meta,
+            threadId: m.threadId,
           };
         });
-        setMessages((prev) => {
-          // Merge history — don't replace if we already have messages, to prevent disappearing
-          if (prev.length === 0) return history;
-          const existingIds = new Set(prev.map(m => m.id));
-          const newMsgs = history.filter(m => !existingIds.has(m.id));
-          if (newMsgs.length === 0) return prev; // no new messages, keep current
-          // If history has significantly more messages, it's a fresh load — use it
-          if (history.length > prev.length * 1.5) return history;
-          // Otherwise merge new messages and sort by timestamp
-          return [...prev, ...newMsgs].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
-        });
+        setMessages((prev) => mergeMessages(history, prev));
       } else if (packet.type === 'conversation.list') {
         const nextConversations = Array.isArray((packet.data as { conversations?: ConversationSummary[] }).conversations)
           ? [ ...((packet.data as { conversations?: ConversationSummary[] }).conversations || []) ].sort((a, b) => ((b.timestamp || b.lastTimestamp || 0) - (a.timestamp || a.lastTimestamp || 0)))
@@ -752,6 +945,8 @@ export default function ChatRoom({
         setAgentPresence({ status: 'online' });
       } else if (packet.type === 'stream.resume') {
         // Stream resume after reconnection — restore accumulated streaming text
+        streamingPhaseRef.current = 'idle';
+        setThinkingText('');
         const resumeData = packet.data as { chatId?: string; agentId?: string; text?: string; isComplete?: boolean; startTime?: number };
         const resumeAgentId = resumeData.agentId;
         
@@ -797,10 +992,12 @@ export default function ChatRoom({
         const deltaData = packet.data as { chatId?: string; text?: string; done?: boolean; timestamp?: number };
         
         if (deltaData.done) {
-          // Streaming finished - clear source tracking.
+          // Streaming finished - clear source tracking and phase state.
           // Don't remove streaming placeholder yet — let message.send replace it
           // to avoid a 1-frame flash where the message disappears and reappears.
           streamingSourceAgentRef.current = null;
+          streamingPhaseRef.current = 'idle';
+          setThinkingText('');
           // Mark streaming message as done (remove cursor but keep content visible)
           setMessages((prev) => prev.map((m) =>
             m.isStreaming ? { ...m, isStreaming: false, streamingDone: true } : m
@@ -822,31 +1019,40 @@ export default function ChatRoom({
 
           if (localStorage.getItem('openclaw.streaming.enabled') === 'false') return;
 
-          // Streaming text output from backend
-          setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; } // Hide thinking indicator when streaming starts
-
+          // Streaming text output from backend — phase-aware
           if (typeof deltaData.text === 'string') {
-            // Update or create streaming bubble with accumulated text
-            setMessages((prev) => {
-              const streamingIdx = prev.findIndex((m) => m.isStreaming);
-              if (streamingIdx >= 0) {
-                // Update existing streaming message
-                const updated = [...prev];
-                updated[streamingIdx] = { ...updated[streamingIdx], text: deltaData.text! };
-                return updated;
+            if (streamingPhaseRef.current === 'captured' || streamingPhaseRef.current === 'streaming_final') {
+              // Post-tool text = final response → create/update streaming message
+              if (streamingPhaseRef.current === 'captured') {
+                streamingPhaseRef.current = 'streaming_final';
+                setIsThinking(false);
+                if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
               }
-              // Create new streaming message
-              return [
-                ...prev,
-                {
-                  id: `streaming-${Date.now()}`,
-                  sender: 'ai',
-                  text: deltaData.text,
-                  isStreaming: true,
-                  timestamp: deltaData.timestamp || Date.now(),
-                },
-              ];
-            });
+              setMessages((prev) => {
+                const streamingIdx = prev.findIndex((m) => m.isStreaming);
+                if (streamingIdx >= 0) {
+                  const updated = [...prev];
+                  updated[streamingIdx] = { ...updated[streamingIdx], text: deltaData.text! };
+                  return updated;
+                }
+                return [
+                  ...prev,
+                  {
+                    id: `streaming-${Date.now()}`,
+                    sender: 'ai',
+                    text: deltaData.text,
+                    isStreaming: true,
+                    timestamp: deltaData.timestamp || Date.now(),
+                  },
+                ];
+              });
+            } else {
+              // Pre-tool text — buffer in thinkingText, don't create streaming message
+              if (streamingPhaseRef.current === 'idle') {
+                streamingPhaseRef.current = 'streaming_pre';
+              }
+              setThinkingText(deltaData.text);
+            }
           }
         }
       }
@@ -871,9 +1077,11 @@ export default function ChatRoom({
         setShowReconnected(true);
         setTimeout(() => setShowReconnected(false), 2500);
 
-        // Flush offline outbox — send pending messages
+        // Flush offline outbox — dequeue FIRST to prevent re-flush duplicates
         outbox.getByConnection(runtimeConnId).then(async (entries) => {
           for (const entry of entries) {
+            // Dequeue before sending — prevents duplicate sends on rapid reconnect
+            await outbox.dequeue(entry.id).catch(() => {});
             try {
               if (entry.type === 'text') {
                 entry.replyTo
@@ -888,46 +1096,21 @@ export default function ChatRoom({
                   agentId: entry.agentId || undefined,
                 }, runtimeConnId);
               }
-              // B2: Update UI: pending → sent + dequeue
+              // B2: Update UI: pending → sent
               setMessages((prev) => prev.map((m) =>
                 m.id === entry.id ? { ...m, deliveryStatus: 'sent' as DeliveryStatus } : m
               ));
-              await outbox.dequeue(entry.id);
             } catch (err) {
-              // B2: continue to next entry instead of blocking all — only break on connection errors
+              // Send failed — re-enqueue for next reconnect attempt
               const isConnectionError = !navigator.onLine || (err instanceof Error && /closed|not open|CLOSING/i.test(err.message));
+              await outbox.enqueue(entry).catch(() => {});
               if (isConnectionError) break; // connection-level: stop trying
-              // else: per-message error, skip this one and continue
               continue;
             }
           }
         }).catch(() => {});
 
-        // Sync missed messages from DB (for multi-client scenarios)
-        if (chatId && activeConn?.channelId) {
-          const lastTs = messages.length > 0 ? Math.max(...messages.map(m => m.timestamp || 0)) : 0;
-          if (lastTs > 0) {
-            syncMissedMessages(activeConn.channelId, lastTs, 100, runtimeConnId).then((missed) => {
-              if (missed.length === 0) return;
-              const newMsgs: Message[] = missed
-                .filter(m => !messages.some(existing => existing.id === m.message_id))
-                .map(m => ({
-                  id: m.message_id || m.id,
-                  sender: m.direction === 'inbound' ? 'user' : 'ai',
-                  text: m.content || '',
-                  timestamp: m.timestamp,
-                  deliveryStatus: 'delivered' as DeliveryStatus,
-                }));
-              if (newMsgs.length > 0) {
-                setMessages(prev => {
-                  const ids = new Set(prev.map(p => p.id));
-                  const unique = newMsgs.filter(m => !ids.has(m.id));
-                  return unique.length > 0 ? [...prev, ...unique].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)) : prev;
-                });
-              }
-            }).catch(() => {});
-          }
-        }
+        // Sync missed messages handled on WS reconnect + visibilitychange
       }
       prevWsStatusRef.current = status;
       setWsStatus(status);
@@ -1008,14 +1191,31 @@ export default function ChatRoom({
     }
   }, [activeConn, agentId, chatId, requestConversationList, runtimeConnId, showHistoryDrawer, wsStatus]);
 
-  // ── Load more history on scroll to top ──
-  const loadMoreHistory = useCallback(() => {
-    if (loadingMoreHistory || !hasMoreHistory || !chatId || !agentId || !runtimeConnId) return;
+  // ── Load more history on scroll to top (from Supabase via HTTP) ──
+  const loadMoreHistory = useCallback(async () => {
+    if (loadingMoreHistory || !hasMoreHistory || !agentId || !connId) return;
     const oldest = messages[0];
     if (!oldest?.timestamp) return;
     setLoadingMoreHistory(true);
-    channel.requestHistory(chatId, agentId, runtimeConnId, { limit: 20, before: oldest.timestamp });
-  }, [loadingMoreHistory, hasMoreHistory, chatId, agentId, runtimeConnId, messages]);
+    try {
+      const channelId = activeConn?.channelId;
+      if (!channelId) { setLoadingMoreHistory(false); return; }
+      const { messages: older, hasMore } = await fetchOlderMessages(channelId, oldest.timestamp, agentId, 20, connId);
+      if (older.length > 0) {
+        const localMsgs = older.map((m) => syncMessageToLocal(m));
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newMsgs = localMsgs.filter((m) => !existingIds.has(m.id));
+          return [...newMsgs, ...prev];
+        });
+      }
+      setHasMoreHistory(hasMore);
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingMoreHistory(false);
+    }
+  }, [loadingMoreHistory, hasMoreHistory, agentId, connId, activeConn, messages]);
 
   const scrollBtnRafRef = useRef<number>(0);
   useEffect(() => {
@@ -1044,26 +1244,14 @@ export default function ChatRoom({
     // because React inserts at top — we rely on browser's scroll anchoring
   }, [messages, loadingMoreHistory]);
 
-  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setInputValue(val);
     // Show unified slash menu when typing "/" — keep open for "/use skillname" too
     setShowSlashMenu(val.startsWith('/') && (
       !val.includes(' ') || val.startsWith('/use ')
     ));
-
-    // Bug 2: Throttle typing indicator to prevent WS spam
-    if (val.trim()) {
-      const now = Date.now();
-      if (now - lastTypingSentRef.current > 3000) {
-        try { channel.sendTyping(true, runtimeConnId); } catch {}
-        lastTypingSentRef.current = now;
-      }
-      if (typingTimer.current) clearTimeout(typingTimer.current);
-      typingTimer.current = setTimeout(() => { try { channel.sendTyping(false, runtimeConnId); } catch {} }, 3000);
-    }
   };
 
   // Edit message
@@ -1203,10 +1391,13 @@ export default function ChatRoom({
         quotedText: options?.replyQuotedText,
         timestamp: payload.timestamp || Date.now(),
         deliveryStatus: 'sent',
+        threadId: activeThreadIdRef.current,
       };
       setMessages((prev) => [...prev, userMsg]);
       // Immediately show thinking state after sending (unless it's a slash command)
       if (!text.startsWith('/')) {
+        setThinkingText('');
+        streamingPhaseRef.current = 'idle';
         setIsThinking(true);
         setThinkingPhase('Thinking');
         thinkingStartRef.current = Date.now();
@@ -1228,6 +1419,7 @@ export default function ChatRoom({
         quotedText: options?.replyQuotedText,
         timestamp: Date.now(),
         deliveryStatus: 'pending',
+        threadId: activeThreadIdRef.current,
       };
       setMessages((prev) => [...prev, userMsg]);
       outbox.enqueue({
@@ -1250,6 +1442,8 @@ export default function ChatRoom({
     const trimmedInput = inputValue.trim();
     if (!trimmedInput) return;
     if (!agentReady) return; // Bug 1: Prevent sending before agent is ready
+    // Track slash commands for dynamic quick-command ordering
+    if (trimmedInput.startsWith('/')) trackCmd(trimmedInput.split(' ')[0]);
     if (trimmedInput === '/memory') {
       setShowMemory(true);
       setInputValue('');
@@ -1264,6 +1458,8 @@ export default function ChatRoom({
     setShowSlashMenu(false);
     setReplyingTo(null);
     if (draftKey) localStorage.removeItem(draftKey);
+    // Dismiss mobile keyboard after sending
+    (document.activeElement as HTMLElement)?.blur();
     sendTextMessage(capturedInput, { replyId, replyQuotedText });
   };
 
@@ -1295,25 +1491,6 @@ export default function ChatRoom({
       if (draftKey) localStorage.removeItem(draftKey);
     }
   }, [draftKey, sendTextMessage]);
-
-  useEffect(() => {
-    if (wsStatus !== 'connected' || !connId || !agentId || !agentReady) return;
-    // Only auto-send /status if no communication in this chat for 1 hour
-    const lastMsgTime = messages.length > 0 ? Math.max(...messages.map((m) => m.timestamp || 0)) : 0;
-    if (lastMsgTime && Date.now() - lastMsgTime < 3600_000) return;
-    const key = `clawline.lastAutoStatus.${connId}:${agentId}`;
-    try {
-      const last = parseInt(localStorage.getItem(key) || '0', 10);
-      if (Date.now() - last < 3600_000) return;
-      localStorage.setItem(key, String(Date.now()));
-    } catch {
-      return;
-    }
-    const timer = setTimeout(() => {
-      quickSend('/status', { clearInput: false });
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [agentId, agentReady, connId, messages, quickSend, wsStatus]);
 
   // --- Image sending — now stages for preview ---
   const handleImagePick = () => fileInputRef.current?.click();
@@ -1398,6 +1575,8 @@ export default function ChatRoom({
       setVoiceFinalText('');
       setVoiceInterimText('');
       setVoiceMode(false);
+      setThinkingText('');
+      streamingPhaseRef.current = 'idle';
       setIsThinking(true);
     }, 50);
   }, [voiceFinalText, voiceInterimText, stopVoiceRecognition, agentId, runtimeConnId, replyingTo, messages]);
@@ -1610,7 +1789,6 @@ export default function ChatRoom({
           setMessages([]);
           setHasLoadedMessages(true);
           if (connId && agentId) {
-            void clearConversationMessages(connId, agentId, { chatId });
             localStorage.removeItem(getPreviewKey(connId, agentId));
             emitPreviewUpdated(connId, agentId);
           }
@@ -1731,6 +1909,40 @@ export default function ChatRoom({
             ))}
           </div>
         )}
+        {loadError && (
+          <div className="flex flex-col items-center justify-center gap-2 p-6 text-center text-[var(--color-text-tertiary)]">
+            <p className="text-sm">Couldn't load messages</p>
+            <button
+              onClick={() => {
+                setLoadError(false);
+                setHasLoadedMessages(false);
+                // Re-trigger initial load
+                const channelId = activeConn?.channelId;
+                if (channelId && agentId && connId) {
+                  const cached = getCachedMessages(connId, agentId || '');
+                  if (cached.length > 0) {
+                    setMessages(mergeMessages(cached, []));
+                    setHasLoadedMessages(true);
+                    setHasMoreHistory(true);
+                  } else {
+                    void fetchOlderMessages(channelId, Date.now(), agentId, 50, connId).then(({ messages: remote, hasMore }) => {
+                      const localMsgs = remote.map((m) => syncMessageToLocal(m));
+                      setMessages((currentMessages) => mergeMessages(localMsgs, currentMessages));
+                      setHasMoreHistory(hasMore);
+                      setHasLoadedMessages(true);
+                    }).catch(() => {
+                      setLoadError(true);
+                      setHasLoadedMessages(true);
+                    });
+                  }
+                }
+              }}
+              className="text-xs text-[var(--color-primary)] underline"
+            >
+              Tap to retry
+            </button>
+          </div>
+        )}
         {hasLoadedMessages && messages.length === 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -1758,32 +1970,82 @@ export default function ChatRoom({
             </div>
           </motion.div>
         )}
-        {messages.map((msg, i) => (
-          <MessageItem
-            key={msg.id}
-            msg={msg}
-            index={i}
-            messages={messages}
-            agentInfo={agentInfo}
-            copiedMsgId={copiedMsgId}
-            runtimeConnId={runtimeConnId}
-            streamingStatus={msg.isStreaming && isThinking ? (() => {
-              const latestActive = activeToolCalls[activeToolCalls.length - 1];
-              return latestActive ? `🔧 ${formatToolName(latestActive.toolName)}` : (thinkingPhase || undefined);
-            })() : undefined}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-            onRetry={retryMessage}
-            onReply={startReply}
-            onEdit={handleEditMessage}
-            onDelete={handleDeleteMessage}
-            onCopy={copyMessage}
-            onQuickSend={quickSend}
-            onReactionToggle={handleReactionToggle}
-            onReactionRemove={handleReactionRemove}
-            onOpenReactionPicker={openReactionPicker}
-          />
-        ))}
+        {hasThreadMessages ? (
+          renderItems.map((item, i) => {
+            if (item.kind === 'thread') {
+              const lastTs = item.messages[item.messages.length - 1]?.timestamp;
+              const isActive = lastTs ? Date.now() - lastTs < 60_000 : false;
+              return (
+                <ThreadSessionCard
+                  key={`thread-${item.threadId}`}
+                  threadId={item.threadId}
+                  messages={item.messages}
+                  agentInfo={agentInfo}
+                  isActive={isActive || item.messages.some((m) => m.isStreaming)}
+                  onCloseSession={() => {
+                    sendTextMessage('/acp close');
+                    setActiveThreadId(undefined);
+                  }}
+                />
+              );
+            }
+            const msg = item.msg;
+            const msgIndex = renderMessages.indexOf(msg);
+            return (
+              <MessageItem
+                key={msg.id}
+                msg={msg}
+                index={msgIndex >= 0 ? msgIndex : i}
+                messages={renderMessages}
+                agentInfo={agentInfo}
+                copiedMsgId={copiedMsgId}
+                runtimeConnId={runtimeConnId}
+                streamingStatus={msg.isStreaming && isThinking ? (() => {
+                  const latestActive = activeToolCalls[activeToolCalls.length - 1];
+                  return latestActive ? `🔧 ${formatToolName(latestActive.toolName)}` : (thinkingPhase || undefined);
+                })() : undefined}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onRetry={retryMessage}
+                onReply={startReply}
+                onEdit={handleEditMessage}
+                onDelete={handleDeleteMessage}
+                onCopy={copyMessage}
+                onQuickSend={quickSend}
+                onReactionToggle={handleReactionToggle}
+                onReactionRemove={handleReactionRemove}
+                onOpenReactionPicker={openReactionPicker}
+              />
+            );
+          })
+        ) : (
+          renderMessages.map((msg, i) => (
+            <MessageItem
+              key={msg.id}
+              msg={msg}
+              index={i}
+              messages={renderMessages}
+              agentInfo={agentInfo}
+              copiedMsgId={copiedMsgId}
+              runtimeConnId={runtimeConnId}
+              streamingStatus={msg.isStreaming && isThinking ? (() => {
+                const latestActive = activeToolCalls[activeToolCalls.length - 1];
+                return latestActive ? `🔧 ${formatToolName(latestActive.toolName)}` : (thinkingPhase || undefined);
+              })() : undefined}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+              onRetry={retryMessage}
+              onReply={startReply}
+              onEdit={handleEditMessage}
+              onDelete={handleDeleteMessage}
+              onCopy={copyMessage}
+              onQuickSend={quickSend}
+              onReactionToggle={handleReactionToggle}
+              onReactionRemove={handleReactionRemove}
+              onOpenReactionPicker={openReactionPicker}
+            />
+          ))
+        )}
         {/* Typing indicator */}
         {peerTyping && !isThinking && (
           <div className="flex items-center gap-2 px-2 text-[12px] text-slate-500 dark:text-slate-400">
@@ -1792,16 +2054,17 @@ export default function ChatRoom({
           </div>
         )}
 
-        {/* Thinking indicator — only show when NOT streaming (during streaming, status shows inline next to cursor) */}
+        {/* Thinking indicator — show when thinking (not streaming) OR when buffering pre-tool text */}
         <AnimatePresence>
-          {isThinking && !messages.some((m) => m.isStreaming) && (
+          {((isThinking && !messages.some((m) => m.isStreaming)) ||
+            (thinkingText && streamingPhaseRef.current !== 'streaming_final' && streamingPhaseRef.current !== 'idle')) && (
             <motion.div
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -5 }}
-              className="mt-3 flex gap-3 rounded-[22px] border border-primary/12 bg-primary/6 px-3 py-3 shadow-[0_16px_32px_-28px_rgba(239,90,35,0.45)] dark:border-primary/16 dark:bg-primary/8"
+              exit={{ opacity: 0, y: -4 }}
+              className="mt-2 flex gap-2.5 rounded-2xl border border-primary/10 bg-primary/[0.04] px-3 py-2.5 dark:border-primary/14 dark:bg-primary/[0.06]"
             >
-              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-deep text-sm text-white shadow-sm">
+              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-deep text-[12px] text-white shadow-sm">
                 {agentInfo?.identityEmoji || '🤖'}
               </div>
               <div className="min-w-0 flex-1 pt-1.5">
@@ -1818,6 +2081,16 @@ export default function ChatRoom({
                     </span>
                   );
                 })()}
+
+                {/* Captured/buffered thinking text — live display */}
+                {thinkingText && (
+                  <div className="mt-2 max-h-24 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-2 shadow-sm dark:border-slate-700/70 dark:bg-card-alt/75">
+                    <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-slate-600 dark:text-slate-400">
+                      {thinkingText}
+                      <span className="inline-block w-1.5 h-3.5 bg-primary/50 animate-pulse ml-0.5 align-middle" />
+                    </div>
+                  </div>
+                )}
 
                 {/* Expandable tool call history */}
                 {(toolCallHistory.length > 0 || activeToolCalls.length > 1) && (
@@ -1866,11 +2139,13 @@ export default function ChatRoom({
                   setActiveToolCalls([]);
                   setToolCallHistory([]);
                   setThinkingPhase('');
+                  setThinkingText('');
+                  streamingPhaseRef.current = 'idle';
                   if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
                   // Mark any streaming messages as complete
                   setMessages((prev) => prev.map((m) => m.isStreaming ? { ...m, isStreaming: false, text: m.text + '\n\n*[cancelled]*' } : m));
                 }}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-primary/50 transition-colors hover:bg-primary/10 hover:text-primary self-start mt-0.5"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-primary/40 transition-colors hover:bg-primary/10 hover:text-primary self-start"
                 title="Cancel"
                 aria-label="Cancel AI response"
               >
@@ -1965,7 +2240,7 @@ export default function ChatRoom({
       />
 
       {/* Input Area */}
-      <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-2.5 border-t border-border/40 bg-white px-2 pt-2 pb-1 dark:border-border-dark/40 dark:bg-[#11161d]">
+      <div className="safe-area-bottom relative z-30 flex flex-shrink-0 flex-col gap-1.5 bg-white px-2 pt-1.5 dark:bg-[#11161d]">
         <AnimatePresence>
           {showSlashMenu && (
             <>
@@ -2151,6 +2426,15 @@ export default function ChatRoom({
           onQuickSend={quickSend}
         />
 
+        {/* ACP session chips */}
+        {acpSessions.length > 0 && (
+          <AcpSessionBar
+            sessions={acpSessions}
+            activeThreadId={activeThreadIdRef.current}
+            onSelectSession={(s) => setActiveThreadId(s.threadId)}
+          />
+        )}
+
         {/* Edit bar */}
         {editingMsg && (
           <div className="flex items-center gap-2 px-4 py-2 mb-2 bg-amber-50 border border-amber-200 rounded-[16px]">
@@ -2190,7 +2474,7 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
-        <div className="relative flex items-center gap-1 rounded-[16px] border border-border/60 bg-surface/70 p-1.5 dark:border-border-dark/60 dark:bg-white/[0.04]">
+        <div className="relative mb-3 flex flex-col gap-0.5 rounded-[20px] border border-border/50 bg-surface/50 px-1.5 py-1.5 dark:border-border-dark/50 dark:bg-white/[0.03]">
           {voiceMode ? (
             <>
               {/* Recognized text floating above bar */}
@@ -2316,16 +2600,6 @@ export default function ChatRoom({
             </>
           ) : (
             <>
-          {/* Action menu toggle (+ button) */}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={() => setShowMoreIcons(!showMoreIcons)}
-            className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/40 hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60'}`}
-            aria-label="Attach"
-          >
-            <Plus size={20} />
-          </motion.button>
-
           {/* Action menu popover */}
           <AnimatePresence>
             {showMoreIcons && (
@@ -2420,49 +2694,77 @@ export default function ChatRoom({
             )}
           </AnimatePresence>
 
-          <input
-            type="text"
-            value={inputValue}
-            onChange={handleInputChange}
-            onPaste={handlePaste}
-            onFocus={() => { setShowEmojiPicker(false); }}
-            onBlur={() => { window.scrollTo(0, 0); }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing && agentReady) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder={agentReady ? "Message..." : "Switching agent..."}
-            disabled={!agentReady}
-            aria-label="Type a message"
-            className="flex-1 bg-transparent border-none px-2 py-1.5 text-[14px] text-text placeholder:text-slate-400 focus:outline-none focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-primary dark:text-text-inv dark:placeholder:text-slate-500 disabled:text-slate-400 disabled:italic disabled:opacity-90"
-          />
+          {/* Row 1: + button + text input */}
+          <div className="flex items-end gap-0.5">
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setShowMoreIcons(!showMoreIcons)}
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${showMoreIcons ? 'bg-primary/10 text-primary' : 'text-text/40 hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60'}`}
+              aria-label="Attach"
+            >
+              <Plus size={18} />
+            </motion.button>
 
-          {/* Voice mode toggle when no text, Send button when has text */}
-          {inputValue.trim() ? (
-            <motion.button
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              whileHover={{ scale: 1.08, y: -2 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={handleSend}
+            <textarea
+              ref={textInputRef}
+              rows={1}
+              value={inputValue}
+              onChange={handleInputChange}
+              onPaste={handlePaste}
+              onFocus={() => { setShowEmojiPicker(false); }}
+              onBlur={() => { window.scrollTo(0, 0); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && agentReady) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={agentReady ? 'Reply...' : 'Switching agent...'}
               disabled={!agentReady}
-              aria-label="Send message"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <ArrowUp size={20} strokeWidth={2.5} />
-            </motion.button>
-          ) : (
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => { localStorage.setItem('clawline:voiceMode', 'true'); setVoiceMode(true); }}
-              aria-label="Switch to voice input"
-              className="flex h-11 w-11 items-center justify-center rounded-full text-text/40 transition-colors hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60"
-            >
-              <Mic size={18} />
-            </motion.button>
-          )}
+              aria-label="Type a message"
+              className="flex-1 min-w-0 resize-none overflow-y-auto bg-transparent border-none px-1.5 py-1 text-[13px] text-text placeholder:text-[13px] placeholder:text-text/30 focus:outline-none dark:text-text-inv dark:placeholder:text-text-inv/25 disabled:text-slate-400 disabled:italic disabled:opacity-90 leading-[1.45]"
+            />
+          </div>
+
+          {/* Row 2: quick commands + send/mic */}
+          <div className="flex items-center gap-1 px-1 pb-1">
+            {/* Quick commands — dynamic, sorted by recent usage */}
+            <div className="flex-1 flex items-center justify-start gap-0.5 overflow-x-auto scrollbar-hide">
+              {sortedQuickCmds.map((cmd) => (
+                <button
+                  key={cmd}
+                  onClick={() => { trackCmd(cmd); quickSend(cmd, { clearInput: false }); }}
+                  className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] text-text/30 transition-colors hover:text-text/55 hover:bg-text/[0.04] dark:text-text-inv/25 dark:hover:text-text-inv/45 dark:hover:bg-text-inv/[0.06]"
+                >
+                  {cmd}
+                </button>
+              ))}
+            </div>
+
+            {/* Send / Mic */}
+            {inputValue.trim() ? (
+              <motion.button
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={handleSend}
+                disabled={!agentReady}
+                aria-label="Send message"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ArrowUp size={16} strokeWidth={2.5} />
+              </motion.button>
+            ) : (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => { localStorage.setItem('clawline:voiceMode', 'true'); setVoiceMode(true); }}
+                aria-label="Switch to voice input"
+                className="flex h-8 w-8 items-center justify-center rounded-full text-text/40 transition-colors hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60"
+              >
+                <Mic size={16} />
+              </motion.button>
+            )}
+          </div>
             </>
           )}
         </div>

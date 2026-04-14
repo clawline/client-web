@@ -10,9 +10,28 @@ import type { AgentInfo } from '../services/clawChannel';
 import { getUserId } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
 import EmptyState from '../components/EmptyState';
-import { getMessageStats, getRecentMessages, type MessageRecord, type MessageStats } from '../services/messageDB';
 
 /* ── Types ────────────────────────────────────────────────── */
+
+type MessageRecord = {
+  id: string;
+  connectionId: string;
+  agentId: string;
+  sender: string;
+  text: string;
+  timestamp: number;
+  chatId?: string;
+  mediaType?: string;
+  mediaUrl?: string;
+};
+
+type MessageStats = {
+  sentCount: number;
+  receivedCount: number;
+  activeAgents: string[];
+  mostActiveAgent: string | null;
+  lastActivityTime: number | null;
+};
 
 type ChannelStatus = {
   configured: boolean;
@@ -148,19 +167,10 @@ export default function Dashboard() {
       setActivityLoading(true);
     }
 
-    try {
-      const [nextStats, nextRecentMessages] = await Promise.all([
-        getMessageStats(getTodayStartTimestamp()),
-        getRecentMessages(20),
-      ]);
-      setTodayStats(nextStats);
-      setRecentMessages(nextRecentMessages);
-    } catch {
-      setTodayStats(null);
-      setRecentMessages([]);
-    } finally {
-      setActivityLoading(false);
-    }
+    // Message insights temporarily unavailable (IndexedDB removed, API support pending)
+    setTodayStats(null);
+    setRecentMessages([]);
+    setActivityLoading(false);
   }, []);
 
   /* ── WebSocket listeners ────────────────────────────────── */
@@ -222,15 +232,9 @@ export default function Dashboard() {
   useEffect(() => {
     if (!activeConn) return;
 
+    // loadMessageInsights is a no-op stub (IndexedDB removed, API support pending).
+    // No interval needed — just set empty state once.
     void loadMessageInsights(true);
-
-    const interval = setInterval(() => {
-      void loadMessageInsights();
-    }, 15000);
-
-    return () => {
-      clearInterval(interval);
-    };
   }, [activeConn?.id, loadMessageInsights]);
 
   /* ── Uptime ticker ──────────────────────────────────────── */
@@ -251,7 +255,6 @@ export default function Dashboard() {
   /* ── Refresh handler ────────────────────────────────────── */
   const refresh = () => {
     setLoading(true);
-    void loadMessageInsights(true);
     try {
       channel.sendRaw({ type: 'channel.status.get', data: { requestId: `st-${Date.now()}`, includeChats: true } }, connId);
       channel.requestAgentList(connId);
