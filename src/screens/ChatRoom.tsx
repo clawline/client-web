@@ -287,7 +287,7 @@ export default function ChatRoom({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Register focus function with parent (for split-pane focus-on-click)
   useEffect(() => {
@@ -295,6 +295,14 @@ export default function ChatRoom({
       onFocusInput(() => textInputRef.current?.focus());
     }
   }, [onFocusInput]);
+
+  // Auto-resize textarea to fit content (max ~6 lines)
+  useEffect(() => {
+    const el = textInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
+  }, [inputValue]);
 
   const skills = agentInfo?.skills ?? [];
   const configuredSkills = agentInfo?.configuredSkills ?? [];
@@ -1237,7 +1245,7 @@ export default function ChatRoom({
   }, [messages, loadingMoreHistory]);
 
 
-  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setInputValue(val);
     // Show unified slash menu when typing "/" — keep open for "/use skillname" too
@@ -2687,7 +2695,7 @@ export default function ChatRoom({
           </AnimatePresence>
 
           {/* Row 1: + button + text input */}
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-end gap-0.5">
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => setShowMoreIcons(!showMoreIcons)}
@@ -2697,16 +2705,16 @@ export default function ChatRoom({
               <Plus size={18} />
             </motion.button>
 
-            <input
+            <textarea
               ref={textInputRef}
-              type="text"
+              rows={1}
               value={inputValue}
               onChange={handleInputChange}
               onPaste={handlePaste}
               onFocus={() => { setShowEmojiPicker(false); }}
               onBlur={() => { window.scrollTo(0, 0); }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing && agentReady) {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && agentReady) {
                   e.preventDefault();
                   handleSend();
                 }
@@ -2714,7 +2722,7 @@ export default function ChatRoom({
               placeholder={agentReady ? 'Reply...' : 'Switching agent...'}
               disabled={!agentReady}
               aria-label="Type a message"
-              className="flex-1 min-w-0 bg-transparent border-none px-1.5 py-1 text-[13px] text-text placeholder:text-[13px] placeholder:text-text/30 focus:outline-none dark:text-text-inv dark:placeholder:text-text-inv/25 disabled:text-slate-400 disabled:italic disabled:opacity-90"
+              className="flex-1 min-w-0 resize-none overflow-y-auto bg-transparent border-none px-1.5 py-1 text-[13px] text-text placeholder:text-[13px] placeholder:text-text/30 focus:outline-none dark:text-text-inv dark:placeholder:text-text-inv/25 disabled:text-slate-400 disabled:italic disabled:opacity-90 leading-[1.45]"
             />
           </div>
 
