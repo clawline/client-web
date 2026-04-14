@@ -59,6 +59,10 @@ interface ThreadState {
   isLoadingThreadList: boolean;
   /** Loading state for thread messages */
   isLoadingMessages: boolean;
+  /** Loading state for older messages (scroll-up pagination) */
+  isLoadingOlderMessages: boolean;
+  /** Whether the current thread has more older messages to load */
+  hasMoreMessages: boolean;
 
   // ── Actions ──
   createThread: (parentMessageId: string, title?: string, connectionId?: string) => void;
@@ -67,6 +71,7 @@ interface ThreadState {
   setActiveThread: (threadId: string | null) => void;
   loadThreadList: (filter?: Partial<ThreadListFilter>, connectionId?: string) => void;
   loadThreadMessages: (threadId: string, opts?: { before?: number; limit?: number }, connectionId?: string) => void;
+  loadOlderMessages: (connectionId?: string) => void;
   sendThreadMessage: (content: string, agentId?: string, connectionId?: string) => void;
   markThreadRead: (threadId: string, connectionId?: string) => void;
   updateThread: (threadId: string, payload: { title?: string; status?: ThreadStatus }, connectionId?: string) => void;
@@ -92,6 +97,8 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
   threadListTotal: 0,
   isLoadingThreadList: false,
   isLoadingMessages: false,
+  isLoadingOlderMessages: false,
+  hasMoreMessages: true,
 
   // ── Actions ──
 
@@ -106,7 +113,7 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
 
   openThread(threadId, connectionId) {
     const requestId = `thread-get-${Date.now()}`;
-    set({ activeThreadId: threadId, isThreadPanelOpen: true, isLoadingMessages: true });
+    set({ activeThreadId: threadId, isThreadPanelOpen: true, isLoadingMessages: true, hasMoreMessages: true });
 
     channel.sendRaw({
       type: 'thread.get',
@@ -150,6 +157,26 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
     channel.sendRaw({
       type: 'thread.get',
       data: { requestId, threadId, ...(opts || {}) },
+    }, connectionId);
+  },
+
+  loadOlderMessages(connectionId) {
+    const { activeThreadId, threadMessages, isLoadingOlderMessages, hasMoreMessages } = get();
+    if (!activeThreadId || isLoadingOlderMessages || !hasMoreMessages) return;
+
+    const msgs = threadMessages.get(activeThreadId) ?? [];
+    if (msgs.length === 0) return;
+
+    // Use the oldest message's timestamp as the `before` cursor
+    const oldestTimestamp = msgs[0].timestamp;
+    if (!oldestTimestamp) return;
+
+    set({ isLoadingOlderMessages: true });
+
+    const requestId = `thread-older-${Date.now()}`;
+    channel.sendRaw({
+      type: 'thread.get',
+      data: { requestId, threadId: activeThreadId, before: oldestTimestamp, limit: 50 },
     }, connectionId);
   },
 
@@ -379,7 +406,23 @@ export function subscribeThreadEvents(connectionId?: string): () => void {
               timestamp: m.timestamp,
               threadId: m.threadId || thread.id,
             }));
-            store._setMessages(thread.id, mapped);
+
+            const currentState = useThreadStore.getState();
+            if (currentState.isLoadingOlderMessages) {
+              // Pagination: prepend older messages
+              store._setMessages(thread.id, mapped, true);
+              // If fewer messages returned than expected, no more to load
+              useThreadStore.setState({
+                isLoadingOlderMessages: false,
+                hasMoreMessages: mapped.length >= 20,
+              });
+            } else {
+              // Initial load: replace messages
+              store._setMessages(thread.id, mapped);
+            }
+          } else if (useThreadStore.getState().isLoadingOlderMessages) {
+            // No messages returned during pagination — no more older messages
+            useThreadStore.setState({ isLoadingOlderMessages: false, hasMoreMessages: false });
           }
 
           useThreadStore.setState({ isLoadingMessages: false });
