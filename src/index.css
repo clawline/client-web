@@ -325,6 +325,16 @@ pre {
   animation: msg-in 0.15s ease-out both;
 }
 
+/* Search result highlight flash */
+@keyframes search-flash {
+  0% { background-color: rgb(250 204 21 / 0.4); }
+  100% { background-color: transparent; }
+}
+.search-highlight-flash {
+  animation: search-flash 1.5s ease-out both;
+  border-radius: 8px;
+}
+
 /* Prevent sticky hover on touch devices */
 @media (hover: none) {
   .hover\:bg-black\/\[0\.02\]:hover,

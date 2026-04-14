@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useCallback, useState, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ArrowLeft, MessageSquareText, MoreVertical, MessageCircle, Users, User, Loader2, ArrowDown, Plus, ArrowUp, Paperclip, Image, FileText, Archive, Lock, Unlock, Trash2 } from 'lucide-react';
+import { X, ArrowLeft, MessageSquareText, MoreVertical, MessageCircle, Users, User, Loader2, ArrowDown, Plus, ArrowUp, Paperclip, Image, FileText, Archive, Lock, Unlock, Trash2, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { useThreadStore } from '../../stores/threadStore';
 import { getMessages as getCachedMessages } from '../../stores/messageCache';
 import * as channel from '../../services/clawChannel';
@@ -447,6 +447,124 @@ function ThreadOptionsMenu({
   );
 }
 
+/** Thread search bar — input + navigation between results */
+function ThreadSearchBar({ connId, onScrollToMessage }: { connId?: string; onScrollToMessage: (messageId: string) => void }) {
+  const {
+    threadSearchQuery, threadSearchResults, isSearching,
+    searchResultIndex, searchThread, clearSearch, setSearchResultIndex,
+  } = useThreadStore();
+  const [localQuery, setLocalQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Focus input on mount
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // Sync local query with store query when cleared externally
+  useEffect(() => {
+    if (!threadSearchQuery && localQuery) setLocalQuery('');
+  }, [threadSearchQuery]);
+
+  // Scroll to current result when index changes
+  useEffect(() => {
+    if (searchResultIndex >= 0 && searchResultIndex < threadSearchResults.length) {
+      const msg = threadSearchResults[searchResultIndex];
+      onScrollToMessage(msg.id);
+    }
+  }, [searchResultIndex, threadSearchResults, onScrollToMessage]);
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setLocalQuery(val);
+
+    // Debounce search
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    if (val.trim().length >= 2) {
+      debounceTimerRef.current = setTimeout(() => {
+        searchThread(val.trim(), connId);
+      }, 300);
+    } else if (!val.trim()) {
+      clearSearch();
+    }
+  }, [searchThread, clearSearch, connId]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (threadSearchResults.length > 0) {
+        // Navigate to next result
+        const nextIndex = searchResultIndex < threadSearchResults.length - 1 ? searchResultIndex + 1 : 0;
+        setSearchResultIndex(nextIndex);
+      } else if (localQuery.trim().length >= 2) {
+        searchThread(localQuery.trim(), connId);
+      }
+    } else if (e.key === 'Escape') {
+      clearSearch();
+    }
+  }, [threadSearchResults, searchResultIndex, setSearchResultIndex, localQuery, searchThread, clearSearch, connId]);
+
+  const goToPrev = useCallback(() => {
+    if (threadSearchResults.length === 0) return;
+    const prevIndex = searchResultIndex > 0 ? searchResultIndex - 1 : threadSearchResults.length - 1;
+    setSearchResultIndex(prevIndex);
+  }, [threadSearchResults, searchResultIndex, setSearchResultIndex]);
+
+  const goToNext = useCallback(() => {
+    if (threadSearchResults.length === 0) return;
+    const nextIndex = searchResultIndex < threadSearchResults.length - 1 ? searchResultIndex + 1 : 0;
+    setSearchResultIndex(nextIndex);
+  }, [threadSearchResults, searchResultIndex, setSearchResultIndex]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      className="overflow-hidden border-b border-border/70 dark:border-border-dark/70"
+    >
+      <div className="flex items-center gap-2 px-3 py-2">
+        <Search size={16} className="shrink-0 text-text/40 dark:text-text-inv/40" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={localQuery}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          placeholder="Search in thread..."
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none placeholder:text-text/30 dark:text-text-inv dark:placeholder:text-text-inv/25"
+        />
+        {isSearching && (
+          <Loader2 size={14} className="shrink-0 animate-spin text-primary/50" />
+        )}
+        {threadSearchResults.length > 0 && (
+          <span className="shrink-0 text-[11px] tabular-nums text-text/50 dark:text-text-inv/50">
+            {searchResultIndex >= 0 ? searchResultIndex + 1 : 0}/{threadSearchResults.length}
+          </span>
+        )}
+        {threadSearchResults.length > 0 && (
+          <div className="flex shrink-0 items-center">
+            <button onClick={goToPrev} className="rounded p-0.5 text-text/50 hover:text-text dark:text-text-inv/50 dark:hover:text-text-inv" title="Previous">
+              <ChevronUp size={14} />
+            </button>
+            <button onClick={goToNext} className="rounded p-0.5 text-text/50 hover:text-text dark:text-text-inv/50 dark:hover:text-text-inv" title="Next">
+              <ChevronDown size={14} />
+            </button>
+          </div>
+        )}
+        <button
+          onClick={clearSearch}
+          className="shrink-0 rounded p-0.5 text-text/40 hover:text-text dark:text-text-inv/40 dark:hover:text-text-inv"
+          title="Close search"
+        >
+          <X size={14} />
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
 /**
  * Adaptive thread panel — sidebar on wide screens, fullscreen overlay on narrow.
  * US-010: Shell. US-011: Header with parent message. US-012: Message list with scroll loading.
@@ -461,6 +579,10 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
   // Options menu state
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const optionsMenuAnchorRef = useRef<HTMLDivElement>(null);
+
+  // Search state
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const { threadSearchQuery, threadSearchResults, searchResultIndex, clearSearch } = useThreadStore();
 
   const activeThread = activeThreadId ? threads.get(activeThreadId) ?? null : null;
   const messages = activeThreadId ? threadMessages.get(activeThreadId) ?? [] : [];
@@ -509,7 +631,10 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
     setHasNewMessages(false);
     setIsNearBottom(true);
     prevMessageCountRef.current = 0;
-  }, [activeThreadId]);
+    // Close search when switching threads
+    setIsSearchOpen(false);
+    clearSearch();
+  }, [activeThreadId, clearSearch]);
 
   // Track new incoming messages for auto-scroll / pill
   useEffect(() => {
@@ -532,6 +657,29 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
     setIsNearBottom(nearBottom);
     if (nearBottom) setHasNewMessages(false);
   }, []);
+
+  // Scroll to a specific message by ID (for search results)
+  const handleScrollToMessage = useCallback((messageId: string) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const el = container.querySelector(`[data-message-id="${messageId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Flash highlight effect
+      el.classList.add('search-highlight-flash');
+      setTimeout(() => el.classList.remove('search-highlight-flash'), 1500);
+    }
+  }, []);
+
+  // Toggle search bar
+  const handleToggleSearch = useCallback(() => {
+    if (isSearchOpen) {
+      setIsSearchOpen(false);
+      clearSearch();
+    } else {
+      setIsSearchOpen(true);
+    }
+  }, [isSearchOpen, clearSearch]);
 
   // IntersectionObserver to load older messages when top sentinel is visible
   useEffect(() => {
@@ -587,7 +735,10 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
     if (!isThreadPanelOpen) return;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (showOptionsMenu) {
+        if (isSearchOpen) {
+          setIsSearchOpen(false);
+          clearSearch();
+        } else if (showOptionsMenu) {
           setShowOptionsMenu(false);
         } else if (threadPanelMode === 'list' && activeThreadId) {
           // In detail view from list — go back to list
@@ -599,7 +750,7 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isThreadPanelOpen, handleClosePanel, showOptionsMenu, threadPanelMode, activeThreadId, handleBackToList]);
+  }, [isThreadPanelOpen, handleClosePanel, showOptionsMenu, isSearchOpen, clearSearch, threadPanelMode, activeThreadId, handleBackToList]);
 
   if (!isThreadPanelOpen) return null;
 
@@ -693,6 +844,12 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
   const noopReaction = (_msgId: string, _emoji: string, _hasIt: boolean) => {};
   const noopReactionRemove = (_msgId: string, _emoji: string) => {};
 
+  // Build a set of search result message IDs for quick lookup
+  const searchMatchIds = useMemo(() => {
+    if (!threadSearchQuery || threadSearchResults.length === 0) return new Set<string>();
+    return new Set(threadSearchResults.map((m) => m.id));
+  }, [threadSearchQuery, threadSearchResults]);
+
   // ── Body content: thread message list or empty/loading state ──
   const body = activeThreadId ? (
     <div className="relative flex flex-1 flex-col overflow-hidden">
@@ -736,28 +893,37 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
           </div>
         ) : (
           /* Message list */
-          messages.map((msg, i) => (
-            <MessageItem
-              key={msg.id}
-              msg={msg}
-              index={i}
-              messages={messages}
-              agentInfo={threadAgentInfo}
-              copiedMsgId={null}
-              runtimeConnId={connId || ''}
-              onTouchStart={noopStr}
-              onTouchEnd={noop}
-              onRetry={noopMsg}
-              onReply={noopMsg}
-              onEdit={noopMsg}
-              onDelete={noopStr}
-              onCopy={noopCopy}
-              onQuickSend={noopStr}
-              onReactionToggle={noopReaction}
-              onReactionRemove={noopReactionRemove}
-              onOpenReactionPicker={noopStr}
-            />
-          ))
+          messages.map((msg, i) => {
+            const isMatch = searchMatchIds.has(msg.id);
+            const isActiveResult = isMatch && searchResultIndex >= 0 && threadSearchResults[searchResultIndex]?.id === msg.id;
+            return (
+              <div
+                key={msg.id}
+                data-message-id={msg.id}
+                className={isActiveResult ? 'rounded-lg ring-2 ring-yellow-400 bg-yellow-50/60 dark:bg-yellow-500/10' : isMatch ? 'rounded-lg bg-yellow-50/40 dark:bg-yellow-500/5' : ''}
+              >
+                <MessageItem
+                  msg={msg}
+                  index={i}
+                  messages={messages}
+                  agentInfo={threadAgentInfo}
+                  copiedMsgId={null}
+                  runtimeConnId={connId || ''}
+                  onTouchStart={noopStr}
+                  onTouchEnd={noop}
+                  onRetry={noopMsg}
+                  onReply={noopMsg}
+                  onEdit={noopMsg}
+                  onDelete={noopStr}
+                  onCopy={noopCopy}
+                  onQuickSend={noopStr}
+                  onReactionToggle={noopReaction}
+                  onReactionRemove={noopReactionRemove}
+                  onOpenReactionPicker={noopStr}
+                />
+              </div>
+            );
+          })
         )}
 
         {/* Bottom anchor for scrollToBottom */}
@@ -849,6 +1015,16 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
                   {activeThread && (
                     <motion.button
                       whileTap={{ scale: 0.9 }}
+                      onClick={handleToggleSearch}
+                      className={`rounded-xl p-2 transition-colors ${isSearchOpen ? 'bg-primary/10 text-primary' : 'bg-slate-900/[0.04] text-slate-500 hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'}`}
+                      title="Search in thread"
+                    >
+                      <Search size={16} />
+                    </motion.button>
+                  )}
+                  {activeThread && (
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
                       onClick={() => setShowOptionsMenu(!showOptionsMenu)}
                       className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
                       title="Thread options"
@@ -876,6 +1052,13 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
               </div>
               {headerMeta && <div className="mt-1.5">{headerMeta}</div>}
             </div>
+
+            {/* Search bar */}
+            <AnimatePresence>
+              {isSearchOpen && activeThread && (
+                <ThreadSearchBar connId={connId} onScrollToMessage={handleScrollToMessage} />
+              )}
+            </AnimatePresence>
 
             {/* Pinned parent message */}
             {parentMessageView}
@@ -941,7 +1124,17 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
               <h3 className="flex-1 truncate text-[15px] font-semibold text-text dark:text-text-inv">
                 {headerTitle}
               </h3>
-              <div className="relative">
+              <div className="relative flex items-center gap-1">
+                {activeThread && (
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={handleToggleSearch}
+                    className={`rounded-xl p-2 transition-colors ${isSearchOpen ? 'bg-primary/10 text-primary' : 'bg-slate-900/[0.04] text-slate-500 hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'}`}
+                    title="Search in thread"
+                  >
+                    <Search size={16} />
+                  </motion.button>
+                )}
                 {activeThread && (
                   <motion.button
                     whileTap={{ scale: 0.9 }}
@@ -965,6 +1158,13 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
             </div>
             {headerMeta && <div className="mt-1.5 pl-12">{headerMeta}</div>}
           </div>
+
+          {/* Search bar */}
+          <AnimatePresence>
+            {isSearchOpen && activeThread && (
+              <ThreadSearchBar connId={connId} onScrollToMessage={handleScrollToMessage} />
+            )}
+          </AnimatePresence>
 
           {/* Pinned parent message */}
           {parentMessageView}

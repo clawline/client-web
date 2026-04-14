@@ -72,6 +72,15 @@ interface ThreadState {
   /** Unread reply count per thread */
   unreadCounts: Map<string, number>;
 
+  /** Current search query in thread */
+  threadSearchQuery: string;
+  /** Search results: message IDs that matched */
+  threadSearchResults: Message[];
+  /** Whether a search is in progress */
+  isSearching: boolean;
+  /** Currently highlighted search result index */
+  searchResultIndex: number;
+
   // ── Actions ──
   createThread: (parentMessageId: string, title?: string, connectionId?: string) => void;
   openThread: (threadId: string, connectionId?: string) => void;
@@ -86,6 +95,9 @@ interface ThreadState {
   markThreadRead: (threadId: string, connectionId?: string) => void;
   updateThread: (threadId: string, payload: { title?: string; status?: ThreadStatus }, connectionId?: string) => void;
   deleteThread: (threadId: string, connectionId?: string) => void;
+  searchThread: (query: string, connectionId?: string) => void;
+  clearSearch: () => void;
+  setSearchResultIndex: (index: number) => void;
 
   // ── WebSocket event handlers (called from listener) ──
   onThreadUpdated: (thread: Thread) => void;
@@ -112,6 +124,10 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
   hasMoreMessages: true,
   threadReplyPreviews: new Map(),
   unreadCounts: new Map(),
+  threadSearchQuery: '',
+  threadSearchResults: [],
+  isSearching: false,
+  searchResultIndex: -1,
 
   // ── Actions ──
 
@@ -319,6 +335,28 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
       type: 'thread.delete',
       data: { requestId, threadId },
     }, connectionId);
+  },
+
+  searchThread(query, connectionId) {
+    const { activeThreadId } = get();
+    if (!activeThreadId || !query.trim()) {
+      set({ threadSearchQuery: '', threadSearchResults: [], isSearching: false, searchResultIndex: -1 });
+      return;
+    }
+    set({ threadSearchQuery: query, isSearching: true, searchResultIndex: -1 });
+    const requestId = `thread-search-${Date.now()}`;
+    channel.sendRaw({
+      type: 'thread.search',
+      data: { requestId, threadId: activeThreadId, query: query.trim() },
+    }, connectionId);
+  },
+
+  clearSearch() {
+    set({ threadSearchQuery: '', threadSearchResults: [], isSearching: false, searchResultIndex: -1 });
+  },
+
+  setSearchResultIndex(index) {
+    set({ searchResultIndex: index });
   },
 
   // ── WebSocket event handlers ──
@@ -571,6 +609,32 @@ export function subscribeThreadEvents(connectionId?: string): () => void {
 
       case 'thread.mark_read': {
         // Server confirmed mark-read — already handled optimistically by markThreadRead()
+        break;
+      }
+
+      case 'thread.search': {
+        const searchMessages = data.messages as Array<{
+          id: string;
+          messageId?: string;
+          content?: string;
+          senderId?: string;
+          direction?: string;
+          timestamp?: number;
+          threadId?: string;
+        }> | undefined;
+
+        if (searchMessages) {
+          const mapped: Message[] = searchMessages.map((m) => ({
+            id: m.messageId || m.id,
+            sender: (m.direction === 'outbound' ? 'ai' : 'user') as 'user' | 'ai',
+            text: m.content || '',
+            timestamp: m.timestamp,
+            threadId: (m.threadId || data.threadId) as string,
+          }));
+          useThreadStore.setState({ threadSearchResults: mapped, isSearching: false });
+        } else {
+          useThreadStore.setState({ threadSearchResults: [], isSearching: false });
+        }
         break;
       }
 
