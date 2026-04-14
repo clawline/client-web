@@ -9,9 +9,20 @@
 import { getConnections, type ServerConnection } from './connectionStore';
 import * as channel from './clawChannel';
 import type { AgentInfo } from './clawChannel';
-import { loadConversationMessages } from './messageDB';
+import { getMessages, appendMessage, warmCache, isWarmed } from '../stores/messageCache';
 import { getUserId, getUserName } from '../App';
 import { playNewMessage } from '../hooks/useNotificationSound';
+import { isNotifActive } from '../hooks/useNotificationPermission';
+import { useNavigationStore } from '../stores/navigationStore';
+import { saveAgentPreview } from '../components/chat/utils';
+
+/** Update sidebar preview from current cache for a given agent. */
+function updatePreview(connectionId: string, agentId: string) {
+  const msgs = getMessages(connectionId, agentId);
+  if (msgs.length > 0) {
+    saveAgentPreview(agentId, connectionId, msgs as Parameters<typeof saveAgentPreview>[2]);
+  }
+}
 
 // ── Types ──
 
@@ -32,6 +43,7 @@ export type InboxItem = {
 // ── Constants ──
 
 const INBOX_UPDATED_EVENT = 'openclaw:inbox-updated';
+const CONVERSATION_UPDATED_EVENT = 'openclaw:conversation-updated';
 const LAST_READ_PREFIX = 'openclaw.inbox.lastRead.';
 const INBOX_CACHE_KEY = 'openclaw.inbox.cache';
 const AGENT_NAMES_KEY = 'clawline.agentNames';
@@ -79,8 +91,14 @@ function itemKey(connectionId: string, agentId: string): string {
 
 function getLastReadTimestamp(connectionId: string, agentId: string): number {
   try {
-    const raw = localStorage.getItem(`${LAST_READ_PREFIX}${connectionId}.${agentId}`);
-    return raw ? parseInt(raw, 10) || 0 : 0;
+    // Inbox-specific lastRead
+    const inboxRaw = localStorage.getItem(`${LAST_READ_PREFIX}${connectionId}.${agentId}`);
+    const inboxTs = inboxRaw ? parseInt(inboxRaw, 10) || 0 : 0;
+    // ChatRoom/ChatList lastRead (written when user opens a chat)
+    const chatRaw = localStorage.getItem(`openclaw.lastRead.${connectionId}.${agentId}`);
+    const chatTs = chatRaw ? parseInt(chatRaw, 10) || 0 : 0;
+    // Use whichever is more recent
+    return Math.max(inboxTs, chatTs);
   } catch {
     return 0;
   }
@@ -130,7 +148,9 @@ function loadCache() {
 
 function setLastReadTimestamp(connectionId: string, agentId: string, timestamp: number) {
   try {
+    // Update both Inbox and ChatList lastRead so they stay in sync
     localStorage.setItem(`${LAST_READ_PREFIX}${connectionId}.${agentId}`, String(timestamp));
+    localStorage.setItem(`openclaw.lastRead.${connectionId}.${agentId}`, String(timestamp));
   } catch {
     // ignore storage errors
   }
@@ -190,11 +210,11 @@ async function populateAgentFromMessages(
   item.agentEmoji = agentEmoji;
   item.connectionName = connectionName;
 
-  // Load recent messages to determine last message and unread count
+  // Load recent messages from cache to determine last message and unread count
   try {
-    const allMessages = await loadConversationMessages(connectionId, agentId, { limit: 50 });
+    const allMessages = getMessages(connectionId, agentId);
     const messages = allMessages.filter(isContentMessage).filter(
-      (m) => !(m.sender === 'user' && m.text.trim().startsWith('/'))
+      (m: { sender: string; text: string }) => !(m.sender === 'user' && m.text.trim().startsWith('/'))
     );
     if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
@@ -297,7 +317,6 @@ function setupConnectionListeners(conn: ServerConnection) {
     }
 
     if (packet.type === 'message.send') {
-      // AI sent a message — only track messages with actual text content
       const content = typeof packet.data.content === 'string' ? packet.data.content : '';
       const trimmed = content.trim();
       if (!isContentText(trimmed)) {
@@ -307,11 +326,48 @@ function setupConnectionListeners(conn: ServerConnection) {
       const messageId = typeof packet.data.messageId === 'string' ? packet.data.messageId : '';
       const timestamp = typeof packet.data.timestamp === 'number' ? packet.data.timestamp : Date.now();
 
+      // Check if this is our own message echoed back by the relay
+      const senderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
+      const mySenderId = channel.getSenderId(connectionId);
+      const isEcho = packet.data.echo === true || (senderId && mySenderId && senderId === mySenderId);
+
+      if (isEcho) {
+        // User's own echo — update inbox state only (no local persistence)
+        item.lastMessage = { text: trimmed, timestamp, messageId };
+        appendMessage(connectionId, agentId, { id: messageId, sender: 'user', text: trimmed, timestamp });
+        updatePreview(connectionId, agentId);
+        emitUpdate();
+        return;
+      }
+
+      // AI message — update inbox status (persistence handled by ChatRoom's save timer)
       item.lastMessage = { text: trimmed, timestamp, messageId };
+      appendMessage(connectionId, agentId, { id: messageId, sender: 'ai', text: trimmed, timestamp });
       item.status = 'pending_reply';
       item.unreadCount += 1;
       item.suggestedReply = undefined;
-      playNewMessage();
+
+      // Only play sound if user is NOT actively viewing this agent's chat
+      const navState = useNavigationStore.getState();
+      const isViewingThisAgent =
+        !document.hidden &&
+        document.hasFocus() &&
+        navState.activeConnectionId === connectionId &&
+        navState.activeAgentId === agentId;
+      if (!isViewingThisAgent) {
+        playNewMessage();
+      }
+
+      // Push notification: send when window is hidden or lacks focus (PC: unfocused tab/window)
+      if (isNotifActive() && (document.hidden || !document.hasFocus())) {
+        new Notification(item.agentName || 'OpenClaw', {
+          body: trimmed.slice(0, 100),
+          icon: '/icon-192.png',
+          tag: `clawline-${connectionId}-${agentId}`, // collapse duplicate notifications
+        });
+      }
+
+      updatePreview(connectionId, agentId);
       emitUpdate();
       return;
     }
@@ -326,6 +382,8 @@ function setupConnectionListeners(conn: ServerConnection) {
 
         if (isContentText(trimmed)) {
           item.lastMessage = { text: trimmed, timestamp, messageId };
+          appendMessage(connectionId, agentId, { id: messageId, sender: 'user', text: trimmed, timestamp });
+          updatePreview(connectionId, agentId);
         }
         item.status = 'idle';
         item.unreadCount = 0;
@@ -426,6 +484,11 @@ export async function refreshInbox() {
     setupConnectionListeners(conn);
   }
 
+  // Warm message cache for each connection (one HTTP call per connection)
+  await Promise.all(
+    connections.map((conn) => warmCache(conn.id, conn.channelId))
+  );
+
   // Populate agent data from cached agent lists and message history
   const populatePromises: Promise<void>[] = [];
   for (const conn of connections) {
@@ -441,8 +504,8 @@ export async function refreshInbox() {
 }
 
 export function getInboxItems(): InboxItem[] {
-  const filtered = [...items.values()]
-    .filter(item => item.lastMessage || item.status === 'thinking' || item.status === 'pending_reply');
+  // Show all known agents — as long as they exist in the map, they stay in Inbox
+  const filtered = [...items.values()];
 
   // Deduplicate by agentId — keep the most recently active instance
   const byAgent = new Map<string, InboxItem>();
@@ -510,4 +573,4 @@ export function onInboxUpdate(callback: () => void): () => void {
   return () => window.removeEventListener(INBOX_UPDATED_EVENT, handler);
 }
 
-export { INBOX_UPDATED_EVENT };
+export { INBOX_UPDATED_EVENT, CONVERSATION_UPDATED_EVENT };

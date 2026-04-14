@@ -14,7 +14,9 @@ Clawline (OpenClaw) is a **React 19 SPA** that serves as a multi-agent chat clie
 - **Auth**: Logto (`@logto/react`) — endpoint at `logto.dr.restry.cn`
 - **Markdown**: `react-markdown` + `remark-gfm` + `rehype-raw` + `highlight.js`
 - **Icons**: `lucide-react`
-- **Storage**: localStorage (connections, settings) + IndexedDB (messages via `messageDB.ts`, offline outbox via `outbox.ts`)
+- **Storage**: localStorage (connections, settings, agent previews) + Supabase `cl_messages` (message history, single source of truth)
+- **Offline outbox**: In-memory Map backed by sessionStorage (`src/services/outbox.ts`)
+- **Message cache**: In-memory per-session cache populated on startup from Supabase (`src/stores/messageCache.ts`)
 - **Real-time**: WebSocket connections managed in `src/services/clawChannel.ts`
 
 ## Commands
@@ -71,9 +73,11 @@ npm run clean        # Remove dist/
 │   ├── services/
 │   │   ├── clawChannel.ts      # WebSocket management, agent discovery, message send/receive
 │   │   ├── connectionStore.ts  # Server connections CRUD (localStorage-backed)
-│   │   ├── messageDB.ts        # IndexedDB message persistence + localStorage migration
-│   │   ├── outbox.ts           # Offline message queue (IndexedDB)
-│   │   └── suggestions.ts      # AI-powered follow-up suggestion generation
+│   │   ├── outbox.ts           # Offline message queue (in-memory + sessionStorage)
+│   │   ├── suggestions.ts      # AI suggestions + Supabase message sync API + syncMessageToLocal
+│   │   └── agentInbox.ts       # Inbox state management across agents
+│   ├── stores/
+│   │   └── messageCache.ts     # In-memory message cache (warm on startup from Supabase)
 │   ├── hooks/
 │   │   ├── useIOSPWA.ts
 │   │   ├── usePWAUpdate.ts
@@ -103,9 +107,11 @@ Navigation uses a custom `Screen` type union (`'chats' | 'chat_room' | 'dashboar
 ### State Management
 No Redux/Zustand — state is managed via:
 - React `useState`/`useCallback` in `App.tsx` for navigation state
-- `localStorage` for connections, settings, dark mode
-- `IndexedDB` for message history and offline outbox
-- Custom events (`openclaw:connections-updated`) for cross-component sync
+- `localStorage` for connections, settings, dark mode, agent previews
+- **Supabase `cl_messages`** as the single source of truth for message history (via Gateway HTTP API)
+- **In-memory `messageCache`** populated on startup from Supabase (5h window), kept fresh by WS events
+- **In-memory outbox** (sessionStorage-backed) for offline message queue
+- Custom events (`openclaw:connections-updated`, `openclaw:inbox-updated`) for cross-component sync
 
 ### Styling Conventions
 - Tailwind CSS v4 with custom `@theme` variables in `index.css`
@@ -132,8 +138,8 @@ Heavy screens (`ChatRoom`, `Dashboard`, `Profile`, `Search`, `Preferences`, `Pai
 - **Imports**: Use `@/*` path alias for cross-directory imports. Relative imports within the same directory.
 - **Components**: Functional components only. No class components.
 - **Exports**: Default exports for screen components. Named exports for services, hooks, and utilities.
-- **localStorage keys**: Prefixed with `openclaw.` (e.g., `openclaw.darkMode`, `openclaw.connections`).
-- **IndexedDB databases**: `clawline-messages` (messages), `clawline-outbox` (offline queue).
+- **localStorage keys**: Prefixed with `openclaw.` (e.g., `openclaw.darkMode`, `openclaw.connections`, `openclaw.outbox`).
+- **Message storage**: Supabase `cl_messages` via Gateway `/api/messages/sync` endpoint. No IndexedDB.
 - **Comments**: Bilingual (English and Chinese) in some areas — this is intentional.
 - **Formatting**: 2-space indentation, single quotes, trailing commas.
 - **HTML sanitization**: All user/markdown content sanitized via `dompurify` before rendering.
@@ -155,3 +161,65 @@ Heavy screens (`ChatRoom`, `Dashboard`, `Profile`, `Search`, `Preferences`, `Pai
 - Build produces `__APP_VERSION__` and `__BUILD_HASH__` global defines
 - The `miniprogram/` directory referenced in README does not exist in this repo (it's a separate WeChat mini-program project)
 - `.impeccable.md` at project root contains the design system documentation (brand personality, aesthetic direction)
+
+## Integration Testing with Browser Agent
+
+The project has no automated test suite. For integration testing, use the Clawline Browser Agent (`/browser-agent` skill) which controls Chrome via HTTP Hook API at `http://127.0.0.1:4821`.
+
+**Prerequisite**: Chrome must have the Clawline sidepanel open (agent listens on port 4821).
+
+### Quick start
+
+```bash
+# 1. Check agent is ready
+curl -s http://127.0.0.1:4821/
+
+# 2. Check available windows
+curl -s http://127.0.0.1:4821/sessions
+
+# 3. Send a task (blocking — waits for completion)
+curl -s -X POST http://127.0.0.1:4821/hook \
+  -H 'Content-Type: application/json' \
+  -d '{"task": "Navigate to http://localhost:4026 and describe the page"}'
+```
+
+### Multi-step workflow (use conversationId)
+
+```bash
+# Step 1: Navigate
+RESULT=$(curl -s -X POST http://127.0.0.1:4821/hook \
+  -H 'Content-Type: application/json' \
+  -d '{"task": "Navigate to http://localhost:4026"}')
+CONV_ID=$(echo "$RESULT" | jq -r '.conversationId')
+
+# Step 2: Login (continues same browser context)
+curl -s -X POST http://127.0.0.1:4821/hook \
+  -H 'Content-Type: application/json' \
+  -d "{\"task\": \"Click Get Started, login with username test_all_apps password Test@2026, wait for redirect to Chats page\", \"conversationId\": \"$CONV_ID\"}"
+
+# Step 3: Test a feature
+curl -s -X POST http://127.0.0.1:4821/hook \
+  -H 'Content-Type: application/json' \
+  -d "{\"task\": \"Click on the main agent and send a message saying hello\", \"conversationId\": \"$CONV_ID\"}"
+```
+
+Test account: `test_all_apps` / `Test@2026`
+
+### Key differences from headless browse ($B)
+
+- **Real Chrome** — uses user's actual Chrome with extension, not headless Playwright
+- **Natural language tasks** — no CSS selectors, the agent figures out how to interact
+- **conversationId** preserves context across steps (page state, element references)
+- **One task per window** — parallel tasks need separate windows
+- **Blocking calls** — HTTP request waits up to 10 minutes for task completion
+
+### Message architecture (no IndexedDB)
+
+Messages are stored only in Supabase `cl_messages` (via the Gateway relay). The client has NO local message database. On app startup, `messageCache.warmCache()` fetches the last 5 hours of messages per connection in a single HTTP call and caches in memory. When navigating to an agent chat, messages are loaded from this cache (zero HTTP calls). Scrolling up triggers `fetchOlderMessages()` to paginate from Supabase.
+
+### Inbox-specific notes
+
+- Inbox only shows agents that have `lastMessage` OR status `thinking`/`pending_reply`. Agents with no message history are filtered out.
+- System messages filtered from previews: `🐾 ...`, `[Image]`, `[image]`, `📎...`, `*[cancelled]*`, diagnostic dumps.
+- Expand card triggers markAsRead immediately (viewing = read).
+- Multi-connection inbox cache injection via `localStorage.setItem('openclaw.inbox.cache', ...)` still works for testing.

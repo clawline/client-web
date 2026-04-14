@@ -33,3 +33,5 @@ export { FloatingNavButtons } from './FloatingNavButtons';
 export { ChatHeader } from './ChatHeader';
 export { AgentHeaderCard } from './AgentHeaderCard';
 export { AgentDetailSheet } from './AgentDetailSheet';
+export { ThreadSessionCard } from './ThreadSessionCard';
+export { AcpSessionBar, type AcpSessionInfo } from './AcpSessionBar';

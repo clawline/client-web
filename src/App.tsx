@@ -26,7 +26,6 @@ import { usePWAUpdate } from './hooks/usePWAUpdate';
 import { useIOSPWA } from './hooks/useIOSPWA';
 import { cn } from './lib/utils';
 import { MessageCircle, LayoutDashboard, Search as SearchIcon, User, Inbox as InboxIcon } from 'lucide-react';
-import { migrateFromLocalStorage } from './services/messageDB';
 import { initInbox, getUnreadTotal, onInboxUpdate } from './services/agentInbox';
 
 // Lazy-loaded heavy screens
@@ -50,7 +49,6 @@ function ScreenLoading() {
 
 const STORAGE_KEY_USER_ID = 'openclaw.userId';
 const STORAGE_KEY_USER_NAME = 'openclaw.userName';
-const INDEXED_DB_MIGRATED_KEY = 'openclaw.indexeddb.migrated';
 
 
 function createUserId() {
@@ -169,7 +167,15 @@ function AppShell() {
   // (React Rules of Hooks — Error #310 fix)
 
   const initialFromUrl = pathToScreen(location.pathname, location.search);
-  const initialScreen: Screen = effectivelyAuthenticated ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
+  const hasLocalConnections = (() => {
+    try {
+      const raw = localStorage.getItem('openclaw.connections');
+      if (!raw) return false;
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) && arr.length > 0;
+    } catch { return false; }
+  })();
+  const initialScreen: Screen = (effectivelyAuthenticated || hasLocalConnections) ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
 
   // Navigation state from Zustand store
   const currentScreen = useNavigationStore((s) => s.currentScreen);
@@ -417,7 +423,16 @@ function AppShell() {
 
   const renderScreen = () => {
     // Redirect unauthenticated users to onboarding (except callback)
-    if (!effectivelyAuthenticated && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
+    // Skip onboarding for returning users (have connections saved locally)
+    const hasExistingConnections = (() => {
+      try {
+        const raw = localStorage.getItem('openclaw.connections');
+        if (!raw) return false;
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) && arr.length > 0;
+      } catch { return false; }
+    })();
+    if (!effectivelyAuthenticated && !hasExistingConnections && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
       return <Onboarding onGetStarted={() => navigate('chats')} />;
     }
     const content = (() => {
@@ -485,7 +500,7 @@ function AppShell() {
             <div className="w-14 h-14 rounded-2xl bg-primary/8 flex items-center justify-center mb-4 mx-auto">
               <MessageCircle size={24} className="text-primary/60" />
             </div>
-            <p className="text-[14px] text-text/35 dark:text-text-inv/30">Select an agent from the sidebar</p>
+            <p className="text-[14px] text-text/50 dark:text-text-inv/45">Select an agent from the sidebar</p>
             <button onClick={() => closeSplitPane(idx)} className="mt-3 text-xs text-text/40 hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60">Close pane</button>
           </div>
         </div>
@@ -560,7 +575,7 @@ function AppShell() {
               <div className="w-14 h-14 rounded-2xl bg-primary/8 flex items-center justify-center mb-4">
                 <MessageCircle size={24} className="text-primary/60" />
               </div>
-              <p className="text-[14px] text-text/35 dark:text-text-inv/30">Select an agent to start chatting</p>
+              <p className="text-[14px] text-text/50 dark:text-text-inv/45">Select an agent to start chatting</p>
             </div>
           );
       }
@@ -614,7 +629,7 @@ function AppShell() {
                   key={item.id}
                   onClick={() => navigate(item.id as Screen)}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all relative',
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1',
                     isActive
                       ? 'bg-primary text-white shadow-[0_12px_24px_-18px_rgba(239,90,35,0.95)]'
                       : 'bg-white/68 text-text/55 shadow-sm hover:bg-white hover:text-text dark:bg-white/[0.06] dark:text-text-inv/55 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'
@@ -623,7 +638,7 @@ function AppShell() {
                   <div className="relative">
                     <Icon size={15} />
                     {badge > 0 && !isActive && (
-                      <span className="absolute -top-1.5 -right-2 min-w-[14px] h-3.5 flex items-center justify-center rounded-full bg-primary text-white text-[8px] font-bold px-0.5 shadow-sm">
+                      <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-primary text-white text-[9px] font-bold px-0.5 shadow-sm">
                         {badge > 99 ? '99+' : badge}
                       </span>
                     )}
@@ -722,25 +737,6 @@ function AppShell() {
 }
 
 export default function App() {
-  useEffect(() => {
-    if (localStorage.getItem(INDEXED_DB_MIGRATED_KEY) === '1') {
-      return;
-    }
-
-    let cancelled = false;
-
-    void migrateFromLocalStorage().then(() => {
-      if (cancelled) return;
-      localStorage.setItem(INDEXED_DB_MIGRATED_KEY, '1');
-    }).catch(() => {
-      // Retry on next app launch if migration fails.
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Initialize the agent inbox service on app mount
   useEffect(() => {
     void initInbox();

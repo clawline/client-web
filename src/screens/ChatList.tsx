@@ -3,11 +3,10 @@ import { AnimatePresence, motion, Reorder, useDragControls } from 'motion/react'
 import { Search, Server, Loader2, RefreshCw, Plus, ChevronDown, LayoutGrid, List, ArrowUpDown, Check, Crown, GripVertical, Star, Pencil } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
-import { CONNECTIONS_UPDATED_EVENT, getConnections, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
+import { CONNECTIONS_UPDATED_EVENT, getConnections, getConnectionById, setActiveConnectionId, type ServerConnection } from '../services/connectionStore';
 import * as channel from '../services/clawChannel';
 import type { AgentInfo, ConversationSummary, ChannelStatus } from '../services/clawChannel';
 import { getUserId } from '../App';
-import { getLatestMessagePreview } from '../services/messageDB';
 import AvatarUploader from '../components/AvatarUploader';
 
 const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
@@ -247,7 +246,17 @@ function formatRelativeTime(ts?: number): string {
 function getPreviewKey(connectionId: string, agentId: string) { return `${PREVIEW_KEY_PREFIX}${connectionId}.${agentId}`; }
 function getPreviewStateKey(connectionId: string, agentId: string) { return `${connectionId}:${agentId}`; }
 function getStoredPreview(agentId: string, connectionId: string): { text: string; timestamp?: number } | null {
-  try { const c = localStorage.getItem(getPreviewKey(connectionId, agentId)); if (c) return JSON.parse(c); } catch {}
+  try {
+    const c = localStorage.getItem(getPreviewKey(connectionId, agentId));
+    if (!c) return null;
+    const parsed = JSON.parse(c) as { text: string; timestamp?: number };
+    // Filter out stale system messages (🐾, [Image], etc.)
+    const t = parsed.text?.trim();
+    if (t && (t.startsWith('🐾') || t === '[Image]' || t === '[image]' || t.startsWith('📎') || t.endsWith('*[cancelled]*'))) {
+      return null;
+    }
+    return parsed;
+  } catch {}
   return null;
 }
 function getAgentOrderKey(connectionId: string) { return `${AGENT_ORDER_KEY_PREFIX}${connectionId}`; }
@@ -284,6 +293,15 @@ function hasUnread(connectionId: string, agentId: string, lastMessageTs?: number
   return lastMessageTs > getLastReadTimestamp(connectionId, agentId);
 }
 function getConnectionLabel(c: ServerConnection) { return c.name || c.displayName || 'Server'; }
+
+/** Resolve the display name for an agent. Custom name > agent name > server name (for default agent only). */
+function resolveAgentName(agent: AgentInfo, connection: ServerConnection, customNames: Record<string, string>) {
+  const key = `${connection.id}:${agent.id}`;
+  if (customNames[key]) return customNames[key];
+  // Only for the default agent: if name is generic (equals ID, e.g. "main"), use server name
+  if (agent.isDefault && agent.name === agent.id) return connection.name || connection.displayName || agent.name;
+  return agent.name;
+}
 function getStatusClasses(status: ChannelStatus) {
   if (status === 'connected') return 'bg-primary';
   if (status === 'connecting' || status === 'reconnecting') return 'bg-amber-400';
@@ -556,24 +574,14 @@ export default function ChatList({
   useEffect(() => {
     const targets = connections.flatMap(c => (agentMap[c.id] || []).map(a => ({ connectionId: c.id, agentId: a.id })));
     if (!targets.length) { setPreviewMap({}); return; }
-    let cancelled = false;
-    void Promise.all(targets.map(async ({ connectionId, agentId }) => {
-      const p = await getLatestMessagePreview(connectionId, agentId);
-      return [getPreviewStateKey(connectionId, agentId), p ?? getStoredPreview(agentId, connectionId)] as const;
-    })).then(entries => { if (!cancelled) setPreviewMap(Object.fromEntries(entries)); })
-      .catch(() => { if (!cancelled) setPreviewMap(Object.fromEntries(targets.map(t => [getPreviewStateKey(t.connectionId, t.agentId), getStoredPreview(t.agentId, t.connectionId)]))); });
-    return () => { cancelled = true; };
+    setPreviewMap(Object.fromEntries(targets.map(t => [getPreviewStateKey(t.connectionId, t.agentId), getStoredPreview(t.agentId, t.connectionId)])));
   }, [agentMap, connections]);
 
   useEffect(() => {
     const handler = (event: Event) => {
       const { connectionId, agentId } = (event as CustomEvent<{ connectionId?: string; agentId?: string }>).detail ?? {};
       if (!connectionId || !agentId) return;
-      void getLatestMessagePreview(connectionId, agentId).then(p => {
-        setPreviewMap(prev => ({ ...prev, [getPreviewStateKey(connectionId, agentId)]: p ?? getStoredPreview(agentId, connectionId) }));
-      }).catch(() => {
-        setPreviewMap(prev => ({ ...prev, [getPreviewStateKey(connectionId, agentId)]: getStoredPreview(agentId, connectionId) }));
-      });
+      setPreviewMap(prev => ({ ...prev, [getPreviewStateKey(connectionId, agentId)]: getStoredPreview(agentId, connectionId) }));
     };
     window.addEventListener(MESSAGE_PREVIEW_UPDATED_EVENT, handler);
     return () => window.removeEventListener(MESSAGE_PREVIEW_UPDATED_EVENT, handler);
@@ -583,8 +591,11 @@ export default function ChatList({
   const filteredResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
-    return connections.flatMap(c => (agentMap[c.id] || []).filter(a => a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q)).map(a => ({ agent: a, connection: c })));
-  }, [agentMap, connections, searchQuery]);
+    return connections.flatMap(c => (agentMap[c.id] || []).filter(a => {
+      const displayName = customNames[`${c.id}:${a.id}`] || a.name;
+      return displayName.toLowerCase().includes(q) || a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q) || (c.name || '').toLowerCase().includes(q) || (c.displayName || '').toLowerCase().includes(q);
+    }).map(a => ({ agent: a, connection: c })));
+  }, [agentMap, connections, searchQuery, customNames]);
 
   const connectedCount = connections.filter(c => statusMap[c.id] === 'connected').length;
   const showGroupedView = connections.length > 1 && !searchQuery.trim();
@@ -771,7 +782,7 @@ export default function ChatList({
             {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <h3 className={cn('font-bold truncate', compact ? 'text-[14px] text-text/90 dark:text-text-inv/90' : 'text-[16px]')}>{customNames[`${connection.id}:${agent.id}`] || agent.name}</h3>
+                <h3 className={cn('font-bold truncate', compact ? 'text-[14px] text-text/90 dark:text-text-inv/90' : 'text-[16px]')}>{resolveAgentName(agent, connection, customNames)}</h3>
                 {agent.model && <span className="text-[10px] truncate ml-auto shrink-0 bg-text/5 dark:bg-text-inv/5 rounded-full px-2 py-px text-text/45 dark:text-text-inv/40">{agent.model.split('/').pop()}</span>}
               </div>
               {isThinking ? (
@@ -851,7 +862,7 @@ export default function ChatList({
               )}
               {showStatus && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-card-alt animate-pulse" />}
             </div>
-            <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{customNames[`${connection.id}:${agent.id}`] || agent.name}</h3>
+            <h3 className="text-[12px] font-semibold truncate w-full leading-tight">{resolveAgentName(agent, connection, customNames)}</h3>
             {isThinking ? (
               <div className="mt-1.5 px-2 py-1 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] text-[10px] text-primary flex items-center gap-1">Thinking... <TypingDots /></div>
             ) : isTyping ? (
@@ -888,7 +899,8 @@ export default function ChatList({
 
   const renderReorderListCard = (connectionId: string, agent: AgentInfo) => {
     const key = `${connectionId}:${agent.id}`;
-    const displayName = customNames[key] || agent.name;
+    const conn = getConnectionById(connectionId);
+    const displayName = conn ? resolveAgentName(agent, conn, customNames) : (customNames[key] || agent.name);
     const isFav = favorites.has(key);
     return (
       <ReorderListCard
@@ -907,7 +919,8 @@ export default function ChatList({
 
   const renderReorderGridCard = (connectionId: string, agent: AgentInfo) => {
     const key = `${connectionId}:${agent.id}`;
-    const displayName = customNames[key] || agent.name;
+    const conn = getConnectionById(connectionId);
+    const displayName = conn ? resolveAgentName(agent, conn, customNames) : (customNames[key] || agent.name);
     const isFav = favorites.has(key);
     return (
       <ReorderGridCard
@@ -1046,7 +1059,7 @@ export default function ChatList({
         {!reorderMode && (
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text/50 dark:text-text-inv/45" size={compact ? 14 : 16} />
-            <Input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search agents…"
+            <Input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { setSearchQuery(''); (e.target as HTMLInputElement).blur(); } }} placeholder="Search agents…"
               className={cn('pl-9 rounded-lg bg-text/[0.04] dark:bg-text-inv/[0.04] border-0 placeholder:text-text/30 dark:placeholder:text-text-inv/25',
                 compact ? 'h-8 py-0 text-[12px] pl-8' : 'h-10 py-0 text-[14px]')} />
           </div>
