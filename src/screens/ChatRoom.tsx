@@ -2722,7 +2722,7 @@ export default function ChatRoom({
               placeholder={agentReady ? 'Reply...' : 'Switching agent...'}
               disabled={!agentReady}
               aria-label="Type a message"
-              className="flex-1 min-w-0 resize-none overflow-y-auto bg-transparent border-none px-1.5 py-1 text-[13px] text-text placeholder:text-[13px] placeholder:text-text/30 focus:outline-none dark:text-text-inv dark:placeholder:text-text-inv/25 disabled:text-slate-400 disabled:italic disabled:opacity-90 leading-[1.45]"
+              className="flex-1 min-w-0 resize-none overflow-y-auto bg-transparent border-none px-1.5 py-1 text-[13px] text-text placeholder:text-[13px] placeholder:text-text/30 focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:rounded dark:text-text-inv dark:placeholder:text-text-inv/25 disabled:text-slate-400 disabled:italic disabled:opacity-90 leading-[1.45]"
             />
           </div>
 
@@ -2734,7 +2734,7 @@ export default function ChatRoom({
                 <button
                   key={cmd}
                   onClick={() => { trackCmd(cmd); quickSend(cmd, { clearInput: false }); }}
-                  className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] text-text/30 transition-colors hover:text-text/55 hover:bg-text/[0.04] dark:text-text-inv/25 dark:hover:text-text-inv/45 dark:hover:bg-text-inv/[0.06]"
+                  className="shrink-0 rounded-md px-2 py-1 text-[10px] text-text/30 transition-colors hover:text-text/55 hover:bg-text/[0.04] dark:text-text-inv/25 dark:hover:text-text-inv/45 dark:hover:bg-text-inv/[0.06]"
                 >
                   {cmd}
                 </button>
@@ -2750,7 +2750,7 @@ export default function ChatRoom({
                 onClick={handleSend}
                 disabled={!agentReady}
                 aria-label="Send message"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ArrowUp size={16} strokeWidth={2.5} />
               </motion.button>
@@ -2759,7 +2759,7 @@ export default function ChatRoom({
                 whileTap={{ scale: 0.9 }}
                 onClick={() => { localStorage.setItem('clawline:voiceMode', 'true'); setVoiceMode(true); }}
                 aria-label="Switch to voice input"
-                className="flex h-8 w-8 items-center justify-center rounded-full text-text/40 transition-colors hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-text/40 transition-colors hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60"
               >
                 <Mic size={16} />
               </motion.button>
