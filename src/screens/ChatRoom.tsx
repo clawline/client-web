@@ -112,11 +112,14 @@ export default function ChatRoom({
   // Defensive dedup: ensure no two messages share the same ID at render time.
   // Multiple async paths (WebSocket, messageCache, HTTP fallback, history.sync) can race
   // and occasionally introduce duplicates with identical IDs.
+  // Also filters out thread replies — they belong in the thread panel, not main chat.
+  // Parent messages (those that started a thread) stay: they have no threadId themselves.
   const renderMessages = useMemo(() => {
     const seen = new Map<string, number>();
     return messages.filter((m, i) => {
       if (seen.has(m.id)) return false;
       seen.set(m.id, i);
+      if (m.threadId) return false;
       return true;
     });
   }, [messages]);
@@ -714,6 +717,8 @@ export default function ChatRoom({
         setAgentReady(true);
       } else if (packet.type === 'message.receive' && packet.data?.content) {
         // Cross-device sync: user message sent from another client (phone/tablet)
+        // Thread messages are handled by threadStore, not main chat
+        if (packet.data.threadId) return;
         const peerSenderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
         const mySenderId = channel.getSenderId(runtimeConnId);
         if (peerSenderId && mySenderId && peerSenderId !== mySenderId) {
@@ -734,6 +739,38 @@ export default function ChatRoom({
         }
         // Fallback: if server didn't send agentId, use streaming source tracking
         if (!packetAgentId && agentId && streamingSourceAgentRef.current && streamingSourceAgentRef.current !== agentId) {
+          return;
+        }
+
+        // Thread message filtering: messages with threadId belong in the thread panel, not main chat.
+        // Still cache them for the thread panel to use, but don't add to main messages state.
+        if (packet.data.threadId) {
+          const aiMsgId = (packet.data.messageId as string) || Date.now().toString();
+          const aiTs = (packet.data.timestamp as number) || Date.now();
+          const content = (packet.data.content as string) || '';
+          const mediaUrl = packet.data.mediaUrl as string | undefined;
+          let mediaType: string | undefined;
+          const contentType = packet.data.contentType as string | undefined;
+          const mimeType = packet.data.mimeType as string | undefined;
+          if (contentType === 'image' || mimeType?.startsWith('image/')) mediaType = 'image';
+          else if (contentType === 'voice' || contentType === 'audio' || mimeType?.startsWith('audio/')) mediaType = contentType === 'voice' ? 'voice' : 'audio';
+          else if (mediaUrl) mediaType = 'file';
+          appendMessage(connId, agentId || '', {
+            id: aiMsgId, sender: packet.data.echo ? 'user' : 'ai', text: content, timestamp: aiTs,
+            mediaType, mediaUrl, threadId: (packet.data.threadId as string),
+          });
+          // Clear thinking/streaming state if this was the final delivery for a thread reply
+          setIsThinking(false);
+          if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+          streamingSourceAgentRef.current = null;
+          streamingPhaseRef.current = 'idle';
+          setThinkingText('');
+          // Remove any streaming placeholders that might have leaked into main messages
+          setMessages((prev) => {
+            const hasStale = prev.some((m) => m.isStreaming || m.streamingDone);
+            if (!hasStale) return prev;
+            return prev.filter((m) => !m.isStreaming && !m.streamingDone);
+          });
           return;
         }
 
@@ -893,6 +930,8 @@ export default function ChatRoom({
           });
         }
       } else if (packet.type === 'thinking.start') {
+        // Thread thinking belongs in thread panel, not main chat
+        if (packet.data.threadId) return;
         // Only accept thinking for current agent (ignore events without agentId or from other agents)
         const thinkAgentId = (packet.data as { agentId?: string }).agentId;
         if (!thinkAgentId || !agentId || thinkAgentId === agentId) {
@@ -913,6 +952,7 @@ export default function ChatRoom({
           }, 1000);
         }
       } else if (packet.type === 'thinking.update') {
+        if (packet.data.threadId) return;
         const d = packet.data as { agentId?: string; content?: string };
         if (!d.agentId || !agentId || d.agentId === agentId) {
           setIsThinking(true);
@@ -922,6 +962,7 @@ export default function ChatRoom({
           }
         }
       } else if (packet.type === 'thinking.end') {
+        if (packet.data.threadId) return;
         // keep thinking visible until message.send arrives
         if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
       } else if (packet.type === 'status.delivered' || packet.type === 'status.read') {
@@ -970,7 +1011,9 @@ export default function ChatRoom({
             threadId: m.threadId,
           };
         });
-        setMessages((prev) => mergeMessages(history, prev));
+        // Filter out thread replies — they belong in the thread panel, not main chat
+        const mainMessages = history.filter((m) => !m.threadId);
+        setMessages((prev) => mergeMessages(mainMessages, prev));
       } else if (packet.type === 'conversation.list') {
         const nextConversations = Array.isArray((packet.data as { conversations?: ConversationSummary[] }).conversations)
           ? [ ...((packet.data as { conversations?: ConversationSummary[] }).conversations || []) ].sort((a, b) => ((b.timestamp || b.lastTimestamp || 0) - (a.timestamp || a.lastTimestamp || 0)))
@@ -1039,6 +1082,8 @@ export default function ChatRoom({
           });
         }
       } else if (packet.type === 'text.delta') {
+        // Thread streaming belongs in thread panel, not main chat
+        if (packet.data.threadId) return;
         // Message isolation: only accept streaming for current agent
         const packetAgentId = (packet.data.agentId as string | undefined) || undefined;
         const deltaData = packet.data as { chatId?: string; text?: string; done?: boolean; timestamp?: number };
