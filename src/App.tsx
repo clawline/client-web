@@ -500,7 +500,7 @@ function AppShell() {
             <div className="w-14 h-14 rounded-2xl bg-primary/8 flex items-center justify-center mb-4 mx-auto">
               <MessageCircle size={24} className="text-primary/60" />
             </div>
-            <p className="text-[14px] text-text/35 dark:text-text-inv/30">Select an agent from the sidebar</p>
+            <p className="text-[14px] text-text/50 dark:text-text-inv/45">Select an agent from the sidebar</p>
             <button onClick={() => closeSplitPane(idx)} className="mt-3 text-xs text-text/40 hover:text-text/60 dark:text-text-inv/40 dark:hover:text-text-inv/60">Close pane</button>
           </div>
         </div>
@@ -575,7 +575,7 @@ function AppShell() {
               <div className="w-14 h-14 rounded-2xl bg-primary/8 flex items-center justify-center mb-4">
                 <MessageCircle size={24} className="text-primary/60" />
               </div>
-              <p className="text-[14px] text-text/35 dark:text-text-inv/30">Select an agent to start chatting</p>
+              <p className="text-[14px] text-text/50 dark:text-text-inv/45">Select an agent to start chatting</p>
             </div>
           );
       }
@@ -629,7 +629,7 @@ function AppShell() {
                   key={item.id}
                   onClick={() => navigate(item.id as Screen)}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all relative',
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1',
                     isActive
                       ? 'bg-primary text-white shadow-[0_12px_24px_-18px_rgba(239,90,35,0.95)]'
                       : 'bg-white/68 text-text/55 shadow-sm hover:bg-white hover:text-text dark:bg-white/[0.06] dark:text-text-inv/55 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'
@@ -638,7 +638,7 @@ function AppShell() {
                   <div className="relative">
                     <Icon size={15} />
                     {badge > 0 && !isActive && (
-                      <span className="absolute -top-1.5 -right-2 min-w-[14px] h-3.5 flex items-center justify-center rounded-full bg-primary text-white text-[8px] font-bold px-0.5 shadow-sm">
+                      <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-primary text-white text-[9px] font-bold px-0.5 shadow-sm">
                         {badge > 99 ? '99+' : badge}
                       </span>
                     )}
