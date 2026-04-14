@@ -20,6 +20,7 @@ import { draftReply } from '../services/suggestions';
 import { getMessages } from '../stores/messageCache';
 import { setActiveConnectionId } from '../services/connectionStore';
 import EmptyState from '../components/EmptyState';
+import { stripMarkdownForPreview } from '../components/chat/utils';
 
 // ── Helpers ──
 
@@ -36,8 +37,9 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 function truncateText(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen).trimEnd() + '...';
+  const clean = stripMarkdownForPreview(text);
+  if (clean.length <= maxLen) return clean;
+  return clean.slice(0, maxLen).trimEnd() + '...';
 }
 
 function statusConfig(status: AgentStatus): { color: string; dotClass: string; label: string; animate?: boolean } {
@@ -606,7 +608,7 @@ export default function AgentInbox() {
         <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={handleBack}
-          className="w-9 h-9 rounded-xl bg-white/85 dark:bg-white/[0.06] flex items-center justify-center text-text/60 dark:text-text-inv/60 shadow-sm hover:bg-white dark:hover:bg-white/[0.1] transition-colors"
+          className="w-9 h-9 rounded-xl bg-white/85 dark:bg-white/[0.06] flex items-center justify-center text-text/60 dark:text-text-inv/60 shadow-sm hover:bg-white dark:hover:bg-white/[0.1] transition-colors lg:hidden"
         >
           <ArrowLeft size={18} />
         </motion.button>

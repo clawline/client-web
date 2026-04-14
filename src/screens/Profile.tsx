@@ -166,7 +166,7 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
                       })()}
                     </p>
                   </div>
-                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                  <div className="hidden sm:flex items-center gap-0.5 flex-shrink-0">
                     <motion.button
                       whileTap={{ scale: 0.8 }}
                       onClick={(e) => handleMove(e, conn.id, -1)}
@@ -187,14 +187,14 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
                   <motion.button
                     whileTap={{ scale: 0.8 }}
                     onClick={(e) => openEdit(e, conn)}
-                    className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-text/20 dark:text-text-inv/20 hover:text-info transition-colors flex-shrink-0"
+                    className="p-2 sm:p-2.5 min-w-[36px] sm:min-w-[44px] min-h-[36px] sm:min-h-[44px] flex items-center justify-center text-text/20 dark:text-text-inv/20 hover:text-info transition-colors flex-shrink-0"
                   >
                     <Pencil size={16} />
                   </motion.button>
                   <motion.button
                     whileTap={{ scale: 0.8 }}
                     onClick={(e) => handleRemove(e, conn.id)}
-                    className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-text/20 dark:text-text-inv/20 hover:text-red-400 transition-colors flex-shrink-0"
+                    className="p-2 sm:p-2.5 min-w-[36px] sm:min-w-[44px] min-h-[36px] sm:min-h-[44px] flex items-center justify-center text-text/20 dark:text-text-inv/20 hover:text-red-400 transition-colors flex-shrink-0"
                   >
                     <Trash2 size={16} />
                   </motion.button>
