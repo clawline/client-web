@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useCallback, useState, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ArrowLeft, MessageSquareText, MoreVertical, MessageCircle, Users, User, Loader2, ArrowDown, Plus, ArrowUp, Paperclip, Image, FileText } from 'lucide-react';
+import { X, ArrowLeft, MessageSquareText, MoreVertical, MessageCircle, Users, User, Loader2, ArrowDown, Plus, ArrowUp, Paperclip, Image, FileText, Archive, Lock, Unlock, Trash2 } from 'lucide-react';
 import { useThreadStore } from '../../stores/threadStore';
 import { getMessages as getCachedMessages } from '../../stores/messageCache';
 import * as channel from '../../services/clawChannel';
@@ -303,6 +303,147 @@ function ThreadInput({ connId, agentId }: { connId?: string; agentId?: string })
   );
 }
 
+/** Thread options dropdown menu — shows context-aware actions based on thread status */
+function ThreadOptionsMenu({
+  thread,
+  onClose,
+  connectionId,
+}: {
+  thread: { id: string; status: string };
+  onClose: () => void;
+  connectionId?: string;
+}) {
+  const { updateThread, deleteThread: deleteThreadAction } = useThreadStore();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleArchive = () => {
+    updateThread(thread.id, { status: 'archived' as const }, connectionId);
+    onClose();
+  };
+  const handleUnarchive = () => {
+    updateThread(thread.id, { status: 'active' as const }, connectionId);
+    onClose();
+  };
+  const handleLock = () => {
+    updateThread(thread.id, { status: 'locked' as const }, connectionId);
+    onClose();
+  };
+  const handleUnlock = () => {
+    updateThread(thread.id, { status: 'active' as const }, connectionId);
+    onClose();
+  };
+  const handleDeleteConfirm = () => {
+    deleteThreadAction(thread.id, connectionId);
+    onClose();
+  };
+
+  if (showDeleteConfirm) {
+    return (
+      <>
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[70] bg-black/30"
+          onClick={() => { setShowDeleteConfirm(false); onClose(); }}
+        />
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="fixed inset-0 z-[71] flex items-center justify-center p-4"
+        >
+          <div className="w-full max-w-[320px] rounded-2xl bg-white p-5 shadow-xl dark:bg-surface-dark">
+            <div className="mb-1 flex items-center gap-2 text-[15px] font-semibold text-red-600">
+              <Trash2 size={18} />
+              Delete Thread
+            </div>
+            <p className="mb-4 text-[13px] leading-relaxed text-text/70 dark:text-text-inv/70">
+              Delete this thread? This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setShowDeleteConfirm(false); onClose(); }}
+                className="rounded-xl px-4 py-2 text-[13px] font-medium text-text/70 transition-colors hover:bg-slate-100 dark:text-text-inv/70 dark:hover:bg-white/[0.06]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="rounded-xl bg-red-500 px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-30"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ opacity: 0, y: -4, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -4, scale: 0.95 }}
+        className="absolute right-2 top-full z-40 mt-1 flex min-w-[180px] flex-col gap-0.5 rounded-2xl border border-border/70 bg-white/96 p-1.5 shadow-lg dark:border-border-dark/70 dark:bg-card-alt/96"
+      >
+        {/* Archive / Unarchive */}
+        {thread.status === 'archived' ? (
+          <button
+            onClick={handleUnarchive}
+            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] text-text transition-colors hover:bg-slate-50 dark:text-text-inv dark:hover:bg-white/[0.05]"
+          >
+            <Archive size={16} />
+            Unarchive Thread
+          </button>
+        ) : thread.status === 'active' ? (
+          <button
+            onClick={handleArchive}
+            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] text-text transition-colors hover:bg-slate-50 dark:text-text-inv dark:hover:bg-white/[0.05]"
+          >
+            <Archive size={16} />
+            Archive Thread
+          </button>
+        ) : null}
+
+        {/* Lock / Unlock */}
+        {thread.status === 'locked' ? (
+          <button
+            onClick={handleUnlock}
+            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] text-text transition-colors hover:bg-slate-50 dark:text-text-inv dark:hover:bg-white/[0.05]"
+          >
+            <Unlock size={16} />
+            Unlock Thread
+          </button>
+        ) : thread.status === 'active' ? (
+          <button
+            onClick={handleLock}
+            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] text-text transition-colors hover:bg-slate-50 dark:text-text-inv dark:hover:bg-white/[0.05]"
+          >
+            <Lock size={16} />
+            Lock Thread
+          </button>
+        ) : null}
+
+        {/* Delete */}
+        <div className="my-0.5 border-t border-border/40 dark:border-border-dark/40" />
+        <button
+          onClick={() => setShowDeleteConfirm(true)}
+          className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-500/10"
+        >
+          <Trash2 size={16} />
+          Delete Thread
+        </button>
+      </motion.div>
+    </>
+  );
+}
+
 /**
  * Adaptive thread panel — sidebar on wide screens, fullscreen overlay on narrow.
  * US-010: Shell. US-011: Header with parent message. US-012: Message list with scroll loading.
@@ -313,6 +454,10 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
     threadMessages, isLoadingMessages, isLoadingOlderMessages,
     hasMoreMessages, loadOlderMessages,
   } = useThreadStore();
+
+  // Options menu state
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const optionsMenuAnchorRef = useRef<HTMLDivElement>(null);
 
   const activeThread = activeThreadId ? threads.get(activeThreadId) ?? null : null;
   const messages = activeThreadId ? threadMessages.get(activeThreadId) ?? [] : [];
@@ -427,11 +572,17 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
   useEffect(() => {
     if (!isThreadPanelOpen) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeThread();
+      if (e.key === 'Escape') {
+        if (showOptionsMenu) {
+          setShowOptionsMenu(false);
+        } else {
+          closeThread();
+        }
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isThreadPanelOpen, closeThread]);
+  }, [isThreadPanelOpen, closeThread, showOptionsMenu]);
 
   if (!isThreadPanelOpen) return null;
 
@@ -443,6 +594,18 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
   // ── Header content (shared between wide/narrow) ──
   const headerMeta = activeThread ? (
     <div className="flex items-center gap-3 text-[12px] text-text/50 dark:text-text-inv/50">
+      {activeThread.status === 'archived' && (
+        <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">
+          <Archive size={11} />
+          Archived
+        </span>
+      )}
+      {activeThread.status === 'locked' && (
+        <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:bg-red-500/20 dark:text-red-400">
+          <Lock size={11} />
+          Locked
+        </span>
+      )}
       <span className="flex items-center gap-1">
         <MessageCircle size={12} />
         {activeThread.replyCount} {activeThread.replyCount === 1 ? 'reply' : 'replies'}
@@ -630,14 +793,17 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
             <h3 className="flex-1 truncate text-[15px] font-semibold text-text dark:text-text-inv">
               {headerTitle}
             </h3>
-            <div className="flex items-center gap-1">
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
-                title="Thread options"
-              >
-                <MoreVertical size={16} />
-              </motion.button>
+            <div className="relative flex items-center gap-1" ref={optionsMenuAnchorRef}>
+              {activeThread && (
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                  className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
+                  title="Thread options"
+                >
+                  <MoreVertical size={16} />
+                </motion.button>
+              )}
               <motion.button
                 whileTap={{ scale: 0.9 }}
                 onClick={closeThread}
@@ -645,6 +811,15 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
               >
                 <X size={18} />
               </motion.button>
+              <AnimatePresence>
+                {showOptionsMenu && activeThread && (
+                  <ThreadOptionsMenu
+                    thread={activeThread}
+                    onClose={() => setShowOptionsMenu(false)}
+                    connectionId={connId}
+                  />
+                )}
+              </AnimatePresence>
             </div>
           </div>
           {headerMeta && <div className="mt-1.5">{headerMeta}</div>}
@@ -656,8 +831,17 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
         {/* Body (thread messages) */}
         {body}
 
-        {/* Input box */}
-        {activeThreadId && <ThreadInput connId={connId} agentId={agentId} />}
+        {/* Input box — hidden for archived, locked message for locked */}
+        {activeThreadId && activeThread?.status === 'locked' ? (
+          <div className="border-t border-border/70 px-4 py-3 dark:border-border-dark/70">
+            <div className="flex items-center justify-center gap-2 rounded-[16px] bg-slate-100/80 py-2.5 text-[13px] text-text/50 dark:bg-white/[0.04] dark:text-text-inv/40">
+              <Lock size={14} />
+              This thread is locked
+            </div>
+          </div>
+        ) : activeThreadId && activeThread?.status !== 'archived' ? (
+          <ThreadInput connId={connId} agentId={agentId} />
+        ) : null}
       </motion.div>
     );
   }
@@ -684,13 +868,27 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
           <h3 className="flex-1 truncate text-[15px] font-semibold text-text dark:text-text-inv">
             {headerTitle}
           </h3>
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
-            title="Thread options"
-          >
-            <MoreVertical size={16} />
-          </motion.button>
+          <div className="relative">
+            {activeThread && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                className="rounded-xl bg-slate-900/[0.04] p-2 text-slate-500 transition-colors hover:bg-slate-900/[0.08] hover:text-text dark:bg-white/[0.06] dark:text-slate-400 dark:hover:bg-white/[0.1] dark:hover:text-text-inv"
+                title="Thread options"
+              >
+                <MoreVertical size={16} />
+              </motion.button>
+            )}
+            <AnimatePresence>
+              {showOptionsMenu && activeThread && (
+                <ThreadOptionsMenu
+                  thread={activeThread}
+                  onClose={() => setShowOptionsMenu(false)}
+                  connectionId={connId}
+                />
+              )}
+            </AnimatePresence>
+          </div>
         </div>
         {headerMeta && <div className="mt-1.5 pl-12">{headerMeta}</div>}
       </div>
@@ -701,8 +899,17 @@ function ThreadPanelInner({ isWide, connId, agentId }: ThreadPanelProps) {
       {/* Body (thread messages) */}
       {body}
 
-      {/* Input box */}
-      {activeThreadId && <ThreadInput connId={connId} agentId={agentId} />}
+      {/* Input box — hidden for archived, locked message for locked */}
+      {activeThreadId && activeThread?.status === 'locked' ? (
+        <div className="border-t border-border/70 px-4 py-3 dark:border-border-dark/70">
+          <div className="flex items-center justify-center gap-2 rounded-[16px] bg-slate-100/80 py-2.5 text-[13px] text-text/50 dark:bg-white/[0.04] dark:text-text-inv/40">
+            <Lock size={14} />
+            This thread is locked
+          </div>
+        </div>
+      ) : activeThreadId && activeThread?.status !== 'archived' ? (
+        <ThreadInput connId={connId} agentId={agentId} />
+      ) : null}
     </motion.div>
   );
 }
