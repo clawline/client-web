@@ -69,6 +69,16 @@ function parseSlashResponse(text: string): ParsedCard | null {
 
   if (rows.length < 3) return null;
 
+  // Reject if overall text is too long — status cards are compact
+  if (text.length > 800) return null;
+
+  // Reject if labels are too long — real status labels are short keywords
+  if (rows.some((r) => r.label.length > 20)) return null;
+
+  // Reject if most rows have block (long/multi-line) values — that's prose, not a status card
+  const blockCount = rows.filter((r) => isBlockValue(r.value)).length;
+  if (blockCount > rows.length / 2) return null;
+
   return { title, rows };
 }
 
