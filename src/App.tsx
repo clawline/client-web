@@ -617,7 +617,7 @@ function AppShell() {
           </div>
 
           {/* Sidebar nav — bottom */}
-          <div className="flex items-center gap-1 px-2 py-2 min-h-[52px] shadow-[inset_0_1px_0_rgba(148,163,184,0.14)] dark:shadow-[inset_0_1px_0_rgba(71,85,105,0.36)]">
+          <div className="flex items-center gap-1 px-2 py-2 min-h-[48px] border-t border-border/10 dark:border-border-dark/20">
             {SIDEBAR_NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive = item.id === 'chats'
@@ -628,15 +628,18 @@ function AppShell() {
                 <button
                   key={item.id}
                   onClick={() => navigate(item.id as Screen)}
+                  title={item.label}
+                  aria-label={badge > 0 ? `${item.label} (${badge} unread)` : item.label}
+                  aria-current={isActive ? 'page' : undefined}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all relative',
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-medium transition-all relative outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
                     isActive
-                      ? 'bg-primary text-white shadow-[0_12px_24px_-18px_rgba(239,90,35,0.95)]'
-                      : 'bg-white/68 text-text/55 shadow-sm hover:bg-white hover:text-text dark:bg-white/[0.06] dark:text-text-inv/55 dark:hover:bg-white/[0.1] dark:hover:text-text-inv'
+                      ? 'bg-primary text-white shadow-[0_8px_16px_-12px_rgba(239,90,35,0.8)]'
+                      : 'text-text/45 hover:text-text/75 hover:bg-black/[0.04] active:bg-black/[0.06] dark:text-text-inv/45 dark:hover:text-text-inv/70 dark:hover:bg-white/[0.06] dark:active:bg-white/[0.1]'
                   )}
                 >
                   <div className="relative">
-                    <Icon size={15} />
+                    <Icon size={17} strokeWidth={isActive ? 2.2 : 1.8} />
                     {badge > 0 && !isActive && (
                       <span className="absolute -top-1.5 -right-2 min-w-[14px] h-3.5 flex items-center justify-center rounded-full bg-primary text-white text-[8px] font-bold px-0.5 shadow-sm">
                         {badge > 99 ? '99+' : badge}
@@ -649,11 +652,13 @@ function AppShell() {
             })}
           </div>
 
-          {/* Resize handle */}
+          {/* Resize handle — wide hit area with thin visible line */}
           <div
             onMouseDown={handleSidebarMouseDown}
-            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors z-20"
-          />
+            className="absolute right-0 top-0 bottom-0 w-3 -mr-1.5 cursor-col-resize z-20 group/resize flex items-center justify-center"
+          >
+            <div className="w-px h-full bg-border/30 dark:bg-border-dark/30 group-hover/resize:w-0.5 group-hover/resize:bg-primary/40 group-active/resize:w-0.5 group-active/resize:bg-primary/60 transition-all" />
+          </div>
         </div>
 
         {/* Main content */}
