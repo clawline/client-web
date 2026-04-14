@@ -637,6 +637,10 @@ export default function ChatList({
     if (attemptedMap[connection.id] && status === 'disconnected') return;
     const isCurrentlyActive = activeConnectionId === connection.id && activeAgentId === agent.id;
     const isAlreadyInSplit = (splitPanes ?? []).some((p) => p.connectionId === connection.id && p.agentId === agent.id);
+
+    // Already open in a split pane — ignore click (already visible, no need to re-open)
+    if (isAlreadyInSplit) return;
+
     const target: PendingOpen['target'] = (splitAwaitingAgent && !isCurrentlyActive && !isAlreadyInSplit && onOpenSplitChat)
       ? 'split'
       : (shiftKey && splitEnabled && onOpenSplitChat ? 'split' : 'primary');

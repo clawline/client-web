@@ -362,6 +362,8 @@ function AppShell() {
   const openSplitChat = useCallback((connectionId: string, agentId: string, chatId?: string) => {
     if (!isSplitViewport) return;
     setSplitPanes((prev) => {
+      // Already open in a pane — no-op (don't duplicate)
+      if (prev.some((p) => p.connectionId === connectionId && p.agentId === agentId)) return prev;
       // Fill the first empty pane, or append
       const emptyIdx = prev.findIndex((p) => p.agentId === EMPTY_SPLIT_VALUE);
       if (emptyIdx >= 0) {
