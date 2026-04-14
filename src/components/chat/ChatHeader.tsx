@@ -124,13 +124,19 @@ function ChatHeaderInner({
           </span>
           <div className="flex items-center gap-1.5 text-text/45 dark:text-text-inv/45">
             <span className="text-[11px] truncate">{connectionName}</span>
-            {agentInfo?.model && (
-              <>
-                <span className="text-[10px]">·</span>
-                <span className="text-[11px] truncate">{agentInfo.model.split('/').pop()}</span>
-              </>
-            )}
-            {renderStatusBadge() && (
+            {wsStatus === 'connected' ? (
+              agentInfo?.model ? (
+                <>
+                  <span className="text-[10px]">·</span>
+                  <span className="text-[11px] truncate">{agentInfo.model.split('/').pop()}</span>
+                </>
+              ) : presence ? (
+                <>
+                  <span className="text-[10px]">·</span>
+                  {renderStatusBadge()}
+                </>
+              ) : null
+            ) : (
               <>
                 <span className="text-[10px]">·</span>
                 {renderStatusBadge()}

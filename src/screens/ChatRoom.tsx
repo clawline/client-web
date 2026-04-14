@@ -2718,16 +2718,10 @@ export default function ChatRoom({
             />
           </div>
 
-          {/* Row 2: status + quick commands + send/mic */}
+          {/* Row 2: quick commands + send/mic */}
           <div className="flex items-center gap-1 px-1 pb-1">
-            {/* Connection status — compact */}
-            <div className="flex items-center gap-1.5 text-[10px] text-text/30 dark:text-text-inv/25 shrink-0">
-              <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${wsStatus === 'connected' ? 'bg-emerald-400' : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? 'bg-amber-400 animate-pulse' : 'bg-text/15 dark:bg-text-inv/15'}`} />
-              <span>{wsStatus === 'connected' ? (agentInfo?.model?.split('/').pop() || 'Ready') : wsStatus === 'connecting' ? 'Connecting...' : wsStatus === 'reconnecting' ? 'Reconnecting...' : 'Offline'}</span>
-            </div>
-
             {/* Quick commands — dynamic, sorted by recent usage */}
-            <div className="flex-1 flex items-center justify-end gap-0.5 overflow-x-auto scrollbar-hide">
+            <div className="flex-1 flex items-center justify-start gap-0.5 overflow-x-auto scrollbar-hide">
               {sortedQuickCmds.map((cmd) => (
                 <button
                   key={cmd}
