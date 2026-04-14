@@ -2823,7 +2823,7 @@ export default function ChatRoom({
 
     {/* Thread panel — sidebar on wide screens, fullscreen overlay on narrow */}
     <AnimatePresence>
-      {isThreadPanelOpen && <ThreadPanel isWide={isWideViewport} />}
+      {isThreadPanelOpen && <ThreadPanel isWide={isWideViewport} connId={connId} agentId={agentId || undefined} />}
     </AnimatePresence>
     </div>
   );
