@@ -333,16 +333,18 @@ function setupConnectionListeners(conn: ServerConnection) {
 
       if (isEcho) {
         // User's own echo — update inbox state only (no local persistence)
+        const meta = packet.data.meta && typeof packet.data.meta === 'object' ? packet.data.meta as Record<string, unknown> : undefined;
         item.lastMessage = { text: trimmed, timestamp, messageId };
-        appendMessage(connectionId, agentId, { id: messageId, sender: 'user', text: trimmed, timestamp });
+        appendMessage(connectionId, agentId, { id: messageId, sender: 'user', text: trimmed, timestamp, meta });
         updatePreview(connectionId, agentId);
         emitUpdate();
         return;
       }
 
       // AI message — update inbox status (persistence handled by ChatRoom's save timer)
+      const meta = packet.data.meta && typeof packet.data.meta === 'object' ? packet.data.meta as Record<string, unknown> : undefined;
       item.lastMessage = { text: trimmed, timestamp, messageId };
-      appendMessage(connectionId, agentId, { id: messageId, sender: 'ai', text: trimmed, timestamp });
+      appendMessage(connectionId, agentId, { id: messageId, sender: 'ai', text: trimmed, timestamp, meta });
       item.status = 'pending_reply';
       item.unreadCount += 1;
       item.suggestedReply = undefined;
@@ -381,8 +383,9 @@ function setupConnectionListeners(conn: ServerConnection) {
         const timestamp = typeof packet.data.timestamp === 'number' ? packet.data.timestamp : Date.now();
 
         if (isContentText(trimmed)) {
+          const meta = packet.data.meta && typeof packet.data.meta === 'object' ? packet.data.meta as Record<string, unknown> : undefined;
           item.lastMessage = { text: trimmed, timestamp, messageId };
-          appendMessage(connectionId, agentId, { id: messageId, sender: 'user', text: trimmed, timestamp });
+          appendMessage(connectionId, agentId, { id: messageId, sender: 'user', text: trimmed, timestamp, meta });
           updatePreview(connectionId, agentId);
         }
         item.status = 'idle';
