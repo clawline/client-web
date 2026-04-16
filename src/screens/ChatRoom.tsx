@@ -692,18 +692,8 @@ export default function ChatRoom({
             id: aiMsgId, sender: packet.data.echo ? 'user' : 'ai', text: content, timestamp: aiTs,
             mediaType, mediaUrl, threadId: (packet.data.threadId as string),
           });
-          // Clear thinking/streaming state if this was the final delivery for a thread reply
-          setIsThinking(false);
-          if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
-          streamingSourceAgentRef.current = null;
-          streamingPhaseRef.current = 'idle';
-          setThinkingText('');
-          // Remove any streaming placeholders that might have leaked into main messages
-          setMessages((prev) => {
-            const hasStale = prev.some((m) => m.isStreaming || m.streamingDone);
-            if (!hasStale) return prev;
-            return prev.filter((m) => !m.isStreaming && !m.streamingDone);
-          });
+          // Do NOT clear main-chat thinking/streaming state here — thread messages
+          // should not affect the main chat's thinking indicator.
           return;
         }
 
