@@ -1160,6 +1160,19 @@ export default function ChatRoom({
     // Subscribe to thread events (thread.updated, thread.new_reply, etc.)
     const unsubThreadEvents = subscribeThreadEvents(runtimeConnId);
 
+    // Load thread list eagerly — don't rely solely on connection.open which may fire
+    // before this effect runs (e.g. when ChatRoom is lazy-loaded after connection is established)
+    if (activeConn?.channelId) {
+      const tryLoadThreads = () => {
+        try {
+          if (channel.isReady(runtimeConnId)) {
+            useThreadStore.getState().loadThreadList({ channelId: activeConn.channelId!, status: 'all', page: 1, pageSize: 100 }, runtimeConnId);
+          }
+        } catch { /* socket not ready yet, connection.open handler will retry */ }
+      };
+      tryLoadThreads();
+    }
+
     return () => {
       unsubMsg();
       unsubStatus();

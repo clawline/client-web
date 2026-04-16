@@ -72,7 +72,7 @@ export function ThreadPreviewBar({ messageId, connectionId }: ThreadPreviewBarPr
     useThreadStore.getState().openThread(thread.id, connectionId);
   }, [thread, connectionId]);
 
-  if (!thread || thread.replyCount === 0) return null;
+  if (!thread) return null;
 
   const truncatedPreview = preview ? (preview.length > 60 ? preview.slice(0, 60) + '...' : preview) : null;
 

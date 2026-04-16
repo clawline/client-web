@@ -752,6 +752,13 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
     return () => window.removeEventListener('keydown', handleKey);
   }, [isThreadPanelOpen, handleClosePanel, showOptionsMenu, isSearchOpen, clearSearch, threadPanelMode, activeThreadId, handleBackToList]);
 
+  // Build a set of search result message IDs for quick lookup
+  // (must be above the early return to keep hook count stable)
+  const searchMatchIds = useMemo(() => {
+    if (!threadSearchQuery || threadSearchResults.length === 0) return new Set<string>();
+    return new Set(threadSearchResults.map((m) => m.id));
+  }, [threadSearchQuery, threadSearchResults]);
+
   if (!isThreadPanelOpen) return null;
 
   // ── Header title: thread title or truncated parent message ──
@@ -843,12 +850,6 @@ function ThreadPanelInner({ isWide, connId, agentId, channelId }: ThreadPanelPro
   const noopCopy = (_id: string, _text: string) => {};
   const noopReaction = (_msgId: string, _emoji: string, _hasIt: boolean) => {};
   const noopReactionRemove = (_msgId: string, _emoji: string) => {};
-
-  // Build a set of search result message IDs for quick lookup
-  const searchMatchIds = useMemo(() => {
-    if (!threadSearchQuery || threadSearchResults.length === 0) return new Set<string>();
-    return new Set(threadSearchResults.map((m) => m.id));
-  }, [threadSearchQuery, threadSearchResults]);
 
   // ── Body content: thread message list or empty/loading/not-found state ──
   const body = threadNotFound ? (
