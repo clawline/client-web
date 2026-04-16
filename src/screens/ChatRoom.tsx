@@ -1487,8 +1487,13 @@ export default function ChatRoom({
     setShowSlashMenu(false);
     setReplyingTo(null);
     if (draftKey) localStorage.removeItem(draftKey);
-    // Dismiss mobile keyboard after sending
-    (document.activeElement as HTMLElement)?.blur();
+    // Dismiss mobile keyboard after sending (mobile only — keep focus on desktop)
+    if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      (document.activeElement as HTMLElement)?.blur();
+    } else {
+      // Re-focus textarea so user can keep typing immediately
+      setTimeout(() => textInputRef.current?.focus(), 0);
+    }
     sendTextMessage(capturedInput, { replyId, replyQuotedText });
   };
 
