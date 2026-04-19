@@ -279,7 +279,7 @@ function getStoredAgentOrder(connectionId: string): string[] {
   return [];
 }
 
-const LAST_READ_PREFIX = 'openclaw.lastRead.';
+const LAST_READ_PREFIX = 'clawline.lastRead.';
 function getLastReadKey(connectionId: string, agentId: string) { return `${LAST_READ_PREFIX}${connectionId}.${agentId}`; }
 export function markAgentAsRead(connectionId: string, agentId: string, messageTs?: number) {
   // S8: Use server message timestamp when available to avoid clock skew

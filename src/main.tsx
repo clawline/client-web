@@ -3,7 +3,12 @@ import { createRoot } from 'react-dom/client';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import SafeLogtoProvider from './components/SafeLogtoProvider.tsx';
 import App from './App.tsx';
+import { migrateLastReadKeys } from './migrations/lastRead-merge.ts';
 import './index.css';
+
+// D12: collapse legacy openclaw.lastRead.* + openclaw.inbox.lastRead.* into
+// the single clawline.lastRead.* namespace before any code reads from them.
+migrateLastReadKeys();
 
 // Dark mode: null/missing = follow OS (prefers-color-scheme) | '1' = always dark | '0' = always light
 (function applyDarkMode() {

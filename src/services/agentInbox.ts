@@ -44,7 +44,7 @@ export type InboxItem = {
 
 const INBOX_UPDATED_EVENT = 'openclaw:inbox-updated';
 const CONVERSATION_UPDATED_EVENT = 'openclaw:conversation-updated';
-const LAST_READ_PREFIX = 'openclaw.inbox.lastRead.';
+const LAST_READ_PREFIX = 'clawline.lastRead.';
 const INBOX_CACHE_KEY = 'openclaw.inbox.cache';
 const AGENT_NAMES_KEY = 'clawline.agentNames';
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -91,14 +91,11 @@ function itemKey(connectionId: string, agentId: string): string {
 
 function getLastReadTimestamp(connectionId: string, agentId: string): number {
   try {
-    // Inbox-specific lastRead
-    const inboxRaw = localStorage.getItem(`${LAST_READ_PREFIX}${connectionId}.${agentId}`);
-    const inboxTs = inboxRaw ? parseInt(inboxRaw, 10) || 0 : 0;
-    // ChatRoom/ChatList lastRead (written when user opens a chat)
-    const chatRaw = localStorage.getItem(`openclaw.lastRead.${connectionId}.${agentId}`);
-    const chatTs = chatRaw ? parseInt(chatRaw, 10) || 0 : 0;
-    // Use whichever is more recent
-    return Math.max(inboxTs, chatTs);
+    // D12: single canonical key — migrateLastReadKeys() collapses both legacy
+    // namespaces into clawline.lastRead.* on app start, so reading from one
+    // key is sufficient here.
+    const raw = localStorage.getItem(`${LAST_READ_PREFIX}${connectionId}.${agentId}`);
+    return raw ? parseInt(raw, 10) || 0 : 0;
   } catch {
     return 0;
   }
@@ -148,9 +145,8 @@ function loadCache() {
 
 function setLastReadTimestamp(connectionId: string, agentId: string, timestamp: number) {
   try {
-    // Update both Inbox and ChatList lastRead so they stay in sync
+    // D12: single canonical key.
     localStorage.setItem(`${LAST_READ_PREFIX}${connectionId}.${agentId}`, String(timestamp));
-    localStorage.setItem(`openclaw.lastRead.${connectionId}.${agentId}`, String(timestamp));
   } catch {
     // ignore storage errors
   }
