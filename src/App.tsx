@@ -175,7 +175,18 @@ function AppShell() {
       return Array.isArray(arr) && arr.length > 0;
     } catch { return false; }
   })();
-  const initialScreen: Screen = (effectivelyAuthenticated || hasLocalConnections) ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
+  // Onboarding is shown only on the user's first visit (no localStorage flag).
+  // Once Get Started is clicked, we set clawline.onboarding.done = '1' and skip
+  // onboarding on subsequent loads — even if the user has no connections yet.
+  // Explicit navigation to /onboarding is still honoured (URL wins).
+  const onboardingDone = (() => {
+    try { return localStorage.getItem('clawline.onboarding.done') === '1'; }
+    catch { return false; }
+  })();
+  const skipOnboarding = effectivelyAuthenticated || hasLocalConnections || onboardingDone;
+  const initialScreen: Screen = skipOnboarding
+    ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen)
+    : 'onboarding';
 
   // Navigation state from Zustand store
   const currentScreen = useNavigationStore((s) => s.currentScreen);
@@ -323,6 +334,14 @@ function AppShell() {
     }
   }, [routerNavigate]);
 
+  // Mark onboarding as done in localStorage and navigate to /chats. Used as
+  // the Get Started completion callback so future visits skip the onboarding
+  // screen even if no connection has been added yet.
+  const handleOnboardingComplete = useCallback(() => {
+    try { localStorage.setItem('clawline.onboarding.done', '1'); } catch {}
+    navigate('chats');
+  }, [navigate]);
+
   // Handle swipe-back gesture — use SPA navigate() instead of window.history.back()
   // to avoid full page reloads that kill WebSocket connections
   const handleSwipeBack = useCallback(() => {
@@ -444,12 +463,12 @@ function AppShell() {
       } catch { return false; }
     })();
     if (!effectivelyAuthenticated && !hasExistingConnections && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
-      return <Onboarding onGetStarted={() => navigate('chats')} />;
+      return <Onboarding onGetStarted={handleOnboardingComplete} />;
     }
     const content = (() => {
       switch (currentScreen) {
         case 'onboarding':
-          return <Onboarding onGetStarted={() => navigate('chats')} />;
+          return <Onboarding onGetStarted={handleOnboardingComplete} />;
         case 'callback':
           return <Callback />;
         case 'chats':
@@ -469,7 +488,7 @@ function AppShell() {
         case 'pairing':
           return <Pairing onBack={() => navigate('profile')} onPaired={(connId) => { setActiveConnectionId(connId); setActiveConnectionState(connId); navigate('chats'); }} />;
         default:
-          return <Onboarding onGetStarted={() => navigate('chats')} />;
+          return <Onboarding onGetStarted={handleOnboardingComplete} />;
       }
     })();
     return <Suspense fallback={<ScreenLoading />}>{content}</Suspense>;
@@ -580,7 +599,7 @@ function AppShell() {
         case 'pairing':
           return <Pairing onBack={() => navigate('profile')} onPaired={(connId) => { setActiveConnectionId(connId); setActiveConnectionState(connId); navigate('chats'); }} />;
         case 'onboarding':
-          return <Onboarding onGetStarted={() => navigate('chats')} />;
+          return <Onboarding onGetStarted={handleOnboardingComplete} />;
         default:
           return (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
@@ -602,7 +621,7 @@ function AppShell() {
   if (isDesktop && currentScreen === 'onboarding') {
     return (
       <div className="w-full h-full bg-surface dark:bg-surface-dark text-text dark:text-text-inv font-sans overflow-hidden">
-        <Onboarding onGetStarted={() => navigate('chats')} />
+        <Onboarding onGetStarted={handleOnboardingComplete} />
       </div>
     );
   }
