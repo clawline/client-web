@@ -289,7 +289,15 @@ function AppShell() {
   // URL → Screen（浏览器前进/后退）
   useEffect(() => {
     const { screen, agentId, chatId, connectionId } = pathToScreen(location.pathname, location.search);
-    setCurrentScreen(screen);
+    // Same Get Started redirect as the initial-load logic: `/` → 'chats' when
+    // user has already completed onboarding, has connections, or is logged in.
+    // Without this remap, location.replace('/') would re-render Onboarding even
+    // though clawline.onboarding.done is set.
+    let resolvedScreen = screen;
+    if (screen === 'onboarding' && location.pathname === '/' && skipOnboarding) {
+      resolvedScreen = 'chats';
+    }
+    setCurrentScreen(resolvedScreen);
     // Only update agent/chat state when URL explicitly contains them (chat_room route).
     // For other routes (inbox, dashboard, etc.), preserve existing agent state
     // so the desktop main panel keeps the chat visible.
@@ -462,7 +470,7 @@ function AppShell() {
         return Array.isArray(arr) && arr.length > 0;
       } catch { return false; }
     })();
-    if (!effectivelyAuthenticated && !hasExistingConnections && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
+    if (!effectivelyAuthenticated && !hasExistingConnections && !onboardingDone && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
       return <Onboarding onGetStarted={handleOnboardingComplete} />;
     }
     const content = (() => {
