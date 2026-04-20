@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 export type NotifPermission = 'granted' | 'denied' | 'default' | 'unsupported';
 
-const NOTIF_PREF_KEY = 'openclaw.pushNotif';
+const NOTIF_PREF_KEY = 'clawline.pushNotif';
 
 /** Whether the user has explicitly opted out (set to '0') */
 export function isNotifOptedOut(): boolean {

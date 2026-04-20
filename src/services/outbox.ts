@@ -10,7 +10,7 @@
  */
 
 const MAX_PENDING = 200;
-const STORAGE_KEY = 'openclaw.outbox';
+const STORAGE_KEY = 'clawline.outbox';
 
 export type OutboxEntry = {
   id: string;

@@ -7,8 +7,8 @@ const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes — chat apps should stay 
 const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
 const HEARTBEAT_MAX_MISSED = 2; // allow 2 missed pongs before killing
 const THINKING_TIMEOUT_MS = 60 * 1000;
-const AGENT_CACHE_PREFIX = 'openclaw.agentList.';
-const STATUS_CACHE_PREFIX = 'openclaw.channelStatus.';
+const AGENT_CACHE_PREFIX = 'clawline.agentList.';
+const STATUS_CACHE_PREFIX = 'clawline.channelStatus.';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 

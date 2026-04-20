@@ -100,7 +100,7 @@ function countMatches(text: string, query: string): number {
 
 function readCachedAgents(connectionId: string): CachedAgentInfo[] {
   try {
-    const raw = localStorage.getItem(`openclaw.agentList.${connectionId}`);
+    const raw = localStorage.getItem(`clawline.agentList.${connectionId}`);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     return Array.isArray(parsed) ? parsed.filter((item): item is CachedAgentInfo => (
@@ -116,7 +116,7 @@ function readCachedAgents(connectionId: string): CachedAgentInfo[] {
 
 function readCachedConnections(): CachedConnectionInfo[] {
   try {
-    const raw = localStorage.getItem('openclaw.connections');
+    const raw = localStorage.getItem('clawline.connections');
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     return Array.isArray(parsed) ? parsed.filter((item): item is CachedConnectionInfo => (

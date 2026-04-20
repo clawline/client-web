@@ -4,6 +4,12 @@
  *
  * Architecture: Supabase is the source of truth. This cache avoids
  * repeated HTTP calls when navigating between agents/screens.
+ *
+ * Indexed by (connId, agentId). Each message carries an optional chatId so
+ * multi-conversation agents can be filtered per-chat at read time without
+ * fragmenting the bucket (HTTP/SyncMessage doesn't surface chat_id, so HTTP-
+ * loaded messages stay un-tagged and remain visible in every chat for that
+ * agent — see getMessages).
  */
 import { fetchOlderMessages, syncMessageToLocal, type SyncMessage } from '../services/suggestions';
 import { saveAgentPreview } from '../components/chat/utils';
@@ -16,40 +22,51 @@ export type CachedMessage = {
   mediaType?: string;
   mediaUrl?: string;
   threadId?: string;
+  chatId?: string;
   meta?: Record<string, unknown>;
 };
 
-// connectionId → agentId → CachedMessage[]
 const cache = new Map<string, Map<string, CachedMessage[]>>();
-
-// Track which connections completed a full warm (separate from cache data)
 const warmedConnections = new Set<string>();
 
 const WARM_LIMIT = 500;
 const MAX_CACHED_PER_AGENT = 500;
 
-export function getMessages(connId: string, agentId: string): CachedMessage[] {
-  return [...(cache.get(connId)?.get(agentId) ?? [])];
+function bucket(connId: string, agentId: string): CachedMessage[] | undefined {
+  return cache.get(connId)?.get(agentId);
 }
 
-export function setMessages(connId: string, agentId: string, msgs: CachedMessage[]): void {
+function ensureBucket(connId: string, agentId: string): CachedMessage[] {
   let connMap = cache.get(connId);
   if (!connMap) { connMap = new Map(); cache.set(connId, connMap); }
-  connMap.set(agentId, msgs);
+  let msgs = connMap.get(agentId);
+  if (!msgs) { msgs = []; connMap.set(agentId, msgs); }
+  return msgs;
+}
+
+/** Read messages for an agent. If chatId is provided, returns only messages
+ *  whose chatId matches OR is undefined (HTTP-loaded messages without a chatId
+ *  stamp). */
+export function getMessages(connId: string, agentId: string, chatId?: string): CachedMessage[] {
+  const msgs = bucket(connId, agentId);
+  if (!msgs) return [];
+  if (!chatId) return [...msgs];
+  return msgs.filter((m) => !m.chatId || m.chatId === chatId);
 }
 
 export function appendMessage(connId: string, agentId: string, msg: CachedMessage): void {
-  let connMap = cache.get(connId);
-  if (!connMap) { connMap = new Map(); cache.set(connId, connMap); }
-  const msgs = connMap.get(agentId) ?? [];
+  const msgs = ensureBucket(connId, agentId);
+  // Single dedup point — id is the conversation-wide unique key.
   if (msgs.some((m) => m.id === msg.id)) return;
+  // Stamp a sortable timestamp at insert (N1) so callers don't need to fall
+  // back to Date.now() at sort time.
+  if (!msg.timestamp) msg.timestamp = Date.now();
   msgs.push(msg);
   if (msgs.length > MAX_CACHED_PER_AGENT) msgs.splice(0, msgs.length - MAX_CACHED_PER_AGENT);
-  connMap.set(agentId, msgs);
 }
 
 export function getLastMessage(connId: string, agentId: string): CachedMessage | undefined {
-  const msgs = cache.get(connId)?.get(agentId);
+  const msgs = bucket(connId, agentId);
   return msgs && msgs.length > 0 ? msgs[msgs.length - 1] : undefined;
 }
 
@@ -75,10 +92,8 @@ export function isWarmed(connId: string): boolean {
 export async function warmCache(connId: string, channelId: string): Promise<void> {
   if (warmedConnections.has(connId)) return;
 
-  // Fetch most recent messages (no time filter — uses `before=now`, desc order)
   const result = await fetchOlderMessages(channelId, Date.now() + 1, undefined, WARM_LIMIT, connId);
 
-  // Group by agent_id
   const byAgent = new Map<string, SyncMessage[]>();
   for (const msg of result.messages) {
     const agId = msg.agent_id || 'unknown';
@@ -87,20 +102,14 @@ export async function warmCache(connId: string, channelId: string): Promise<void
     else byAgent.set(agId, [msg]);
   }
 
-  // Convert, merge with WS messages, and update ChatList previews
-  let connMap = cache.get(connId);
-  if (!connMap) { connMap = new Map(); cache.set(connId, connMap); }
-
   for (const [agId, msgs] of byAgent) {
-    const existing = connMap.get(agId) ?? [];
-    const existingIds = new Set(existing.map((m) => m.id));
-    const converted = msgs.map(syncMessageToLocal);
-    const merged = [...converted.filter((m) => !existingIds.has(m.id)), ...existing];
+    for (const m of msgs) {
+      appendMessage(connId, agId, syncMessageToLocal(m));
+    }
+    // Keep timestamp order after merging warm-load with any WS messages that
+    // raced ahead.
+    const merged = ensureBucket(connId, agId);
     merged.sort((a, b) => a.timestamp - b.timestamp);
-    if (merged.length > MAX_CACHED_PER_AGENT) merged.splice(0, merged.length - MAX_CACHED_PER_AGENT);
-    connMap.set(agId, merged);
-
-    // Update ChatList sidebar preview for this agent
     saveAgentPreview(agId, connId, merged);
   }
 

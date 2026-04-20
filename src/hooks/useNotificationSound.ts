@@ -1,4 +1,4 @@
-const SOUND_ENABLED_KEY = 'openclaw.soundEnabled';
+const SOUND_ENABLED_KEY = 'clawline.soundEnabled';
 
 export function setSoundEnabled(enabled: boolean) {
   try {

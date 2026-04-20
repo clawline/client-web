@@ -45,7 +45,7 @@ export type InboxItem = {
 const INBOX_UPDATED_EVENT = 'openclaw:inbox-updated';
 const CONVERSATION_UPDATED_EVENT = 'openclaw:conversation-updated';
 const LAST_READ_PREFIX = 'clawline.lastRead.';
-const INBOX_CACHE_KEY = 'openclaw.inbox.cache';
+const INBOX_CACHE_KEY = 'clawline.inbox.cache';
 const AGENT_NAMES_KEY = 'clawline.agentNames';
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -571,5 +571,8 @@ export function onInboxUpdate(callback: () => void): () => void {
   window.addEventListener(INBOX_UPDATED_EVENT, handler);
   return () => window.removeEventListener(INBOX_UPDATED_EVENT, handler);
 }
+
+/** N3: useSyncExternalStore-friendly subscribe used by `useInboxUnreadTotal`. */
+export const subscribeInbox = (cb: () => void): (() => void) => onInboxUpdate(cb);
 
 export { INBOX_UPDATED_EVENT, CONVERSATION_UPDATED_EVENT };

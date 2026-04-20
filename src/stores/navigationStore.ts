@@ -28,7 +28,7 @@ interface NavigationState {
 
 function loadInitialSplitPanes(): SplitPane[] {
   if (typeof window !== 'undefined' && window.innerWidth >= 1440) {
-    const saved = localStorage.getItem('openclaw.split.enabled');
+    const saved = localStorage.getItem('clawline.split.enabled');
     if (saved === 'off') return [];
     try {
       const raw = localStorage.getItem(SPLIT_PANES_KEY);

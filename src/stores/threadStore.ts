@@ -436,12 +436,13 @@ export const useThreadStore = create<ThreadState>()((set, get) => ({
       const existing = newMessages.get(threadId) ?? [];
       // Deduplicate by message ID
       if (existing.some((m) => m.id === msg.id)) return state;
-      // TH-7: keep messages in chronological order even when optimistic
-      // and incoming messages race. Without this, the list briefly jumps
-      // around as a slow optimistic insert lands after a fast incoming one.
-      // Numeric timestamp; missing/zero treated as "very recent" (push to end).
-      const merged = [...existing, msg];
-      merged.sort((a, b) => (a.timestamp || Date.now()) - (b.timestamp || Date.now()));
+      // TH-7 / N1: stamp a timestamp at insert so sort never has to guess. The
+      // fallback was previously inside the sort comparator, which made order
+      // depend on render time and caused races between optimistic + incoming
+      // messages to flip on each render.
+      const stamped: Message = msg.timestamp ? msg : { ...msg, timestamp: Date.now() };
+      const merged = [...existing, stamped];
+      merged.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
       newMessages.set(threadId, merged);
       return { threadMessages: newMessages };
     });

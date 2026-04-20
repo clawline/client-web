@@ -19,15 +19,15 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
   const [statusMap, setStatusMap] = useState<Record<string, ChannelStatus>>({});
   type DarkModeState = 'auto' | 'dark' | 'light';
   const [darkMode, setDarkModeState] = useState<DarkModeState>(() => {
-    const v = localStorage.getItem('openclaw.darkMode');
+    const v = localStorage.getItem('clawline.darkMode');
     if (v === '1') return 'dark';
     if (v === '0') return 'light';
     return 'auto';
   });
   const darkModeLabel = darkMode === 'auto' ? '跟随系统' : darkMode === 'dark' ? '始终深色' : '始终浅色';
   const darkModeActive = darkMode === 'dark' || (darkMode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  const [pushNotif, setPushNotif] = useState(() => localStorage.getItem('openclaw.pushNotif') !== '0');
-  const [inAppNotif, setInAppNotif] = useState(() => localStorage.getItem('openclaw.inAppNotif') !== '0');
+  const [pushNotif, setPushNotif] = useState(() => localStorage.getItem('clawline.pushNotif') !== '0');
+  const [inAppNotif, setInAppNotif] = useState(() => localStorage.getItem('clawline.inAppNotif') !== '0');
 
   const refresh = useCallback(() => {
     setConnections(getConnections());
@@ -215,10 +215,10 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
             const next: DarkModeState = darkMode === 'auto' ? 'dark' : darkMode === 'dark' ? 'light' : 'auto';
             setDarkModeState(next);
             if (next === 'auto') {
-              localStorage.removeItem('openclaw.darkMode');
+              localStorage.removeItem('clawline.darkMode');
               document.documentElement.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);
             } else {
-              localStorage.setItem('openclaw.darkMode', next === 'dark' ? '1' : '0');
+              localStorage.setItem('clawline.darkMode', next === 'dark' ? '1' : '0');
               document.documentElement.classList.toggle('dark', next === 'dark');
             }
           }} />
@@ -233,13 +233,13 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
             }
             const next = !pushNotif;
             setPushNotif(next);
-            localStorage.setItem('openclaw.pushNotif', next ? '1' : '0');
+            localStorage.setItem('clawline.pushNotif', next ? '1' : '0');
           }} />
           <div className="h-[1px] bg-border dark:bg-border-dark ml-14" />
           <SettingItem icon={Smartphone} label="In-App Notifications" hasToggle active={inAppNotif} onClick={() => {
             const next = !inAppNotif;
             setInAppNotif(next);
-            localStorage.setItem('openclaw.inAppNotif', next ? '1' : '0');
+            localStorage.setItem('clawline.inAppNotif', next ? '1' : '0');
           }} />
         </Card>
 

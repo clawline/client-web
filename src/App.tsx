@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore, lazy, Suspense } from 'react';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useLogto } from '@logto/react';
@@ -11,8 +11,8 @@ import IOSInstallPrompt from './components/IOSInstallPrompt';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useNavigationStore, type Screen, type SplitPane } from './stores/navigationStore';
 
-const SIDEBAR_WIDTH_KEY = 'openclaw.sidebar.width';
-const SPLIT_STATE_KEY = 'openclaw.split.enabled';
+const SIDEBAR_WIDTH_KEY = 'clawline.sidebar.width';
+const SPLIT_STATE_KEY = 'clawline.split.enabled';
 const SPLIT_PANES_KEY = 'clawline.split.panes';
 const MIN_SIDEBAR = 240;
 const MAX_SIDEBAR = 600;
@@ -26,7 +26,7 @@ import { usePWAUpdate } from './hooks/usePWAUpdate';
 import { useIOSPWA } from './hooks/useIOSPWA';
 import { cn } from './lib/utils';
 import { MessageCircle, LayoutDashboard, Search as SearchIcon, User, Inbox as InboxIcon } from 'lucide-react';
-import { initInbox, getUnreadTotal, onInboxUpdate } from './services/agentInbox';
+import { initInbox, getUnreadTotal, subscribeInbox } from './services/agentInbox';
 
 // Lazy-loaded heavy screens
 const ChatRoom = lazy(() => import('./screens/ChatRoom'));
@@ -47,8 +47,8 @@ function ScreenLoading() {
   );
 }
 
-const STORAGE_KEY_USER_ID = 'openclaw.userId';
-const STORAGE_KEY_USER_NAME = 'openclaw.userName';
+const STORAGE_KEY_USER_ID = 'clawline.userId';
+const STORAGE_KEY_USER_NAME = 'clawline.userName';
 
 
 function createUserId() {
@@ -87,7 +87,14 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   pairing: '/pairing',
 };
 
-function pathToScreen(pathname: string, search: string): { screen: Screen; agentId?: string; chatId?: string; connectionId?: string } {
+// `/` is the abstract "home" intent — resolveScreen() decides whether it lands
+// on onboarding (first visit) or chats (returning user). Returning 'home' from
+// pathToScreen keeps the resolution logic in one place; previously the same
+// `'/' → onboarding` default lived here AND was patched in the URL→Screen
+// useEffect, which is what caused Get Started to flash on completed flows.
+type ScreenIntent = Screen | 'home';
+
+function pathToScreen(pathname: string, search: string): { screen: ScreenIntent; agentId?: string; chatId?: string; connectionId?: string } {
   if (pathname.startsWith('/chat/')) {
     const params = new URLSearchParams(search);
     return {
@@ -97,10 +104,16 @@ function pathToScreen(pathname: string, search: string): { screen: Screen; agent
       connectionId: params.get('connectionId') || undefined,
     };
   }
+  if (pathname === '/') return { screen: 'home' };
   for (const [screen, path] of Object.entries(SCREEN_TO_PATH)) {
     if (pathname === path) return { screen: screen as Screen };
   }
-  return { screen: 'onboarding' };
+  return { screen: 'home' };
+}
+
+function resolveScreen(intent: ScreenIntent, skipOnboarding: boolean): Screen {
+  if (intent !== 'home') return intent;
+  return skipOnboarding ? 'chats' : 'onboarding';
 }
 
 function useIsDesktop() {
@@ -169,7 +182,7 @@ function AppShell() {
   const initialFromUrl = pathToScreen(location.pathname, location.search);
   const hasLocalConnections = (() => {
     try {
-      const raw = localStorage.getItem('openclaw.connections');
+      const raw = localStorage.getItem('clawline.connections');
       if (!raw) return false;
       const arr = JSON.parse(raw);
       return Array.isArray(arr) && arr.length > 0;
@@ -184,9 +197,7 @@ function AppShell() {
     catch { return false; }
   })();
   const skipOnboarding = effectivelyAuthenticated || hasLocalConnections || onboardingDone;
-  const initialScreen: Screen = skipOnboarding
-    ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen)
-    : 'onboarding';
+  const initialScreen: Screen = resolveScreen(initialFromUrl.screen, skipOnboarding);
 
   // Navigation state from Zustand store
   const currentScreen = useNavigationStore((s) => s.currentScreen);
@@ -222,16 +233,12 @@ function AppShell() {
 
   // Unread message badge for BottomNav
   const [unreadChats, setUnreadChats] = useState(0);
-  const [inboxBadge, setInboxBadge] = useState(() => getUnreadTotal());
+  // N3: useSyncExternalStore subscribes directly to inbox updates — no
+  // useState+useEffect snapshot dance, no stale-render race.
+  const inboxBadge = useSyncExternalStore(subscribeInbox, getUnreadTotal, getUnreadTotal);
   const unreadAgentsRef = useRef(new Set<string>());
   const currentScreenRef = useRef(currentScreen);
   currentScreenRef.current = currentScreen;
-
-  useEffect(() => {
-    const refresh = () => setInboxBadge(getUnreadTotal());
-    const unsub = onInboxUpdate(refresh);
-    return unsub;
-  }, []);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -289,15 +296,7 @@ function AppShell() {
   // URL → Screen（浏览器前进/后退）
   useEffect(() => {
     const { screen, agentId, chatId, connectionId } = pathToScreen(location.pathname, location.search);
-    // Same Get Started redirect as the initial-load logic: `/` → 'chats' when
-    // user has already completed onboarding, has connections, or is logged in.
-    // Without this remap, location.replace('/') would re-render Onboarding even
-    // though clawline.onboarding.done is set.
-    let resolvedScreen = screen;
-    if (screen === 'onboarding' && location.pathname === '/' && skipOnboarding) {
-      resolvedScreen = 'chats';
-    }
-    setCurrentScreen(resolvedScreen);
+    setCurrentScreen(resolveScreen(screen, skipOnboarding));
     // Only update agent/chat state when URL explicitly contains them (chat_room route).
     // For other routes (inbox, dashboard, etc.), preserve existing agent state
     // so the desktop main panel keeps the chat visible.
@@ -310,7 +309,7 @@ function AppShell() {
         setActiveConnectionId(connectionId);
       }
     }
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, skipOnboarding]);
 
   const navigate = useCallback((screen: Screen, agentId?: string, chatId?: string, connectionId?: string) => {
     setCurrentScreen(screen);
@@ -460,19 +459,8 @@ function AppShell() {
   }
 
   const renderScreen = () => {
-    // Redirect unauthenticated users to onboarding (except callback)
-    // Skip onboarding for returning users (have connections saved locally)
-    const hasExistingConnections = (() => {
-      try {
-        const raw = localStorage.getItem('openclaw.connections');
-        if (!raw) return false;
-        const arr = JSON.parse(raw);
-        return Array.isArray(arr) && arr.length > 0;
-      } catch { return false; }
-    })();
-    if (!effectivelyAuthenticated && !hasExistingConnections && !onboardingDone && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
-      return <Onboarding onGetStarted={handleOnboardingComplete} />;
-    }
+    // Initial-mount onboarding gate is handled by initialScreen + URL→Screen
+    // useEffect (both call resolveScreen). No second redirect lives here.
     const content = (() => {
       switch (currentScreen) {
         case 'onboarding':

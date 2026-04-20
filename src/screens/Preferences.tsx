@@ -12,7 +12,7 @@ import {
 } from '../services/suggestions';
 import { useNotificationPermission } from '../hooks/useNotificationPermission';
 
-const STREAMING_OUTPUT_KEY = 'openclaw.streaming.enabled';
+const STREAMING_OUTPUT_KEY = 'clawline.streaming.enabled';
 
 export default function Preferences({ onBack }: { onBack: () => void }) {
   const [streamingEnabled, setStreamingEnabled] = useState(() => {
@@ -58,24 +58,24 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
   // ── Config export / import ──────────────────────────────────────
   const CONFIG_VERSION = 1;
   const EXPORT_KEYS = [
-    'openclaw.connections',
-    'openclaw.userName',
-    'openclaw.darkMode',
-    'openclaw.streaming.enabled',
-    'openclaw.suggestions.enabled',
-    'openclaw.suggestions.prompt',
-    'openclaw.voiceRefine.enabled',
-    'openclaw.voiceRefine.prompt',
+    'clawline.connections',
+    'clawline.userName',
+    'clawline.darkMode',
+    'clawline.streaming.enabled',
+    'clawline.suggestions.enabled',
+    'clawline.suggestions.prompt',
+    'clawline.voiceRefine.enabled',
+    'clawline.voiceRefine.prompt',
     'clawline.agentNames',
     'clawline.agentFavorites',
-    'openclaw.chatlist.viewMode',
-    'openclaw.chatlist.expandedIds',
-    'openclaw.sidebar.width',
-    'openclaw.inAppNotif',
-    'openclaw.pushNotif',
+    'clawline.chatlist.viewMode',
+    'clawline.chatlist.expandedIds',
+    'clawline.sidebar.width',
+    'clawline.inAppNotif',
+    'clawline.pushNotif',
     'clawline:voiceMode',
     'volcASR.config',
-    'openclaw.agentAvatars',
+    'clawline.agentAvatars',
   ];
 
   const [importStatus, setImportStatus] = useState<'idle' | 'ok' | 'error'>('idle');
@@ -91,7 +91,7 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
     // Dynamic prefix keys (agent order per connection)
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)!;
-      if (k.startsWith('clawline.agentOrder.') || k.startsWith('openclaw.split')) {
+      if (k.startsWith('clawline.agentOrder.') || k.startsWith('clawline.split')) {
         data[k] = localStorage.getItem(k);
       }
     }

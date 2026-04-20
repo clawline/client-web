@@ -1,5 +1,5 @@
-const STORAGE_KEY = 'openclaw.connections';
-const ACTIVE_KEY = 'openclaw.activeConnectionId';
+const STORAGE_KEY = 'clawline.connections';
+const ACTIVE_KEY = 'clawline.activeConnectionId';
 export const CONNECTIONS_UPDATED_EVENT = 'openclaw:connections-updated';
 
 function emitConnectionsUpdated() {

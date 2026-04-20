@@ -12,7 +12,7 @@ export default function IOSInstallPrompt({ show: showProp }: IOSInstallPromptPro
 
   useEffect(() => {
     // Check if user has dismissed the prompt before
-    const dismissed = localStorage.getItem('openclaw.iosInstallDismissed');
+    const dismissed = localStorage.getItem('clawline.iosInstallDismissed');
     if (dismissed) {
       setIsDismissed(true);
     } else {
@@ -26,7 +26,7 @@ export default function IOSInstallPrompt({ show: showProp }: IOSInstallPromptPro
 
   const handleDismiss = () => {
     setIsVisible(false);
-    localStorage.setItem('openclaw.iosInstallDismissed', 'true');
+    localStorage.setItem('clawline.iosInstallDismissed', 'true');
     setIsDismissed(true);
   };
 

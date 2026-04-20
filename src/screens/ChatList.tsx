@@ -10,12 +10,12 @@ import { getUserId } from '../App';
 import AvatarUploader from '../components/AvatarUploader';
 import { stripMarkdownForPreview } from '../components/chat/utils';
 
-const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
-const EXPANDED_KEY = 'openclaw.chatlist.expandedIds';
-const VIEW_MODE_KEY = 'openclaw.chatlist.viewMode';
+const PREVIEW_KEY_PREFIX = 'clawline.agentPreview.';
+const EXPANDED_KEY = 'clawline.chatlist.expandedIds';
+const VIEW_MODE_KEY = 'clawline.chatlist.viewMode';
 const AGENT_ORDER_KEY_PREFIX = 'clawline.agentOrder.';
-const LEGACY_AGENT_ORDER_KEY = 'openclaw.chatlist.agentOrder';
-const AGENT_AVATAR_KEY = 'openclaw.agentAvatars';
+const LEGACY_AGENT_ORDER_KEY = 'clawline.chatlist.agentOrder';
+const AGENT_AVATAR_KEY = 'clawline.agentAvatars';
 const AGENT_NAMES_KEY = 'clawline.agentNames';
 const AGENT_FAVORITES_KEY = 'clawline.agentFavorites';
 const MESSAGE_PREVIEW_UPDATED_EVENT = 'openclaw:message-preview-updated';
@@ -651,13 +651,15 @@ export default function ChatList({
       : (shiftKey && splitEnabled && onOpenSplitChat ? 'split' : 'primary');
 
     if (status === 'connected') {
-      // Already connected: just switch agent + navigate immediately
+      // Already connected: switch agent + navigate. Pass undefined chatId so
+      // ChatRoom resolves the agent's actual conversation via the channel
+      // (connection.chatId is the channel root, not the agent's chat).
       if (target === 'split' && onOpenSplitChat) {
         // Don't selectAgent on the base connection — split pane manages its own connection
-        onOpenSplitChat(connection.id, agent.id, connection.chatId);
+        onOpenSplitChat(connection.id, agent.id, undefined);
       } else {
         channel.selectAgent(agent.id, connection.id);
-        onOpenChat(connection.id, agent.id, connection.chatId);
+        onOpenChat(connection.id, agent.id, undefined);
       }
       return;
     }

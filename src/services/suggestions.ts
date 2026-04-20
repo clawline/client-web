@@ -11,11 +11,11 @@ let lastContextHash = '';
 let lastSuggestions: string[] = [];
 let pendingRequest: Promise<string[]> | null = null;
 
-const SUGGESTION_ENABLED_KEY = 'openclaw.suggestions.enabled';
-const SUGGESTION_PROMPT_KEY = 'openclaw.suggestions.prompt';
-const REPLY_DRAFT_PROMPT_KEY = 'openclaw.replyDraft.prompt';
-const VOICE_REFINE_ENABLED_KEY = 'openclaw.voiceRefine.enabled';
-const VOICE_REFINE_PROMPT_KEY = 'openclaw.voiceRefine.prompt';
+const SUGGESTION_ENABLED_KEY = 'clawline.suggestions.enabled';
+const SUGGESTION_PROMPT_KEY = 'clawline.suggestions.prompt';
+const REPLY_DRAFT_PROMPT_KEY = 'clawline.replyDraft.prompt';
+const VOICE_REFINE_ENABLED_KEY = 'clawline.voiceRefine.enabled';
+const VOICE_REFINE_PROMPT_KEY = 'clawline.voiceRefine.prompt';
 
 // ── Preferences helpers ──
 

@@ -1,6 +1,6 @@
 import type { Message } from './types';
 
-export const PREVIEW_KEY_PREFIX = 'openclaw.agentPreview.';
+export const PREVIEW_KEY_PREFIX = 'clawline.agentPreview.';
 export const MESSAGE_PREVIEW_UPDATED_EVENT = 'openclaw:message-preview-updated';
 export const EMOJI_LIST = ['👍', '❤️', '😂', '🔥', '✨', '👀', '💯', '🚀'];
 

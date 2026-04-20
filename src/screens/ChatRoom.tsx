@@ -109,20 +109,13 @@ export default function ChatRoom({
   const runtimeConnId = channelConnectionId || connId;
   const [messages, setMessages] = useState<Message[]>([]);
 
-  // Defensive dedup: ensure no two messages share the same ID at render time.
-  // Multiple async paths (WebSocket, messageCache, HTTP fallback, history.sync) can race
-  // and occasionally introduce duplicates with identical IDs.
-  // Also filters out thread replies — they belong in the thread panel, not main chat.
-  // Parent messages (those that started a thread) stay: they have no threadId themselves.
-  const renderMessages = useMemo(() => {
-    const seen = new Map<string, number>();
-    return messages.filter((m, i) => {
-      if (seen.has(m.id)) return false;
-      seen.set(m.id, i);
-      if (m.threadId) return false;
-      return true;
-    });
-  }, [messages]);
+  // Filter out thread replies — they belong in the thread panel, not main chat.
+  // Parent messages (those that started a thread) stay: they have no threadId
+  // themselves. No id-dedup here: the cache (single source) already dedupes.
+  const renderMessages = useMemo(
+    () => messages.filter((m) => !m.threadId),
+    [messages],
+  );
 
   // Tick every 30s so "follow up" pill can appear after 2min without re-render trigger
   const [, setTick] = useState(0);
@@ -436,7 +429,7 @@ export default function ChatRoom({
     let cancelled = false;
 
     // Try cache first (populated by warmCache on app startup)
-    const cached = getCachedMessages(connId, agentId || '');
+    const cached = getCachedMessages(connId, agentId || '', chatId || undefined);
     if (cached.length > 0 || isWarmed(connId)) {
       // Cache is warm — use whatever is there (may be empty for new agents)
       if (cached.length > 0) {
@@ -449,6 +442,8 @@ export default function ChatRoom({
       void fetchOlderMessages(channelId, Date.now(), agentId, 50, connId).then(({ messages: remote, hasMore }) => {
         if (cancelled) return;
         const localMsgs = remote.map((m) => syncMessageToLocal(m));
+        // Hydrate cache from HTTP so subsequent agent switches hit the warm path.
+        for (const m of localMsgs) appendMessage(connId, agentId, m);
         setMessages((currentMessages) => mergeMessages(localMsgs, currentMessages));
         setHasMoreHistory(hasMore);
         setHasLoadedMessages(true);
@@ -459,20 +454,6 @@ export default function ChatRoom({
         }
       });
     }
-
-    // Background reconciliation: compare local messages with remote to catch any gaps
-    void fetchOlderMessages(channelId, Date.now() + 1, agentId, 50, connId).then(({ messages: remote, hasMore }) => {
-      if (cancelled || remote.length === 0) return;
-      const remoteMsgs = remote.map((m) => syncMessageToLocal(m));
-      setMessages((prev) => {
-        const localIds = new Set(prev.map((m) => m.id));
-        const missing = remoteMsgs.filter((m) => !localIds.has(m.id));
-        if (missing.length === 0) return prev;
-        const merged = [...prev, ...missing].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-        return merged;
-      });
-      setHasMoreHistory((prev) => prev || hasMore);
-    }).catch(() => { /* reconciliation is best-effort */ });
 
     return () => {
       cancelled = true;
@@ -691,6 +672,7 @@ export default function ChatRoom({
           appendMessage(connId, agentId || '', {
             id: aiMsgId, sender: packet.data.echo ? 'user' : 'ai', text: content, timestamp: aiTs,
             mediaType, mediaUrl, threadId: (packet.data.threadId as string),
+            chatId: (packet.data.chatId as string) || chatId || undefined,
           });
           // Do NOT clear main-chat thinking/streaming state here — thread messages
           // should not affect the main chat's thinking indicator.
@@ -723,7 +705,7 @@ export default function ChatRoom({
               deliveryStatus: 'delivered' as DeliveryStatus,
             }];
           });
-          appendMessage(connId, agentId || '', { id: msgId, sender: 'user', text: content, timestamp: ts });
+          appendMessage(connId, agentId || '', { id: msgId, sender: 'user', text: content, timestamp: ts, chatId: (packet.data.chatId as string) || chatId || undefined });
           return;
         }
 
@@ -783,6 +765,7 @@ export default function ChatRoom({
         appendMessage(connId, agentId || '', {
           id: aiMsgId, sender: 'ai', text: content, timestamp: aiTs,
           mediaType, mediaUrl, threadId: (packet.data.threadId as string) || undefined,
+          chatId: (packet.data.chatId as string) || chatId || undefined,
         });
 
         // Clear thinking indicator on final message delivery
@@ -1031,7 +1014,7 @@ export default function ChatRoom({
             return;
           }
 
-          if (localStorage.getItem('openclaw.streaming.enabled') === 'false') return;
+          if (localStorage.getItem('clawline.streaming.enabled') === 'false') return;
 
           // Streaming text output from backend — phase-aware
           if (typeof deltaData.text === 'string') {
