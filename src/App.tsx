@@ -19,7 +19,7 @@ const MAX_SIDEBAR = 600;
 const DEFAULT_SIDEBAR = 288; // w-72
 const EMPTY_SPLIT_VALUE = '__empty__';
 
-import { getActiveConnectionId, getConnectionById, setActiveConnectionId } from './services/connectionStore';
+import { getActiveConnectionId, getConnectionById, setActiveConnectionId, addConnection, getConnections } from './services/connectionStore';
 import { MESSAGE_PREVIEW_UPDATED_EVENT } from './components/chat/utils';
 import { useSwipeBack } from './hooks/useSwipeBack';
 import { usePWAUpdate } from './hooks/usePWAUpdate';
@@ -179,6 +179,57 @@ function AppShell() {
   // ── All hooks MUST be called before any conditional return ──
   // (React Rules of Hooks — Error #310 fix)
 
+  // ── /connect auto-connect: runs synchronously in state initializer to avoid flash ──
+  // Reads URL params, creates/reuses a connection, marks onboarding done,
+  // and sets the active connection — all before first render.
+  const [_autoConnectId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    if (window.location.pathname !== '/connect') return null;
+
+    const params = new URLSearchParams(window.location.search);
+    const serverUrl = params.get('serverUrl');
+    if (!serverUrl) return null;
+
+    const senderId = params.get('senderId') || undefined;
+    const displayName = params.get('displayName') || undefined;
+    const channelName = params.get('channelName') || undefined;
+    const channelId = params.get('channelId') || undefined;
+    const token = params.get('token') || undefined;
+
+    // Normalise serverUrl the same way addConnection does
+    const normalizedUrl = serverUrl.replace(/\/+$/, '');
+
+    // Reuse an existing connection with the same serverUrl + senderId
+    const existing = getConnections().find(
+      (c) => c.serverUrl === normalizedUrl && c.senderId === senderId,
+    );
+
+    let connId: string;
+    if (existing) {
+      connId = existing.id;
+    } else {
+      let hostname = 'Server';
+      try { hostname = new URL(serverUrl.replace(/^ws/, 'http')).hostname; } catch { /* keep default */ }
+      const connName = channelName || displayName || hostname;
+      const conn = addConnection(
+        connName,
+        serverUrl,
+        displayName || senderId || 'OpenClaw User',
+        token,
+        undefined,
+        senderId,
+        channelId,
+      );
+      connId = conn.id;
+    }
+
+    // Skip onboarding and activate the connection before any rendering
+    try { localStorage.setItem('clawline.onboarding.done', '1'); } catch { /* noop */ }
+    setActiveConnectionId(connId);
+
+    return connId;
+  });
+
   const initialFromUrl = pathToScreen(location.pathname, location.search);
   const hasLocalConnections = (() => {
     try {
@@ -229,6 +280,12 @@ function AppShell() {
     if (initialFromUrl.agentId) setActiveAgentId(initialFromUrl.agentId);
     if (initialFromUrl.chatId) setActiveChatId(initialFromUrl.chatId);
     setActiveConnectionState(initialFromUrl.connectionId ?? getActiveConnectionId());
+
+    // Clean up the /connect URL — replace with /chats so the share link
+    // doesn't stay in the address bar / browser history
+    if (location.pathname === '/connect') {
+      routerNavigate('/chats', { replace: true });
+    }
   }, []);
 
   // Unread message badge for BottomNav

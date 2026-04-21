@@ -16,6 +16,26 @@ function parseConnectionUrl(raw: string): { serverUrl: string; token?: string; c
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
+  // Handle https://domain/connect?serverUrl=... (shareable web links)
+  if ((trimmed.startsWith('http://') || trimmed.startsWith('https://')) && trimmed.includes('/connect')) {
+    try {
+      const url = new URL(trimmed);
+      if (url.pathname === '/connect') {
+        const serverUrl = url.searchParams.get('serverUrl') || '';
+        if (!serverUrl) return null;
+        return {
+          serverUrl,
+          token: url.searchParams.get('token') || undefined,
+          chatId: url.searchParams.get('chatId') || undefined,
+          senderId: url.searchParams.get('senderId') || undefined,
+          displayName: url.searchParams.get('displayName') || url.searchParams.get('name') || undefined,
+          channelName: url.searchParams.get('channelName') || undefined,
+          channelId: url.searchParams.get('channelId') || undefined,
+        };
+      }
+    } catch { return null; }
+  }
+
   // Handle openclaw:// custom scheme
   if (trimmed.startsWith('openclaw://')) {
     try {
@@ -316,7 +336,7 @@ export default function Pairing({ onBack, onPaired }: { onBack: () => void; onPa
               )}
               {!parsedFields && (
                 <p className="text-[11px] text-text/40 dark:text-text-inv/40 leading-relaxed">
-                  Supports: <code className="bg-border dark:bg-border-dark px-1 rounded text-[10px]">ws://</code> / <code className="bg-border dark:bg-border-dark px-1 rounded text-[10px]">wss://</code> with query params, or <code className="bg-border dark:bg-border-dark px-1 rounded text-[10px]">openclaw://connect?serverUrl=...&token=...</code>
+                  Supports: <code className="bg-border dark:bg-border-dark px-1 rounded text-[10px]">ws://</code> / <code className="bg-border dark:bg-border-dark px-1 rounded text-[10px]">wss://</code> with query params, <code className="bg-border dark:bg-border-dark px-1 rounded text-[10px]">openclaw://connect?serverUrl=...&token=...</code>, or <code className="bg-border dark:bg-border-dark px-1 rounded text-[10px]">https://web/connect?serverUrl=...</code>
                 </p>
               )}
             </Card>
