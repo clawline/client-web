@@ -967,6 +967,27 @@ class ChannelManager {
     }, connectionId);
   }
 
+  requestModelsList(agentId?: string, connectionId?: string) {
+    this.sendRaw({
+      type: 'models.list.get',
+      data: {
+        requestId: createStableId('models-list'),
+        agentId: agentId || undefined,
+      },
+    }, connectionId);
+  }
+
+  switchModel(model: string, agentId?: string, connectionId?: string) {
+    this.sendRaw({
+      type: 'model.switch',
+      data: {
+        requestId: createStableId('model-switch'),
+        model,
+        agentId: agentId || undefined,
+      },
+    }, connectionId);
+  }
+
   requestSuggestions(
     messages: Array<{ role: string; text: string }>,
     connectionId?: string,
@@ -1360,6 +1381,14 @@ export function requestConversationList(agentId?: string, connectionId?: string)
 
 export function requestHistory(chatId: string, agentId?: string, connectionId?: string, opts?: { limit?: number; before?: number }) {
   manager.requestHistory(chatId, agentId, connectionId, opts);
+}
+
+export function requestModelsList(agentId?: string, connectionId?: string) {
+  manager.requestModelsList(agentId, connectionId);
+}
+
+export function switchModel(model: string, agentId?: string, connectionId?: string) {
+  manager.switchModel(model, agentId, connectionId);
 }
 
 export function requestSuggestions(

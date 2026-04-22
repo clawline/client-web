@@ -26,6 +26,7 @@ import {
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
 import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadPanel } from '../components/chat';
+import ModelPicker, { type ModelsData } from '../components/chat/ModelPicker';
 import { useThreadStore, subscribeThreadEvents } from '../stores/threadStore';
 
 function getAgentInfo(agentId: string | null | undefined, connectionId: string): AgentInfo | null {
@@ -124,6 +125,8 @@ export default function ChatRoom({
     return () => clearInterval(timer);
   }, []);
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(() => getAgentInfo(agentId, connId));
+  const [modelsData, setModelsData] = useState<ModelsData | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
   const [agentContext, setAgentContext] = useState<AgentContext | null>(() => (
     channel.getAgentContext(runtimeConnId, agentId ?? undefined) ??
     channel.getAgentContext(connId, agentId ?? undefined)
@@ -934,6 +937,22 @@ export default function ChatRoom({
           : [];
         channel.saveCachedAgents(connId, nextAgents);
         setAgentInfo(nextAgents.find((agent) => agent.id === agentId) ?? null);
+      } else if (packet.type === 'models.list') {
+        const d = packet.data as {
+          models?: Record<string, string[]>;
+          modelNames?: Record<string, string>;
+          defaultModel?: string;
+          currentModel?: string;
+        };
+        if (d.models) {
+          setModelsData({
+            models: d.models,
+            modelNames: d.modelNames || {},
+            defaultModel: d.defaultModel,
+            currentModel: d.currentModel,
+          });
+        }
+        setModelsLoading(false);
       } else if (packet.type === 'user.status') {
         // Agent presence update
         const d = packet.data as { userId?: string; status?: string; lastSeen?: number };
@@ -2813,8 +2832,24 @@ export default function ChatRoom({
             />
           </div>
 
-          {/* Row 2: quick commands + send/mic */}
+          {/* Row 2: model picker + quick commands + send/mic */}
           <div className="flex items-center gap-1 px-1 pb-1">
+            {/* Model picker */}
+            <ModelPicker
+              currentModel={agentInfo?.model}
+              modelsData={modelsData}
+              isLoading={modelsLoading}
+              onRequestModels={() => {
+                setModelsLoading(true);
+                channel.requestModelsList(agentId || undefined, runtimeConnId);
+              }}
+              onSwitchModel={(model) => {
+                channel.switchModel(model, agentId || undefined, runtimeConnId);
+                // Optimistically update displayed model
+                setAgentInfo((prev) => prev ? { ...prev, model } : prev);
+              }}
+            />
+
             {/* Quick commands — dynamic, sorted by recent usage */}
             <div className="flex-1 flex items-center justify-start gap-0.5 overflow-x-auto scrollbar-hide">
               {sortedQuickCmds.map((cmd) => (
