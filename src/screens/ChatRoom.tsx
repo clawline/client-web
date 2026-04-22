@@ -431,17 +431,19 @@ export default function ChatRoom({
     let cancelled = false;
 
     // Try cache first (populated by warmCache on app startup)
+    const INITIAL_PAGE = 30;
     const cached = getCachedMessages(connId, agentId || '', chatId || undefined);
     if (cached.length > 0 || isWarmed(connId)) {
-      // Cache is warm — use whatever is there (may be empty for new agents)
+      // Cache is warm — only show last N messages; rest available via scroll-up
       if (cached.length > 0) {
-        setMessages(mergeMessages(cached, []));
+        const page = cached.slice(-INITIAL_PAGE);
+        setMessages(mergeMessages(page, []));
       }
       setHasLoadedMessages(true);
-      setHasMoreHistory(cached.length > 0);
+      setHasMoreHistory(cached.length > INITIAL_PAGE);
     } else {
       // Cache not warmed yet (deep link / before warmCache ran) — HTTP fallback
-      void fetchOlderMessages(channelId, Date.now(), agentId, 50, connId).then(({ messages: remote, hasMore }) => {
+      void fetchOlderMessages(channelId, Date.now(), agentId, INITIAL_PAGE, connId).then(({ messages: remote, hasMore }) => {
         if (cancelled) return;
         const localMsgs = remote.map((m) => syncMessageToLocal(m));
         // Hydrate cache from HTTP so subsequent agent switches hit the warm path.
@@ -1209,16 +1211,31 @@ export default function ChatRoom({
     }
   }, [activeConn, agentId, chatId, requestConversationList, runtimeConnId, showHistoryDrawer, wsStatus]);
 
-  // ── Load more history on scroll to top (from Supabase via HTTP) ──
+  // ── Load more history on scroll to top (cache first, then HTTP) ──
+  const LOAD_MORE_PAGE = 30;
   const loadMoreHistory = useCallback(async () => {
     if (loadingMoreHistory || !hasMoreHistory || !agentId || !connId) return;
     const oldest = messages[0];
     if (!oldest?.timestamp) return;
     setLoadingMoreHistory(true);
     try {
+      // Try loading from in-memory cache first
+      const cached = getCachedMessages(connId, agentId, chatId || undefined);
+      const olderCached = cached.filter((m) => m.timestamp < oldest.timestamp);
+      if (olderCached.length > 0) {
+        const page = olderCached.slice(-LOAD_MORE_PAGE);
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newMsgs = page.filter((m) => !existingIds.has(m.id));
+          return [...newMsgs, ...prev];
+        });
+        setHasMoreHistory(olderCached.length > LOAD_MORE_PAGE);
+        return;
+      }
+      // Cache exhausted — fall back to HTTP
       const channelId = activeConn?.channelId;
       if (!channelId) { setLoadingMoreHistory(false); return; }
-      const { messages: older, hasMore } = await fetchOlderMessages(channelId, oldest.timestamp, agentId, 20, connId);
+      const { messages: older, hasMore } = await fetchOlderMessages(channelId, oldest.timestamp, agentId, LOAD_MORE_PAGE, connId);
       if (older.length > 0) {
         const localMsgs = older.map((m) => syncMessageToLocal(m));
         setMessages((prev) => {
@@ -1233,7 +1250,7 @@ export default function ChatRoom({
     } finally {
       setLoadingMoreHistory(false);
     }
-  }, [loadingMoreHistory, hasMoreHistory, agentId, connId, activeConn, messages]);
+  }, [loadingMoreHistory, hasMoreHistory, agentId, connId, chatId, activeConn, messages]);
 
   const scrollBtnRafRef = useRef<number>(0);
   useEffect(() => {
@@ -1986,13 +2003,15 @@ export default function ChatRoom({
                 // Re-trigger initial load
                 const channelId = activeConn?.channelId;
                 if (channelId && agentId && connId) {
+                  const RETRY_PAGE = 30;
                   const cached = getCachedMessages(connId, agentId || '');
                   if (cached.length > 0) {
-                    setMessages(mergeMessages(cached, []));
+                    const page = cached.slice(-RETRY_PAGE);
+                    setMessages(mergeMessages(page, []));
                     setHasLoadedMessages(true);
-                    setHasMoreHistory(true);
+                    setHasMoreHistory(cached.length > RETRY_PAGE);
                   } else {
-                    void fetchOlderMessages(channelId, Date.now(), agentId, 50, connId).then(({ messages: remote, hasMore }) => {
+                    void fetchOlderMessages(channelId, Date.now(), agentId, RETRY_PAGE, connId).then(({ messages: remote, hasMore }) => {
                       const localMsgs = remote.map((m) => syncMessageToLocal(m));
                       setMessages((currentMessages) => mergeMessages(localMsgs, currentMessages));
                       setHasMoreHistory(hasMore);
