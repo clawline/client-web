@@ -127,6 +127,10 @@ export default function ChatRoom({
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(() => getAgentInfo(agentId, connId));
   const [modelsData, setModelsData] = useState<ModelsData | null>(null);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string | undefined>(() => {
+    if (!agentId) return undefined;
+    return localStorage.getItem(`clawline:model:${connId}:${agentId}`) || undefined;
+  });
   const [agentContext, setAgentContext] = useState<AgentContext | null>(() => (
     channel.getAgentContext(runtimeConnId, agentId ?? undefined) ??
     channel.getAgentContext(connId, agentId ?? undefined)
@@ -342,6 +346,8 @@ export default function ChatRoom({
     );
     setIsContextLoading(false);
     setAgentPresence(null); // S4: Reset presence on agent switch
+    setModelsData(null); // Reset models cache on agent switch
+    setSelectedModel(agentId ? localStorage.getItem(`clawline:model:${connId}:${agentId}`) || undefined : undefined);
     // Mark agent as read when entering chat
     if (connId && agentId) {
       markAgentAsRead(connId, agentId);
@@ -2836,7 +2842,7 @@ export default function ChatRoom({
           <div className="flex items-center gap-1 px-1 pb-1">
             {/* Model picker */}
             <ModelPicker
-              currentModel={agentInfo?.model}
+              currentModel={selectedModel || agentInfo?.model}
               modelsData={modelsData}
               isLoading={modelsLoading}
               onRequestModels={() => {
@@ -2845,7 +2851,8 @@ export default function ChatRoom({
               }}
               onSwitchModel={(model) => {
                 channel.switchModel(model, agentId || undefined, runtimeConnId);
-                // Optimistically update displayed model
+                setSelectedModel(model);
+                if (agentId) localStorage.setItem(`clawline:model:${connId}:${agentId}`, model);
                 setAgentInfo((prev) => prev ? { ...prev, model } : prev);
               }}
             />
