@@ -254,6 +254,7 @@ export default function ChatRoom({
   const [agentReady, setAgentReady] = useState(false);
   const agentReadyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevAgentIdRef = useRef<string | null | undefined>(undefined);
+  const initialScrollRef = useRef(true); // true = next scroll should be instant (initial load, no smooth)
   const streamingSourceAgentRef = useRef<string | null>(null); // Track which agent owns current streaming
   const fileInputRef2 = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -411,6 +412,7 @@ export default function ChatRoom({
     setLoadError(false);
     setHasMoreHistory(false);
     setLoadingMoreHistory(false);
+    initialScrollRef.current = true; // next messages render should jump to bottom instantly
     streamingSourceAgentRef.current = null; // Clear streaming source tracking on agent change
     streamingPhaseRef.current = 'idle';
     setThinkingText('');
@@ -512,13 +514,14 @@ export default function ChatRoom({
     });
   }, [agentId, connId, runtimeConnId]);
 
-  // Auto-scroll: use instant scroll during streaming to avoid jitter, smooth scroll otherwise.
-  // Also debounce streaming scrolls to avoid excessive layout thrashing.
+  // Auto-scroll: use instant scroll during streaming or initial load to avoid jitter/flash.
+  // Smooth scroll only for incremental new messages after the initial load.
   const scrollRafRef = useRef<number | null>(null);
   useEffect(() => {
     const hasStreaming = messages.some((m) => m.isStreaming);
-    if (hasStreaming) {
-      // Streaming: throttle with rAF to avoid layout thrash & jitter
+    const isInitial = initialScrollRef.current;
+    if (hasStreaming || isInitial) {
+      // Streaming or initial load: instant jump to bottom (no animation flash)
       if (scrollRafRef.current) return;
       scrollRafRef.current = requestAnimationFrame(() => {
         scrollRafRef.current = null;
@@ -526,9 +529,10 @@ export default function ChatRoom({
         if (container) {
           container.scrollTop = container.scrollHeight;
         }
+        if (isInitial) initialScrollRef.current = false;
       });
     } else {
-      // Non-streaming: smooth scroll for user comfort
+      // Subsequent new messages: smooth scroll for user comfort
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isThinking]);
