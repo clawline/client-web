@@ -152,6 +152,8 @@ export default function ChatRoom({
   const [thinkingText, setThinkingText] = useState('');
   // Phase ref (not state) — every transition MUST accompany a state change to trigger re-render
   const streamingPhaseRef = useRef<'idle' | 'streaming_pre' | 'captured' | 'streaming_final'>('idle');
+  // Length of accumulated text when entering streaming_final — used to strip thinking prefix
+  const thinkingTextLenRef = useRef(0);
   const retryingRef = useRef<Set<string>>(new Set()); // B1: prevent double-tap retry
   const [voiceMode, setVoiceMode] = useState(() => localStorage.getItem('clawline:voiceMode') === 'true');
   const [voiceListening, setVoiceListening] = useState(false);
@@ -414,7 +416,7 @@ export default function ChatRoom({
     setLoadingMoreHistory(false);
     initialScrollRef.current = true; // next messages render should jump to bottom instantly
     streamingSourceAgentRef.current = null; // Clear streaming source tracking on agent change
-    streamingPhaseRef.current = 'idle';
+    streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
     setThinkingText('');
 
     if (!connId || !agentId) {
@@ -555,7 +557,7 @@ export default function ChatRoom({
     setToolCallHistory([]);
     setToolHistoryExpanded(false);
     setThinkingText('');
-    streamingPhaseRef.current = 'idle';
+    streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
     setShowHeaderMenu(false);
     setShowHistoryDrawer(false);
     setConversations([]);
@@ -790,7 +792,7 @@ export default function ChatRoom({
         setToolCallHistory([]);
         setToolHistoryExpanded(false);
         setThinkingText('');
-        streamingPhaseRef.current = 'idle';
+        streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
         setMessages((prev) => {
           let changed = false;
           const next = prev.map((m) => {
@@ -946,7 +948,7 @@ export default function ChatRoom({
         setAgentPresence({ status: 'online' });
       } else if (packet.type === 'stream.resume') {
         // Stream resume after reconnection — restore accumulated streaming text
-        streamingPhaseRef.current = 'idle';
+        streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
         setThinkingText('');
         const resumeData = packet.data as { chatId?: string; agentId?: string; text?: string; isComplete?: boolean; startTime?: number };
         const resumeAgentId = resumeData.agentId;
@@ -999,7 +1001,7 @@ export default function ChatRoom({
           // Don't remove streaming placeholder yet — let message.send replace it
           // to avoid a 1-frame flash where the message disappears and reappears.
           streamingSourceAgentRef.current = null;
-          streamingPhaseRef.current = 'idle';
+          streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
           setThinkingText('');
           // Mark streaming message as done (remove cursor but keep content visible)
           setMessages((prev) => prev.map((m) =>
@@ -1028,14 +1030,24 @@ export default function ChatRoom({
               // Post-tool text = final response → create/update streaming message
               if (streamingPhaseRef.current === 'captured') {
                 streamingPhaseRef.current = 'streaming_final';
+                // Record thinking text length so we can strip the thinking prefix
+                // from the accumulated full text that onPartialReply sends
+                thinkingTextLenRef.current = deltaData.text.length;
                 setIsThinking(false);
                 if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+                // First delta after transition — might still be all thinking text, skip
+                return;
               }
+              // Strip thinking prefix: onPartialReply sends accumulated full text
+              const displayText = thinkingTextLenRef.current > 0 && deltaData.text.length > thinkingTextLenRef.current
+                ? deltaData.text.slice(thinkingTextLenRef.current).replace(/^\n+/, '')
+                : (thinkingTextLenRef.current > 0 && deltaData.text.length <= thinkingTextLenRef.current ? '' : deltaData.text);
+              if (!displayText) return;
               setMessages((prev) => {
                 const streamingIdx = prev.findIndex((m) => m.isStreaming);
                 if (streamingIdx >= 0) {
                   const updated = [...prev];
-                  updated[streamingIdx] = { ...updated[streamingIdx], text: deltaData.text! };
+                  updated[streamingIdx] = { ...updated[streamingIdx], text: displayText };
                   return updated;
                 }
                 return [
@@ -1043,7 +1055,7 @@ export default function ChatRoom({
                   {
                     id: `streaming-${Date.now()}`,
                     sender: 'ai',
-                    text: deltaData.text,
+                    text: displayText,
                     isStreaming: true,
                     timestamp: deltaData.timestamp || Date.now(),
                   },
@@ -1431,7 +1443,7 @@ export default function ChatRoom({
       // Immediately show thinking state after sending (unless it's a slash command)
       if (!text.startsWith('/')) {
         setThinkingText('');
-        streamingPhaseRef.current = 'idle';
+        streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
         setIsThinking(true);
         setThinkingPhase('Thinking');
         thinkingStartRef.current = Date.now();
@@ -1614,7 +1626,7 @@ export default function ChatRoom({
       setVoiceInterimText('');
       setVoiceMode(false);
       setThinkingText('');
-      streamingPhaseRef.current = 'idle';
+      streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
       setIsThinking(true);
     }, 50);
   }, [voiceFinalText, voiceInterimText, stopVoiceRecognition, agentId, runtimeConnId, replyingTo, messages]);
@@ -2177,7 +2189,7 @@ export default function ChatRoom({
                   setToolCallHistory([]);
                   setThinkingPhase('');
                   setThinkingText('');
-                  streamingPhaseRef.current = 'idle';
+                  streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
                   if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
                   // Mark any streaming messages as complete
                   setMessages((prev) => prev.map((m) => m.isStreaming ? { ...m, isStreaming: false, text: m.text + '\n\n*[cancelled]*' } : m));
