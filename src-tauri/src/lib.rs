@@ -1,12 +1,14 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, RunEvent, WindowEvent,
+    Manager, WindowEvent,
 };
+#[cfg(target_os = "macos")]
+use tauri::RunEvent;
 
 #[tauri::command]
 fn set_unread_count(app: tauri::AppHandle, count: u32) -> Result<(), String> {
-    // Update tray tooltip
+    // Update tray tooltip (cross-platform)
     if let Some(tray) = app.tray_by_id("main-tray") {
         let tip = if count == 0 {
             "Clawline".to_string()
@@ -15,11 +17,15 @@ fn set_unread_count(app: tauri::AppHandle, count: u32) -> Result<(), String> {
         };
         let _ = tray.set_tooltip(Some(tip));
     }
-    // Update Dock badge (macOS) — pass None to clear
-    let badge = if count == 0 { None } else { Some(count.to_string()) };
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.set_badge_label(badge);
+    // Dock badge — macOS only (Linux/Windows have no equivalent API).
+    #[cfg(target_os = "macos")]
+    {
+        let badge = if count == 0 { None } else { Some(count.to_string()) };
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.set_badge_label(badge);
+        }
     }
+    let _ = (app, count);
     Ok(())
 }
 
@@ -105,12 +111,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|app, event| {
+    app.run(|_app, _event| {
         // macOS: clicking dock icon / notification when no visible windows
-        // triggers Reopen — show the main window.
-        if let RunEvent::Reopen { has_visible_windows, .. } = event {
+        // triggers Reopen — show the main window. Other platforms don't have
+        // this event (Windows/Linux don't have a dock concept).
+        #[cfg(target_os = "macos")]
+        if let RunEvent::Reopen { has_visible_windows, .. } = _event {
             if !has_visible_windows {
-                if let Some(win) = app.get_webview_window("main") {
+                if let Some(win) = _app.get_webview_window("main") {
                     let _ = win.show();
                     let _ = win.unminimize();
                     let _ = win.set_focus();
