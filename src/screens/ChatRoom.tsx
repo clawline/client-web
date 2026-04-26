@@ -702,15 +702,21 @@ export default function ChatRoom({
         }
 
         // Detect "user message": either echo of our own send, OR a message
-        // from any human user (no agentId → it's a user message, not an AI reply).
-        // Cross-client scenario: another client (e.g. web while we're on desktop)
-        // sent a message — we should display it as a user bubble too.
+        // from any human user. Cross-client scenario: another client (e.g. web
+        // while we're on desktop) sent a message — we should display it as user.
+        // Server tags inbound user messages with direction:"inbound" + echo:true
+        // when broadcasting via broadcastToChatExcept (channel/client.ts).
         const echoSenderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
         const mySenderId = channel.getSenderId(runtimeConnId);
         const packetAgentIdStr = typeof packet.data.agentId === 'string' ? packet.data.agentId : '';
+        const direction = typeof packet.data.direction === 'string' ? packet.data.direction : '';
+        const messageType = typeof packet.data.messageType === 'string' ? packet.data.messageType : '';
+
         const isEcho = packet.data.echo === true
+          || direction === 'inbound'
+          || messageType === 'user'
           || (echoSenderId && mySenderId && echoSenderId === mySenderId)
-          || (echoSenderId && !packetAgentIdStr); // any user (no agentId = not an AI msg)
+          || (echoSenderId && !packetAgentIdStr);
 
         if (isEcho) {
           // User's own message — add as 'user' sender (e.g. sent from Inbox)
@@ -831,7 +837,11 @@ export default function ChatRoom({
         const d = packet.data as { toolCallId?: string; toolName?: string; args?: Record<string, unknown>; agentId?: string };
         if (!d.agentId || !agentId || d.agentId === agentId) {
           const tc = { toolCallId: d.toolCallId || `tc-${Date.now()}`, toolName: d.toolName || 'tool', args: d.args, startTime: Date.now() };
-          setActiveToolCalls((prev) => [...prev, tc]);
+          setActiveToolCalls((prev) => {
+            // Dedupe by toolCallId — server may broadcast tool.start twice
+            if (prev.some((p) => p.toolCallId === tc.toolCallId)) return prev;
+            return [...prev, tc];
+          });
           setThinkingPhase(formatToolName(d.toolName || 'tool'));
           setIsThinking(true);
         }
@@ -842,11 +852,17 @@ export default function ChatRoom({
           setActiveToolCalls((prev) => {
             const ended = prev.find((tc) => tc.toolCallId === d.toolCallId);
             if (ended) {
-              setToolCallHistory((hist) => [...hist, {
-                ...ended,
-                endTime: Date.now(),
-                resultSummary: d.resultSummary,
-              }]);
+              setToolCallHistory((hist) => {
+                // Server may emit tool.end twice (e.g. relay broadcast hits us
+                // both via chatId routing and the no-agentId fallback). Dedupe
+                // by toolCallId so we don't get React duplicate-key warnings.
+                if (hist.some((h) => h.toolCallId === ended.toolCallId)) return hist;
+                return [...hist, {
+                  ...ended,
+                  endTime: Date.now(),
+                  resultSummary: d.resultSummary,
+                }];
+              });
             }
             return prev.filter((tc) => tc.toolCallId !== d.toolCallId);
           });
