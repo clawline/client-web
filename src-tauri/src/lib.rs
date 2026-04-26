@@ -6,6 +6,9 @@ use tauri::{
 #[cfg(target_os = "macos")]
 use tauri::RunEvent;
 
+mod ws;
+use ws::manager::WsManager;
+
 #[tauri::command]
 fn set_unread_count(app: tauri::AppHandle, count: u32) -> Result<(), String> {
     // Update tray tooltip (cross-platform)
@@ -51,8 +54,22 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![set_unread_count, show_main_window])
+        .invoke_handler(tauri::generate_handler![
+            set_unread_count,
+            show_main_window,
+            ws::ws_connect,
+            ws::ws_send,
+            ws::ws_disconnect,
+            ws::ws_status,
+            ws::ws_drain_offline_buffer,
+            ws::ws_clear_offline_buffer,
+        ])
         .setup(|app| {
+            // Initialise the WS manager (opens SQLite buffer, sets up DashMap).
+            let manager = WsManager::init(&app.handle()).map_err(|e| -> Box<dyn std::error::Error> {
+                Box::<dyn std::error::Error>::from(e)
+            })?;
+            app.manage(manager);
             let show_item = MenuItem::with_id(app, "show", "Show Clawline", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;

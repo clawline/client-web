@@ -1,4 +1,19 @@
 import { getActiveConnectionId } from './connectionStore';
+import { TauriTransport } from './transport/TauriTransport';
+
+/** Whether to route the WS lifecycle through the Rust backend.
+ *  Currently OPT-IN: only enabled when localStorage.clawline.useRustWs === 'true'.
+ *  Set to 'true' on machines you want to test the Rust path; default is the
+ *  battle-tested JS WebSocket implementation. */
+function useRustWs(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!('__TAURI_INTERNALS__' in window)) return false;
+  try {
+    return localStorage.getItem('clawline.useRustWs') === 'true';
+  } catch {
+    return false;
+  }
+}
 
 const DEFAULT_WS_URL = 'wss://gateway.clawlines.net/client';
 const MAX_RECONNECT_ATTEMPTS = 6;
@@ -168,6 +183,8 @@ function createInstance(connectionId: string): ChannelInstance {
 
 class ChannelManager {
   private instances = new Map<string, ChannelInstance>();
+  /** Tauri-only transport, lazily constructed when running in desktop. */
+  private tauriTransport: TauriTransport | null = null;
   private typingAgents = new Map<string, Set<string>>();
   private typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private typingListeners = new Set<TypingListener>();
@@ -566,6 +583,65 @@ class ChannelManager {
     instance.statusListeners.forEach((fn) => fn(status));
   }
 
+  /** Tauri-only: copy connect-time fields into the instance so business code
+   *  (sendText, selectAgent, etc.) reads the same state regardless of which
+   *  transport actually owns the wire. */
+  private applyConnectOptionsToInstance(
+    instance: ChannelInstance,
+    opts: ConnectOptions,
+    serverUrl: string,
+    chatId: string,
+  ): void {
+    instance.currentServerUrl = serverUrl;
+    instance.currentChatId = chatId;
+    instance.currentChannelId = opts.channelId || chatId;
+    instance.currentSenderId = opts.senderId;
+    instance.currentSenderName = opts.senderName || '';
+    instance.currentAuthToken = opts.token || '';
+    if (opts.agentId !== undefined) instance.currentAgentId = opts.agentId;
+    instance.manualClose = false;
+  }
+
+  /** Tauri-only: create the TauriTransport (lazy) and route packets/status
+   *  back through the existing listener Sets. */
+  private startTauriRoute(instance: ChannelInstance, serverUrl: string, opts: ConnectOptions): void {
+    if (!this.tauriTransport) {
+      this.tauriTransport = new TauriTransport();
+      this.tauriTransport.onError((cid, err) => this.emitError(cid, err.code, err.message));
+    }
+    const transport = this.tauriTransport;
+    const connId = instance.connectionId;
+
+    // Subscribe BEFORE invoking ws_connect so we don't miss the first events.
+    transport.onPacket(connId, (packet) => {
+      // Track lastMessageTimestamp for sync-on-reconnect.
+      const ts = (packet.data as Record<string, unknown>)?.timestamp;
+      if (typeof ts === 'number' && ts > instance.lastMessageTimestamp) {
+        instance.lastMessageTimestamp = ts;
+      }
+      this.touch(instance);
+      instance.messageListeners.forEach((fn) => fn(packet as InboundPacket));
+    });
+    transport.onStatus(connId, (status) => {
+      this.updateStatus(instance, status as ConnectionStatus);
+      // On reconnect to "connected", pull missed messages from Supabase via HTTP.
+      if (status === 'connected' && instance.lastMessageTimestamp > 0 && instance.currentChannelId) {
+        void this.syncMissedAfterReconnect(instance);
+      }
+    });
+
+    void transport.connect({
+      connectionId: connId,
+      serverUrl,
+      chatId: opts.chatId,
+      channelId: opts.channelId,
+      agentId: opts.agentId,
+      senderId: opts.senderId,
+      senderName: opts.senderName,
+      token: opts.token,
+    });
+  }
+
   private scheduleIdleClose(instance: ChannelInstance) {
     this.clearIdleTimer(instance);
     if (!instance.ws || instance.currentStatus === 'disconnected') {
@@ -641,10 +717,22 @@ class ChannelManager {
       try {
         const urlParams = new URL(nextServerUrl).searchParams;
         nextChatId = urlParams.get('chatId') || urlParams.get('channelId') || '';
-      } catch {
-        // ignore invalid URL here; WebSocket constructor will throw separately
-      }
+      } catch { /* ignore */ }
     }
+
+    // ── Tauri (Rust backend) path ────────────────────────────────────
+    // The Rust process owns the WS lifecycle, heartbeat, reconnect, and
+    // offline buffer. We just plumb packets/status through the existing
+    // listener Sets so the rest of the app code doesn't change.
+    if (useRustWs()) {
+      this.applyConnectOptionsToInstance(instance, opts, nextServerUrl, nextChatId);
+      this.startTauriRoute(instance, nextServerUrl, opts);
+      this.touch(instance);
+      this.enforcePoolLimit(instance.connectionId);
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────
+
 
     // Connection reuse: only check serverUrl + chatId (not agentId)
     // Agent switching is handled by selectAgent() without reconnecting
@@ -859,6 +947,12 @@ class ChannelManager {
   }
 
   private closeInstance(instance: ChannelInstance, manual = true) {
+    // Tauri path: tell Rust to close. Browser fields below are noops then.
+    if (useRustWs() && this.tauriTransport) {
+      void this.tauriTransport.close(instance.connectionId, manual);
+      if (manual) this.updateStatus(instance, 'disconnected');
+      return;
+    }
     instance.manualClose = manual;
     this.clearReconnectTimer(instance);
     this.clearIdleTimer(instance);
@@ -887,7 +981,16 @@ class ChannelManager {
 
   sendRaw(packet: { type: string; data: Record<string, unknown> }, connectionId?: string) {
     const instance = this.get(connectionId);
-    if (!instance?.ws || instance.ws.readyState !== WebSocket.OPEN) {
+    if (!instance) {
+      throw new Error('Socket is not connected.');
+    }
+    // Tauri path: hand off to Rust (it handles offline buffering).
+    if (useRustWs() && this.tauriTransport) {
+      this.touch(instance);
+      void this.tauriTransport.send(instance.connectionId, packet);
+      return;
+    }
+    if (!instance.ws || instance.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Socket is not connected.');
     }
 
@@ -897,7 +1000,11 @@ class ChannelManager {
 
   isReady(connectionId?: string) {
     const instance = this.get(connectionId);
-    return !!instance?.ws && instance.ws.readyState === WebSocket.OPEN;
+    if (!instance) return false;
+    if (useRustWs() && this.tauriTransport) {
+      return this.tauriTransport.isReady(instance.connectionId);
+    }
+    return !!instance.ws && instance.ws.readyState === WebSocket.OPEN;
   }
 
   sendText(content: string, agentId?: string, connectionId?: string): OutboundPayload {
