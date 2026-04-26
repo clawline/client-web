@@ -701,10 +701,16 @@ export default function ChatRoom({
           return;
         }
 
-        // Detect echo: user's own message echoed back by the relay
+        // Detect "user message": either echo of our own send, OR a message
+        // from any human user (no agentId → it's a user message, not an AI reply).
+        // Cross-client scenario: another client (e.g. web while we're on desktop)
+        // sent a message — we should display it as a user bubble too.
         const echoSenderId = typeof packet.data.senderId === 'string' ? packet.data.senderId : '';
         const mySenderId = channel.getSenderId(runtimeConnId);
-        const isEcho = packet.data.echo === true || (echoSenderId && mySenderId && echoSenderId === mySenderId);
+        const packetAgentIdStr = typeof packet.data.agentId === 'string' ? packet.data.agentId : '';
+        const isEcho = packet.data.echo === true
+          || (echoSenderId && mySenderId && echoSenderId === mySenderId)
+          || (echoSenderId && !packetAgentIdStr); // any user (no agentId = not an AI msg)
 
         if (isEcho) {
           // User's own message — add as 'user' sender (e.g. sent from Inbox)

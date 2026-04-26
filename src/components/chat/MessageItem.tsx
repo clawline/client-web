@@ -99,7 +99,7 @@ function MessageItemInner({
       >
         {/* Avatar column */}
         <div className="w-8 flex-shrink-0 pt-0.5">
-          {!grouped ? (
+          {!grouped && (
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm text-sm ${
               isUser
                 ? 'bg-gradient-to-br from-info to-accent'
@@ -107,12 +107,17 @@ function MessageItemInner({
             }`}>
               {isUser ? <User size={16} /> : (agentInfo?.identityEmoji || '🤖')}
             </div>
-          ) : (
-            <span className="hidden group-hover/msg:block text-[10px] text-text/30 dark:text-text-inv/25 tabular-nums leading-8 text-center">
-              {formatTime(msg.timestamp)}
-            </span>
           )}
         </div>
+
+        {/* Hover-only timestamp for grouped messages — absolutely positioned to
+            avoid the layout jitter that would occur with an inline element
+            appearing in the avatar column. */}
+        {grouped && msg.timestamp && (
+          <span className="pointer-events-none absolute right-3 top-1 hidden group-hover/msg:inline text-[10px] text-text/30 dark:text-text-inv/25 tabular-nums">
+            {formatTime(msg.timestamp)}
+          </span>
+        )}
 
         {/* Content column */}
         <div className="flex-1 min-w-0 overflow-x-hidden">
