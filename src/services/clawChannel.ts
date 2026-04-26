@@ -4,8 +4,8 @@ const DEFAULT_WS_URL = 'wss://gateway.clawlines.net/client';
 const MAX_RECONNECT_ATTEMPTS = 6;
 const MAX_ACTIVE_CONNECTIONS = 6;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes — chat apps should stay connected
-const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
-const HEARTBEAT_MAX_MISSED = 2; // allow 2 missed pongs before killing
+const HEARTBEAT_INTERVAL_MS = 15 * 1000; // 15s — beat NAT/CDN idle timeouts (typically 60s+)
+const HEARTBEAT_MAX_MISSED = 1; // 30s total dead-connection detection
 const THINKING_TIMEOUT_MS = 60 * 1000;
 const AGENT_CACHE_PREFIX = 'clawline.agentList.';
 const STATUS_CACHE_PREFIX = 'clawline.channelStatus.';
@@ -184,22 +184,45 @@ class ChannelManager {
 
   private handleVisibilityChange = () => {
     if (document.visibilityState === 'visible') {
-      // Page came back to foreground — reconnect all disconnected instances (debounced)
-      // and restart heartbeats for connected ones
+      // Page back to foreground — verify each WS is actually alive (readyState
+      // can be stale after iOS suspend) and pull missed messages.
       this.reconnectAllDebounced();
       for (const instance of this.instances.values()) {
         if (instance.ws && instance.ws.readyState === WebSocket.OPEN) {
           this.startHeartbeat(instance);
+          // Pull anything we missed while backgrounded — cheap (single HTTP).
+          if (instance.lastMessageTimestamp > 0 && instance.currentChannelId) {
+            this.syncMissedAfterReconnect(instance);
+          }
         }
       }
     } else {
-      // Page going to background — pause idle timers and heartbeats
-      // (browser may throttle timers anyway; no point wasting resources)
+      // Hidden: stop only idle timers; keep heartbeat so the OS/CDN sees
+      // traffic. Browsers will throttle setInterval to ~1min anyway, but
+      // staying armed lets us detect dead sockets faster on return.
       for (const instance of this.instances.values()) {
         this.clearIdleTimer(instance);
-        this.stopHeartbeat(instance);
       }
     }
+  };
+
+  // Page Lifecycle API: freeze fires when the OS suspends the page (iOS
+  // background, Chrome tab discard). resume fires when it comes back.
+  // More reliable than visibilitychange on iOS PWA / mobile.
+  private handlePageFreeze = () => {
+    // Page is being suspended — proactively close sockets so we don't return
+    // to a half-open connection. Reconnect on resume.
+    for (const instance of this.instances.values()) {
+      this.stopHeartbeat(instance);
+      if (instance.ws) {
+        try { instance.ws.close(4001, 'Page frozen'); } catch { /* ignore */ }
+      }
+    }
+  };
+
+  private handlePageResume = () => {
+    // Page restored from frozen state — full reconnect + sync.
+    this.reconnectAllDebounced();
   };
 
   private handleOnline = () => {
@@ -230,6 +253,9 @@ class ChannelManager {
   constructor() {
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', this.handleVisibilityChange);
+      // Page Lifecycle API — better than visibilitychange on iOS PWA
+      document.addEventListener('freeze', this.handlePageFreeze);
+      document.addEventListener('resume', this.handlePageResume);
     }
     if (typeof window !== 'undefined') {
       window.addEventListener('online', this.handleOnline);
@@ -240,6 +266,8 @@ class ChannelManager {
   destroy() {
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+      document.removeEventListener('freeze', this.handlePageFreeze);
+      document.removeEventListener('resume', this.handlePageResume);
     }
     if (typeof window !== 'undefined') {
       window.removeEventListener('online', this.handleOnline);
@@ -653,14 +681,14 @@ class ChannelManager {
 
     socket.addEventListener('open', () => {
       if (instance.connectionToken !== token || instance.ws !== socket) return;
-      const wasReconnect = instance.reconnectAttempts > 0;
       instance.reconnectAttempts = 0;
       this.updateStatus(instance, 'connected');
       this.touch(instance);
       this.startHeartbeat(instance);
 
-      // On reconnect: pull missed messages from Supabase to fill the gap
-      if (wasReconnect && instance.lastMessageTimestamp > 0 && instance.currentChannelId) {
+      // Always pull missed messages on connect if we have a watermark — covers
+      // normal reconnects, visibility/online resumes, and silent disconnects.
+      if (instance.lastMessageTimestamp > 0 && instance.currentChannelId) {
         this.syncMissedAfterReconnect(instance);
       }
     });

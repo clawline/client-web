@@ -1,4 +1,4 @@
-import { MessageCircle, LayoutDashboard, Search, User, Inbox } from 'lucide-react';
+import { MessageCircle, Search, User, Inbox } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Screen } from '../App';
 import { motion } from 'motion/react';
@@ -24,7 +24,6 @@ export default function BottomNav({ currentScreen, onNavigate, unreadChats = 0 }
   const navItems = [
     { id: 'chats', icon: MessageCircle, label: 'Chats', badge: unreadChats },
     { id: 'inbox', icon: Inbox, label: 'Inbox', badge: inboxBadge },
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Resources', badge: 0 },
     { id: 'search', icon: Search, label: 'Search', badge: 0 },
     { id: 'profile', icon: User, label: 'Profile', badge: 0 },
   ];

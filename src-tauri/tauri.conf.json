@@ -1,0 +1,65 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Clawline",
+  "version": "0.1.0",
+  "identifier": "ai.openclaw.clawline",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:4026",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Clawline",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 360,
+        "minHeight": 600,
+        "decorations": true,
+        "transparent": false,
+        "center": true,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg", "nsis", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Productivity",
+    "shortDescription": "Clawline desktop client",
+    "longDescription": "Clawline — chat with your OpenClaw agents from the desktop. Runs in the background, sends native notifications, auto-updates from GitHub Releases.",
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": "-",
+      "entitlements": null,
+      "providerShortName": null
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/clawline/client-web/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENGRDE5MTI3NzAzOUZENTkKUldSWi9UbHdKNUhSenpobjlYbGUya0JxUVdVWFk5TnhXVTliRVR4OXU4ZDdkcGVjNThxTVd4NFMK"
+    }
+  }
+}

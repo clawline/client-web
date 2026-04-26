@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, MessageSquare, Server, Zap, Shield } from 'lucide-react';
-import { useLogto } from '@logto/react';
 import { Button } from '../components/ui/button';
 
 const FEATURES = [
@@ -13,15 +12,6 @@ const FEATURES = [
 
 export default function Onboarding({ onGetStarted }: { onGetStarted: () => void }) {
   const [visibleCount, setVisibleCount] = useState(0);
-  const { signIn, isAuthenticated } = useLogto();
-
-  const handleGetStarted = () => {
-    if (isAuthenticated) {
-      onGetStarted();
-    } else {
-      signIn(`${window.location.origin}/callback`);
-    }
-  };
 
   // Stagger feature bubbles in
   useEffect(() => {
@@ -102,7 +92,7 @@ export default function Onboarding({ onGetStarted }: { onGetStarted: () => void 
           animate={allVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 }}
           transition={{ duration: 0.4, delay: 0.2 }}
         >
-          <Button size="lg" className="w-full text-[16px]" onClick={handleGetStarted}>
+          <Button size="lg" className="w-full text-[16px]" onClick={onGetStarted}>
             Get Started
             <ArrowRight size={20} />
           </Button>

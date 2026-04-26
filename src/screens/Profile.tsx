@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, Moon, ChevronRight, LogOut, Bell, Smartphone, User, Server, Trash2, Check, Pencil, X, ChevronUp, ChevronDown } from 'lucide-react';
-import { useLogto, type IdTokenClaims } from '@logto/react';
+import { Settings, Moon, ChevronRight, Bell, Smartphone, User, Server, Trash2, Check, Pencil, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
@@ -10,8 +9,6 @@ import * as channel from '../services/clawChannel';
 import type { ChannelStatus } from '../services/clawChannel';
 
 export default function Profile({ onNavigate }: { onNavigate: (screen: string) => void }) {
-  const { signOut, getIdTokenClaims } = useLogto();
-  const [userClaims, setUserClaims] = useState<IdTokenClaims | null>(null);
   const [connections, setConnections] = useState<ServerConnection[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ServerConnection | null>(null);
@@ -41,12 +38,6 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
     window.addEventListener(CONNECTIONS_UPDATED_EVENT, handleConnectionsUpdated);
     return () => window.removeEventListener(CONNECTIONS_UPDATED_EVENT, handleConnectionsUpdated);
   }, [refresh]);
-
-  useEffect(() => {
-    void getIdTokenClaims().then((claims) => {
-      if (claims) setUserClaims(claims);
-    });
-  }, [getIdTokenClaims]);
 
   // Reactive connection status — subscribe to each connection's status changes
   useEffect(() => {
@@ -120,14 +111,10 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
 
       <div className="flex items-center gap-5 mb-8">
         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-accent to-[#6D28D9] flex items-center justify-center text-white shadow-md border-2 border-white overflow-hidden">
-          {userClaims?.picture ? (
-            <img src={userClaims.picture} alt="avatar" className="w-full h-full object-cover" />
-          ) : (
-            <User size={32} />
-          )}
+          <User size={32} />
         </div>
         <div>
-          <h2 className="text-xl font-bold">{userClaims?.name || userClaims?.username || 'OpenClaw User'}</h2>
+          <h2 className="text-xl font-bold">Clawline User</h2>
         </div>
       </div>
 
@@ -246,11 +233,6 @@ export default function Profile({ onNavigate }: { onNavigate: (screen: string) =
         <Card className="overflow-hidden">
           <SettingItem icon={Settings} label="Preferences" onClick={() => onNavigate('preferences')} />
         </Card>
-
-        <Button variant="destructive" className="w-full" onClick={() => { signOut(window.location.origin); }}>
-          <LogOut size={20} />
-          Log Out
-        </Button>
 
         <p className="text-center text-[11px] text-text/30 dark:text-text-inv/25 mt-4">
           Clawline v{__APP_VERSION__} ({__BUILD_HASH__})

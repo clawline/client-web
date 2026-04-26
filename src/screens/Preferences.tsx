@@ -1,15 +1,10 @@
 import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { ChevronLeft, User, Sliders, Sparkles, Mic, Bell, Volume2, Download, Upload, Check } from 'lucide-react';
+import { ChevronLeft, User, Sliders, Bell, Volume2, Download, Upload, Check } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
 import { getUserName, setUserName } from '../App';
 import { getSoundEnabled, setSoundEnabled } from '../hooks/useNotificationSound';
-import {
-  isSuggestionsEnabled, setSuggestionsEnabled, getSuggestionCustomPrompt, setSuggestionCustomPrompt,
-  getReplyDraftPrompt, setReplyDraftPrompt,
-  isVoiceRefineEnabled, setVoiceRefineEnabled, getVoiceRefineCustomPrompt, setVoiceRefineCustomPrompt,
-} from '../services/suggestions';
 import { useNotificationPermission } from '../hooks/useNotificationPermission';
 
 const STREAMING_OUTPUT_KEY = 'clawline.streaming.enabled';
@@ -24,35 +19,12 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
     return stored !== 'false';
   });
 
-  const [suggestionsOn, setSuggestionsOn] = useState(() => isSuggestionsEnabled());
-  const [suggestionPrompt, setSuggestionPromptVal] = useState(() => getSuggestionCustomPrompt());
-  const [voiceRefineOn, setVoiceRefineOn] = useState(() => isVoiceRefineEnabled());
-  const [voiceRefinePrompt, setVoiceRefinePromptVal] = useState(() => getVoiceRefineCustomPrompt());
-  const { permission, active, requestPermission, optOut, optIn } = useNotificationPermission();
+  const { permission, active, requestPermission: _rp, optOut, optIn } = useNotificationPermission();
+  void _rp;
 
   const handleStreamingToggle = (checked: boolean) => {
     setStreamingEnabled(checked);
     localStorage.setItem(STREAMING_OUTPUT_KEY, checked ? 'true' : 'false');
-  };
-
-  const handleSuggestionsToggle = (checked: boolean) => {
-    setSuggestionsOn(checked);
-    setSuggestionsEnabled(checked);
-  };
-
-  const handleSuggestionPromptChange = (value: string) => {
-    setSuggestionPromptVal(value);
-    setSuggestionCustomPrompt(value);
-  };
-
-  const handleVoiceRefineToggle = (checked: boolean) => {
-    setVoiceRefineOn(checked);
-    setVoiceRefineEnabled(checked);
-  };
-
-  const handleVoiceRefinePromptChange = (value: string) => {
-    setVoiceRefinePromptVal(value);
-    setVoiceRefineCustomPrompt(value);
   };
 
   // ── Config export / import ──────────────────────────────────────
@@ -62,10 +34,6 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
     'clawline.userName',
     'clawline.darkMode',
     'clawline.streaming.enabled',
-    'clawline.suggestions.enabled',
-    'clawline.suggestions.prompt',
-    'clawline.voiceRefine.enabled',
-    'clawline.voiceRefine.prompt',
     'clawline.agentNames',
     'clawline.agentFavorites',
     'clawline.chatlist.viewMode',
@@ -83,12 +51,10 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
 
   const handleExport = () => {
     const data: Record<string, unknown> = { _version: CONFIG_VERSION };
-    // Fixed keys
     for (const key of EXPORT_KEYS) {
       const val = localStorage.getItem(key);
       if (val !== null) data[key] = val;
     }
-    // Dynamic prefix keys (agent order per connection)
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)!;
       if (k.startsWith('clawline.agentOrder.') || k.startsWith('clawline.split')) {
@@ -112,26 +78,19 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
       try {
         const data = JSON.parse(ev.target?.result as string);
         if (!data || typeof data !== 'object') throw new Error('Invalid format');
-        let count = 0;
         for (const [key, val] of Object.entries(data)) {
           if (key === '_version') continue;
-          if (typeof val === 'string') {
-            localStorage.setItem(key, val);
-            count++;
-          }
+          if (typeof val === 'string') localStorage.setItem(key, val);
         }
         setImportStatus('ok');
         setTimeout(() => {
           setImportStatus('idle');
-          // Reload to apply all settings
           window.location.reload();
         }, 1200);
-        void count;
       } catch {
         setImportStatus('error');
         setTimeout(() => setImportStatus('idle'), 2500);
       }
-      // Reset input so same file can be re-selected
       if (importInputRef.current) importInputRef.current.value = '';
     };
     reader.readAsText(file);
@@ -139,7 +98,6 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="flex flex-col h-full bg-surface dark:bg-surface-dark">
-      {/* Header */}
       <div className="px-4 py-4 sticky top-0 bg-surface/80 dark:bg-surface-dark/80 backdrop-blur-xl z-20 flex items-center justify-between">
         <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} aria-label="Go back" title="Go back" className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2 text-text dark:text-text-inv">
           <ChevronLeft size={28} />
@@ -157,10 +115,7 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
           <Card className="p-5 space-y-4">
             <div>
               <label className="block text-[13px] font-medium text-text/70 dark:text-text-inv/70 mb-1.5">Display Name</label>
-              <Input
-                defaultValue={getUserName()}
-                onChange={(e) => setUserName(e.target.value)}
-              />
+              <Input defaultValue={getUserName()} onChange={(e) => setUserName(e.target.value)} />
             </div>
           </Card>
         </section>
@@ -170,17 +125,10 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
             <Sliders size={16} /> Chat Settings
           </h3>
           <Card className="p-5">
-            <motion.div
-              layout
-              className="flex items-center justify-between gap-4 rounded-[24px] border border-border dark:border-border-dark bg-surface/80 dark:bg-surface-dark/80 px-4 py-4"
-            >
+            <motion.div layout className="flex items-center justify-between gap-4 rounded-[24px] border border-border dark:border-border-dark bg-surface/80 dark:bg-surface-dark/80 px-4 py-4">
               <div className="min-w-0">
-                <label htmlFor="streaming-output-toggle" className="block text-[15px] font-semibold text-text dark:text-text-inv">
-                  Streaming Output
-                </label>
-                <p className="mt-1 text-[13px] text-text/50 dark:text-text-inv/50">
-                  Show AI responses character by character
-                </p>
+                <label htmlFor="streaming-output-toggle" className="block text-[15px] font-semibold text-text dark:text-text-inv">Streaming Output</label>
+                <p className="mt-1 text-[13px] text-text/50 dark:text-text-inv/50">Show AI responses character by character</p>
               </div>
               <input
                 id="streaming-output-toggle"
@@ -196,80 +144,13 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
 
         <section>
           <h3 className="text-sm font-semibold text-text/50 dark:text-text-inv/50 mb-4 uppercase tracking-wider flex items-center gap-2">
-            <Sparkles size={16} /> AI Suggestions
-          </h3>
-          <Card className="p-5 space-y-5">
-            <motion.div
-              layout
-              className="flex items-center justify-between gap-4 rounded-[24px] border border-border dark:border-border-dark bg-surface/80 dark:bg-surface-dark/80 px-4 py-4"
-            >
-              <div className="min-w-0">
-                <label htmlFor="suggestions-toggle" className="block text-[15px] font-semibold text-text dark:text-text-inv">
-                  Smart Suggestions
-                </label>
-                <p className="mt-1 text-[13px] text-text/50 dark:text-text-inv/50">
-                  AI-generated follow-up suggestions after messages
-                </p>
-              </div>
-              <input
-                id="suggestions-toggle"
-                type="checkbox"
-                className="ios-toggle shrink-0"
-                checked={suggestionsOn}
-                onChange={(e) => handleSuggestionsToggle(e.target.checked)}
-                aria-label="Toggle AI suggestions"
-              />
-            </motion.div>
-
-            {suggestionsOn && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
-                <label className="block text-[13px] font-medium text-text/70 dark:text-text-inv/70 mb-1.5">Custom Prompt</label>
-                <textarea
-                  rows={3}
-                  value={suggestionPrompt}
-                  onChange={(e) => handleSuggestionPromptChange(e.target.value)}
-                  placeholder="Additional instructions for suggestion generation (appended to global prompt)..."
-                  className="w-full bg-surface dark:bg-surface-dark border border-border dark:border-border-dark rounded-[16px] px-4 py-3 text-[15px] text-text dark:text-text-inv focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none placeholder:text-text/35 dark:placeholder:text-text-inv/35"
-                />
-                <p className="mt-1.5 text-[11px] text-text/40 dark:text-text-inv/40">
-                  This prompt is combined with the server's global prompt, not a replacement.
-                </p>
-              </motion.div>
-            )}
-
-            {/* Reply Draft Prompt */}
-            <div className="pt-2">
-              <label className="block text-[13px] font-medium text-text/70 dark:text-text-inv/70 mb-1.5">Reply Draft Prompt</label>
-              <textarea
-                rows={3}
-                defaultValue={getReplyDraftPrompt()}
-                onChange={(e) => setReplyDraftPrompt(e.target.value)}
-                placeholder="Custom instructions for Suggest Reply (e.g., 'Reply in Chinese', 'Keep it brief')..."
-                className="w-full bg-surface dark:bg-surface-dark border border-border dark:border-border-dark rounded-[16px] px-4 py-3 text-[15px] text-text dark:text-text-inv focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none placeholder:text-text/35 dark:placeholder:text-text-inv/35"
-              />
-              <p className="mt-1.5 text-[11px] text-text/40 dark:text-text-inv/40">
-                Appended to the default reply draft prompt. Controls how Suggest Reply drafts responses.
-              </p>
-            </div>
-          </Card>
-        </section>
-
-        <section>
-          <h3 className="text-sm font-semibold text-text/50 dark:text-text-inv/50 mb-4 uppercase tracking-wider flex items-center gap-2">
             <Volume2 size={16} /> Notification Sound
           </h3>
           <Card className="p-5">
-            <motion.div
-              layout
-              className="flex items-center justify-between gap-4 rounded-[24px] border border-border dark:border-border-dark bg-surface/80 dark:bg-surface-dark/80 px-4 py-4"
-            >
+            <motion.div layout className="flex items-center justify-between gap-4 rounded-[24px] border border-border dark:border-border-dark bg-surface/80 dark:bg-surface-dark/80 px-4 py-4">
               <div className="min-w-0">
-                <label htmlFor="sound-toggle" className="block text-[15px] font-semibold text-text dark:text-text-inv">
-                  Sound Effects
-                </label>
-                <p className="mt-1 text-[13px] text-text/50 dark:text-text-inv/50">
-                  Play a notification sound when agents reply
-                </p>
+                <label htmlFor="sound-toggle" className="block text-[15px] font-semibold text-text dark:text-text-inv">Sound Effects</label>
+                <p className="mt-1 text-[13px] text-text/50 dark:text-text-inv/50">Play a notification sound when agents reply</p>
               </div>
               <input
                 id="sound-toggle"
@@ -283,52 +164,6 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
           </Card>
         </section>
 
-        <section>
-          <h3 className="text-sm font-semibold text-text/50 dark:text-text-inv/50 mb-4 uppercase tracking-wider flex items-center gap-2">
-            <Mic size={16} /> Voice Refinement
-          </h3>
-          <Card className="p-5 space-y-5">
-            <motion.div
-              layout
-              className="flex items-center justify-between gap-4 rounded-[24px] border border-border dark:border-border-dark bg-surface/80 dark:bg-surface-dark/80 px-4 py-4"
-            >
-              <div className="min-w-0">
-                <label htmlFor="voice-refine-toggle" className="block text-[15px] font-semibold text-text dark:text-text-inv">
-                  Voice Text Refinement
-                </label>
-                <p className="mt-1 text-[13px] text-text/50 dark:text-text-inv/50">
-                  AI cleans up voice input before sending
-                </p>
-              </div>
-              <input
-                id="voice-refine-toggle"
-                type="checkbox"
-                className="ios-toggle shrink-0"
-                checked={voiceRefineOn}
-                onChange={(e) => handleVoiceRefineToggle(e.target.checked)}
-                aria-label="Toggle voice text refinement"
-              />
-            </motion.div>
-
-            {voiceRefineOn && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
-                <label className="block text-[13px] font-medium text-text/70 dark:text-text-inv/70 mb-1.5">Custom Prompt</label>
-                <textarea
-                  rows={3}
-                  value={voiceRefinePrompt}
-                  onChange={(e) => handleVoiceRefinePromptChange(e.target.value)}
-                  placeholder="Additional instructions for voice text refinement (appended to global prompt)..."
-                  className="w-full bg-surface dark:bg-surface-dark border border-border dark:border-border-dark rounded-[16px] px-4 py-3 text-[15px] text-text dark:text-text-inv focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none placeholder:text-text/35 dark:placeholder:text-text-inv/35"
-                />
-                <p className="mt-1.5 text-[11px] text-text/40 dark:text-text-inv/40">
-                  This prompt is combined with the server's global prompt, not a replacement.
-                </p>
-              </motion.div>
-            )}
-          </Card>
-        </section>
-
-        {/* Notifications */}
         <section>
           <h3 className="text-sm font-semibold text-text/50 dark:text-text-inv/50 mb-4 uppercase tracking-wider flex items-center gap-2">
             <Bell size={16} /> Notifications
@@ -354,20 +189,15 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
                   role="switch"
                   aria-checked={active}
                   onClick={() => { if (active) { optOut(); } else { void optIn(); } }}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20 ${
-                    active ? 'bg-primary' : 'bg-text/20 dark:bg-text-inv/20'
-                  }`}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20 ${active ? 'bg-primary' : 'bg-text/20 dark:bg-text-inv/20'}`}
                 >
-                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    active ? 'translate-x-5' : 'translate-x-0'
-                  }`} />
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${active ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
               )}
             </div>
           </Card>
         </section>
 
-        {/* ── Config import / export ── */}
         <section>
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-text/40 dark:text-text-inv/40 mb-3">数据备份</h2>
           <Card className="p-5 space-y-4">
@@ -376,18 +206,11 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
                 <p className="text-[14px] font-medium text-text dark:text-text-inv">导出配置</p>
                 <p className="text-[12px] text-text/50 dark:text-text-inv/40 mt-0.5">将服务器列表、名字、收藏、偏好等全部设置导出为 JSON 文件</p>
               </div>
-              <motion.button
-                whileTap={{ scale: 0.93 }}
-                onClick={handleExport}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium bg-primary/10 text-primary dark:bg-primary/15 hover:bg-primary/20 transition-colors shrink-0"
-              >
-                <Download size={14} />
-                导出
+              <motion.button whileTap={{ scale: 0.93 }} onClick={handleExport} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium bg-primary/10 text-primary dark:bg-primary/15 hover:bg-primary/20 transition-colors shrink-0">
+                <Download size={14} />导出
               </motion.button>
             </div>
-
             <div className="h-px bg-border/40 dark:bg-border-dark/40" />
-
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
                 <p className="text-[14px] font-medium text-text dark:text-text-inv">导入配置</p>
@@ -397,28 +220,14 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
                 whileTap={{ scale: 0.93 }}
                 onClick={() => importInputRef.current?.click()}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium shrink-0 transition-colors ${
-                  importStatus === 'ok'
-                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                    : importStatus === 'error'
-                    ? 'bg-red-500/10 text-red-500'
-                    : 'bg-text/[0.06] dark:bg-text-inv/[0.06] text-text dark:text-text-inv hover:bg-text/[0.1] dark:hover:bg-text-inv/[0.1]'
+                  importStatus === 'ok' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                  : importStatus === 'error' ? 'bg-red-500/10 text-red-500'
+                  : 'bg-text/[0.06] dark:bg-text-inv/[0.06] text-text dark:text-text-inv hover:bg-text/[0.1] dark:hover:bg-text-inv/[0.1]'
                 }`}
               >
-                {importStatus === 'ok' ? (
-                  <><Check size={14} />已导入</>
-                ) : importStatus === 'error' ? (
-                  <>格式错误</>
-                ) : (
-                  <><Upload size={14} />导入</>
-                )}
+                {importStatus === 'ok' ? (<><Check size={14} />已导入</>) : importStatus === 'error' ? (<>格式错误</>) : (<><Upload size={14} />导入</>)}
               </motion.button>
-              <input
-                ref={importInputRef}
-                type="file"
-                accept=".json,application/json"
-                className="hidden"
-                onChange={handleImportFile}
-              />
+              <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImportFile} />
             </div>
           </Card>
         </section>

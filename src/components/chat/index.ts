@@ -25,7 +25,6 @@ export {
 export { DeliveryTicks } from './DeliveryTicks';
 export { MessageItem } from './MessageItem';
 export { ActionSheet } from './ActionSheet';
-export { SuggestionBar } from './SuggestionBar';
 export { HistoryDrawer, type ConversationItem } from './HistoryDrawer';
 export { HeaderMenu } from './HeaderMenu';
 export { ConnectionBanner } from './ConnectionBanner';

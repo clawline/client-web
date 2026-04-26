@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type Screen = 'onboarding' | 'callback' | 'chats' | 'chat_room' | 'dashboard' | 'inbox' | 'profile' | 'search' | 'preferences' | 'pairing';
+export type Screen = 'onboarding' | 'chats' | 'chat_room' | 'inbox' | 'profile' | 'search' | 'preferences' | 'pairing';
 
 export type SplitPane = {
   connectionId: string;

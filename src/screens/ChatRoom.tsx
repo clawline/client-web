@@ -14,7 +14,7 @@ import MarkdownRenderer from '../components/MarkdownRenderer';
 import MemorySheet from '../components/MemorySheet';
 import FileGallery from '../components/FileGallery';
 import * as outbox from '../services/outbox';
-import { refineVoiceText, fetchOlderMessages, syncMessageToLocal } from '../services/suggestions';
+import { fetchOlderMessages, syncMessageToLocal } from '../services/suggestions';
 import { getMessages as getCachedMessages, appendMessage, isWarmed } from '../stores/messageCache';
 import {
   type DeliveryStatus, type Message, type AgentInfo,
@@ -25,7 +25,7 @@ import {
   getConnectionDisplayName, getSkillDescription,
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
-import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadPanel } from '../components/chat';
+import { DeliveryTicks, MessageItem, ActionSheet, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadPanel } from '../components/chat';
 import ModelPicker, { type ModelsData } from '../components/chat/ModelPicker';
 import { useThreadStore, subscribeThreadEvents } from '../stores/threadStore';
 
@@ -157,10 +157,9 @@ export default function ChatRoom({
   const [toolCallHistory, setToolCallHistory] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number; endTime: number; resultSummary?: string }[]>([]);
   const [toolHistoryExpanded, setToolHistoryExpanded] = useState(false);
   const [thinkingText, setThinkingText] = useState('');
-  // Phase ref (not state) — every transition MUST accompany a state change to trigger re-render
-  const streamingPhaseRef = useRef<'idle' | 'streaming_pre' | 'captured' | 'streaming_final'>('idle');
-  // Length of accumulated text when entering streaming_final — used to strip thinking prefix
-  const thinkingTextLenRef = useRef(0);
+  // Thinking cutoff: null = no thinking phase, -1 = thinking.start received (awaiting snapshot),
+  // >= 0 = thinking text length (strip this prefix from cumulative text.delta for display)
+  const thinkingCutoffRef = useRef<number | null>(null);
   const retryingRef = useRef<Set<string>>(new Set()); // B1: prevent double-tap retry
   const [voiceMode, setVoiceMode] = useState(() => localStorage.getItem('clawline:voiceMode') === 'true');
   const [voiceListening, setVoiceListening] = useState(false);
@@ -172,7 +171,6 @@ export default function ChatRoom({
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [reconnectInfo, setReconnectInfo] = useState({ attempt: 0, maxAttempts: 6, delayMs: 0 });
-  const [voiceRefining, setVoiceRefining] = useState(false);
 
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -194,6 +192,17 @@ export default function ChatRoom({
     for (const count of s.unreadCounts.values()) total += count;
     return total;
   });
+  // Single function to reset all streaming/thinking state — eliminates scattered duplicate resets
+  // Note: does NOT clear toolCallHistory — history persists until next user message
+  const resetStreamingState = useCallback(() => {
+    thinkingCutoffRef.current = null;
+    streamingSourceAgentRef.current = null;
+    setThinkingText('');
+    setIsThinking(false);
+    if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+    setActiveToolCalls([]);
+  }, []);
+
   // Wide enough for sidebar layout (>=768px)
   const [isWideViewport, setIsWideViewport] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768);
   useEffect(() => {
@@ -424,9 +433,9 @@ export default function ChatRoom({
     setHasMoreHistory(false);
     setLoadingMoreHistory(false);
     initialScrollRef.current = true; // next messages render should jump to bottom instantly
-    streamingSourceAgentRef.current = null; // Clear streaming source tracking on agent change
-    streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
-    setThinkingText('');
+    resetStreamingState();
+    setToolCallHistory([]);
+    setToolHistoryExpanded(false);
 
     if (!connId || !agentId) {
       setHasLoadedMessages(true);
@@ -561,12 +570,9 @@ export default function ChatRoom({
       try { channel.requestHistory(effectiveId, agentId || undefined, runtimeConnId, { limit: 20 }); } catch { /* ignore */ }
     };
 
-    setIsThinking(false); if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
-    setActiveToolCalls([]);
+    resetStreamingState();
     setToolCallHistory([]);
     setToolHistoryExpanded(false);
-    setThinkingText('');
-    streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
     setShowHeaderMenu(false);
     setShowHistoryDrawer(false);
     setConversations([]);
@@ -614,7 +620,6 @@ export default function ChatRoom({
     }
 
     const unsubMsg = channel.onMessage((packet) => {
-      console.log('[DEBUG WS] event=', packet.type, 'data.threadId=', packet.data?.threadId, 'data.agentId=', packet.data?.agentId);
       if (packet.type === 'connection.open') {
         // Connection established: select agent + request history + agent list
         try { channel.requestAgentList(runtimeConnId); } catch { /* ignore */ }
@@ -774,7 +779,6 @@ export default function ChatRoom({
             },
           ];
         });
-        console.log('[DEBUG message.send] threadId=', packet.data.threadId, 'full data keys=', Object.keys(packet.data));
 
         // Keep in-memory cache in sync for cross-screen navigation
         const aiMsgId = (packet.data.messageId as string) || Date.now().toString();
@@ -785,9 +789,7 @@ export default function ChatRoom({
           chatId: (packet.data.chatId as string) || chatId || undefined,
         });
 
-        // Clear thinking indicator on final message delivery
-        setIsThinking(false);
-        if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+        resetStreamingState();
         // Safety: clear any lingering streaming/streamingDone flags
         setTimeout(() => {
           setMessages((prev) => {
@@ -797,11 +799,6 @@ export default function ChatRoom({
           });
         }, 300);
         // S1: Mark ALL pending/sent user messages as delivered (bot responded = all prior msgs received)
-        setActiveToolCalls([]); // S3: Clear stale tool calls on final message
-        setToolCallHistory([]);
-        setToolHistoryExpanded(false);
-        setThinkingText('');
-        streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
         setMessages((prev) => {
           let changed = false;
           const next = prev.map((m) => {
@@ -824,6 +821,7 @@ export default function ChatRoom({
           return { ...m, reactions: reactions.filter((r) => r !== emoji) };
         }));
       } else if (packet.type === 'tool.start') {
+        if (packet.data?.threadId) return;
         const d = packet.data as { toolCallId?: string; toolName?: string; args?: Record<string, unknown>; agentId?: string };
         if (!d.agentId || !agentId || d.agentId === agentId) {
           const tc = { toolCallId: d.toolCallId || `tc-${Date.now()}`, toolName: d.toolName || 'tool', args: d.args, startTime: Date.now() };
@@ -832,6 +830,7 @@ export default function ChatRoom({
           setIsThinking(true);
         }
       } else if (packet.type === 'tool.end') {
+        if (packet.data?.threadId) return;
         const d = packet.data as { toolCallId?: string; agentId?: string; resultSummary?: string };
         if (!d.agentId || !agentId || d.agentId === agentId) {
           setActiveToolCalls((prev) => {
@@ -849,24 +848,15 @@ export default function ChatRoom({
       } else if (packet.type === 'thinking.start') {
         // Thread thinking belongs in thread panel, not main chat
         if (packet.data.threadId) return;
-        // Only accept thinking for current agent (ignore events without agentId or from other agents)
         const thinkAgentId = (packet.data as { agentId?: string }).agentId;
         if (!thinkAgentId || !agentId || thinkAgentId === agentId) {
-          // Mark phase as captured — thinkingText is already buffered by text.delta handler
-          if (streamingPhaseRef.current === 'streaming_pre' || streamingPhaseRef.current === 'idle') {
-            streamingPhaseRef.current = 'captured';
-          }
+          // Mark cutoff as pending — first text.delta after this will snapshot the thinking length
+          thinkingCutoffRef.current = -1;
+          // Clear any pre-thinking streaming bubble — content moves to thinking indicator
+          setMessages((prev) => prev.filter((m) => !m.isStreaming));
           setIsThinking(true);
           setThinkingPhase('Thinking');
           thinkingStartRef.current = Date.now();
-          // Progressive phase labels (ChatGPT-style)
-          if (thinkingTimerRef.current) clearInterval(thinkingTimerRef.current);
-          thinkingTimerRef.current = setInterval(() => {
-            const elapsed = Date.now() - thinkingStartRef.current;
-            if (elapsed > 15000) setThinkingPhase('Working on it…');
-            else if (elapsed > 8000) setThinkingPhase('Putting it together');
-            else if (elapsed > 4000) setThinkingPhase('Analyzing');
-          }, 1000);
         }
       } else if (packet.type === 'thinking.update') {
         if (packet.data.threadId) return;
@@ -973,7 +963,7 @@ export default function ChatRoom({
         setAgentPresence({ status: 'online' });
       } else if (packet.type === 'stream.resume') {
         // Stream resume after reconnection — restore accumulated streaming text
-        streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
+        thinkingCutoffRef.current = null;
         setThinkingText('');
         const resumeData = packet.data as { chatId?: string; agentId?: string; text?: string; isComplete?: boolean; startTime?: number };
         const resumeAgentId = resumeData.agentId;
@@ -1022,16 +1012,25 @@ export default function ChatRoom({
         const deltaData = packet.data as { chatId?: string; text?: string; done?: boolean; timestamp?: number };
         
         if (deltaData.done) {
-          // Streaming finished - clear source tracking and phase state.
-          // Don't remove streaming placeholder yet — let message.send replace it
-          // to avoid a 1-frame flash where the message disappears and reappears.
+          // Streaming finished — clear state but keep content visible for message.send to replace
           streamingSourceAgentRef.current = null;
-          streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
+          thinkingCutoffRef.current = null;
           setThinkingText('');
+          setIsThinking(false);
+          if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
           // Mark streaming message as done (remove cursor but keep content visible)
           setMessages((prev) => prev.map((m) =>
             m.isStreaming ? { ...m, isStreaming: false, streamingDone: true } : m
           ));
+          // Safety: if message.send never arrives (network error, server crash),
+          // auto-clear streamingDone placeholder after 5s so it doesn't linger forever.
+          setTimeout(() => {
+            setMessages((prev) => {
+              const hasStale = prev.some((m) => m.streamingDone);
+              if (!hasStale) return prev;
+              return prev.map((m) => m.streamingDone ? { ...m, streamingDone: false } : m);
+            });
+          }, 5000);
         } else {
           // Determine the source agent of this stream
           // First delta without agentId — assume it belongs to current agent at time of request
@@ -1050,48 +1049,49 @@ export default function ChatRoom({
           if (localStorage.getItem('clawline.streaming.enabled') === 'false') return;
 
           // Streaming text output from backend — phase-aware
+          // Helper: create or update the streaming message bubble
+          const _updateStreamingMsg = (text: string, ts?: number) => {
+            setMessages((prev) => {
+              const streamingIdx = prev.findIndex((m) => m.isStreaming);
+              if (streamingIdx >= 0) {
+                const updated = [...prev];
+                updated[streamingIdx] = { ...updated[streamingIdx], text };
+                return updated;
+              }
+              return [
+                ...prev,
+                {
+                  id: `streaming-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  sender: 'ai' as const,
+                  text,
+                  isStreaming: true,
+                  timestamp: ts || Date.now(),
+                },
+              ];
+            });
+          };
+
           if (typeof deltaData.text === 'string') {
-            if (streamingPhaseRef.current === 'captured' || streamingPhaseRef.current === 'streaming_final') {
-              // Post-tool text = final response → create/update streaming message
-              if (streamingPhaseRef.current === 'captured') {
-                streamingPhaseRef.current = 'streaming_final';
-                // Record thinking text length so we can strip the thinking prefix
-                // from the accumulated full text that onPartialReply sends
-                thinkingTextLenRef.current = deltaData.text.length;
-                setIsThinking(false);
-                if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
-                // First delta after transition — might still be all thinking text, skip
-                return;
-              }
-              // Strip thinking prefix: onPartialReply sends accumulated full text
-              const displayText = thinkingTextLenRef.current > 0 && deltaData.text.length > thinkingTextLenRef.current
-                ? deltaData.text.slice(thinkingTextLenRef.current).replace(/^\n+/, '')
-                : (thinkingTextLenRef.current > 0 && deltaData.text.length <= thinkingTextLenRef.current ? '' : deltaData.text);
+            setThinkingText(deltaData.text);
+
+            const cutoff = thinkingCutoffRef.current;
+            if (cutoff === -1) {
+              // First delta after thinking.start — snapshot thinking text length, skip display
+              thinkingCutoffRef.current = deltaData.text.length;
+              if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
+              return;
+            }
+            if (cutoff !== null && cutoff >= 0) {
+              // Strip thinking prefix from cumulative text
+              const displayText = deltaData.text.length > cutoff
+                ? deltaData.text.slice(cutoff).replace(/^\n+/, '')
+                : '';
               if (!displayText) return;
-              setMessages((prev) => {
-                const streamingIdx = prev.findIndex((m) => m.isStreaming);
-                if (streamingIdx >= 0) {
-                  const updated = [...prev];
-                  updated[streamingIdx] = { ...updated[streamingIdx], text: displayText };
-                  return updated;
-                }
-                return [
-                  ...prev,
-                  {
-                    id: `streaming-${Date.now()}`,
-                    sender: 'ai',
-                    text: displayText,
-                    isStreaming: true,
-                    timestamp: deltaData.timestamp || Date.now(),
-                  },
-                ];
-              });
+              _updateStreamingMsg(displayText, deltaData.timestamp);
             } else {
-              // Pre-tool text — buffer in thinkingText, don't create streaming message
-              if (streamingPhaseRef.current === 'idle') {
-                streamingPhaseRef.current = 'streaming_pre';
-              }
-              setThinkingText(deltaData.text);
+              // No thinking phase (cutoff is null) — show all text directly.
+              // If thinking.start arrives later, it clears this bubble.
+              _updateStreamingMsg(deltaData.text, deltaData.timestamp);
             }
           }
         }
@@ -1465,20 +1465,21 @@ export default function ChatRoom({
         deliveryStatus: 'sent',
       };
       setMessages((prev) => [...prev, userMsg]);
+      // Persist user message to in-memory cache so it survives page refresh
+      appendMessage(runtimeConnId, agentId || '', {
+        id: userMsg.id, sender: 'user', text, timestamp: userMsg.timestamp,
+        chatId: chatId || undefined,
+      });
       // Immediately show thinking state after sending (unless it's a slash command)
       if (!text.startsWith('/')) {
         setThinkingText('');
-        streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
+        thinkingCutoffRef.current = null;
+        // Clear previous round's tool history when starting a new conversation turn
+        setToolCallHistory([]);
+        setToolHistoryExpanded(false);
         setIsThinking(true);
-        setThinkingPhase('Thinking');
+        setThinkingPhase('Processing');
         thinkingStartRef.current = Date.now();
-        if (thinkingTimerRef.current) clearInterval(thinkingTimerRef.current);
-        thinkingTimerRef.current = setInterval(() => {
-          const elapsed = Date.now() - thinkingStartRef.current;
-          if (elapsed > 15000) setThinkingPhase('Working on it…');
-          else if (elapsed > 8000) setThinkingPhase('Putting it together');
-          else if (elapsed > 4000) setThinkingPhase('Analyzing');
-        }, 1000);
       }
     } catch {
       const msgId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1622,14 +1623,7 @@ export default function ChatRoom({
     stopVoiceRecognition();
     if (!rawText) return;
 
-    // Refine voice text via gateway (async, shows "Refining..." state)
-    setVoiceRefining(true);
-    let text = rawText;
-    try {
-      text = await refineVoiceText(rawText, messages, runtimeConnId);
-    } catch { /* use raw text */ }
-    setVoiceRefining(false);
-
+    const text = rawText;
     setInputValue(text);
     // Auto-send
     setTimeout(() => {
@@ -1651,7 +1645,9 @@ export default function ChatRoom({
       setVoiceInterimText('');
       setVoiceMode(false);
       setThinkingText('');
-      streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
+      thinkingCutoffRef.current = null;
+      setToolCallHistory([]);
+      setToolHistoryExpanded(false);
       setIsThinking(true);
     }, 50);
   }, [voiceFinalText, voiceInterimText, stopVoiceRecognition, agentId, runtimeConnId, replyingTo, messages]);
@@ -2128,10 +2124,9 @@ export default function ChatRoom({
           </div>
         )}
 
-        {/* Thinking indicator — show when thinking (not streaming) OR when buffering pre-tool text */}
+        {/* Thinking indicator — visible when isThinking and no streaming bubble is shown */}
         <AnimatePresence>
-          {((isThinking && !messages.some((m) => m.isStreaming)) ||
-            (thinkingText && streamingPhaseRef.current !== 'streaming_final' && streamingPhaseRef.current !== 'idle')) && (
+          {isThinking && !messages.some((m) => m.isStreaming) && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -2165,58 +2160,14 @@ export default function ChatRoom({
                     </div>
                   </div>
                 )}
-
-                {/* Expandable tool call history */}
-                {(toolCallHistory.length > 0 || activeToolCalls.length > 1) && (
-                  <div className="mt-2 rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-2 shadow-sm dark:border-slate-700/70 dark:bg-card-alt/75">
-                    <button
-                      onClick={() => setToolHistoryExpanded((v) => !v)}
-                      className="flex items-center gap-1 text-[11px] text-slate-500 transition-colors hover:text-text dark:text-slate-400 dark:hover:text-text-inv"
-                    >
-                      <span className="inline-block transition-transform" style={{ transform: toolHistoryExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▸</span>
-                      {toolCallHistory.length + activeToolCalls.length} tool call{toolCallHistory.length + activeToolCalls.length !== 1 ? 's' : ''}
-                    </button>
-                    {toolHistoryExpanded && (
-                      <div className="mt-1 flex max-h-40 flex-col gap-1 overflow-y-auto text-[11px] text-slate-600 dark:text-slate-400">
-                        {toolCallHistory.map((tc) => (
-                          <div key={tc.toolCallId} className="flex items-center gap-1 truncate">
-                            <span className="text-emerald-500">✓</span>
-                            <span className="font-medium">{formatToolName(tc.toolName)}</span>
-                            {tc.resultSummary && (
-                              <span className="truncate text-slate-400 dark:text-slate-500" title={tc.resultSummary}>
-                                — {formatResultSummary(tc.resultSummary)}
-                              </span>
-                            )}
-                            <span className="flex-shrink-0 text-slate-400 dark:text-slate-500">{tc.endTime - tc.startTime}ms</span>
-                          </div>
-                        ))}
-                        {activeToolCalls.map((tc) => (
-                          <div key={tc.toolCallId} className="flex items-center gap-1 truncate">
-                            <span className="text-primary">⟳</span>
-                            <span className="font-medium">{formatToolName(tc.toolName)}</span>
-                            {formatToolArgSnippet(tc.args) && (
-                              <span className="truncate text-slate-400 dark:text-slate-500">
-                                {formatToolArgSnippet(tc.args)}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
               {/* Cancel thinking button */}
               <button
                 onClick={() => {
-                  setIsThinking(false);
-                  setActiveToolCalls([]);
-                  setToolCallHistory([]);
+                  // Send /stop to server to halt generation
+                  try { channel.sendText('/stop', agentId || undefined, runtimeConnId); } catch { /* ignore */ }
+                  resetStreamingState();
                   setThinkingPhase('');
-                  setThinkingText('');
-                  streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;
-                  if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
-                  // Mark any streaming messages as complete
                   setMessages((prev) => prev.map((m) => m.isStreaming ? { ...m, isStreaming: false, text: m.text + '\n\n*[cancelled]*' } : m));
                 }}
                 className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-primary/40 transition-colors hover:bg-primary/10 hover:text-primary self-start"
@@ -2228,6 +2179,45 @@ export default function ChatRoom({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Tool call history — persists after response completes, cleared on next user message */}
+        {toolCallHistory.length > 0 && !isThinking && (
+          <div className="mt-2 rounded-2xl border border-slate-200/60 bg-slate-50/80 px-3 py-2 dark:border-slate-700/50 dark:bg-card-alt/50">
+            <button
+              onClick={() => setToolHistoryExpanded((v) => !v)}
+              className="flex items-center gap-1 text-[11px] text-slate-500 transition-colors hover:text-text dark:text-slate-400 dark:hover:text-text-inv"
+            >
+              <span className="inline-block transition-transform" style={{ transform: toolHistoryExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▸</span>
+              {toolCallHistory.length} tool call{toolCallHistory.length !== 1 ? 's' : ''}
+            </button>
+            {toolHistoryExpanded && (
+              <div className="mt-1 flex max-h-60 flex-col gap-2 overflow-y-auto text-[11px] text-slate-600 dark:text-slate-400">
+                {toolCallHistory.map((tc) => (
+                  <div key={tc.toolCallId} className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-1">
+                      <span className="text-emerald-500">✓</span>
+                      <span className="font-medium">{formatToolName(tc.toolName)}</span>
+                      <span className="flex-shrink-0 text-slate-400 dark:text-slate-500">{tc.endTime - tc.startTime}ms</span>
+                    </div>
+                    {tc.args && Object.keys(tc.args).length > 0 && (
+                      <div className="ml-4 rounded-lg bg-slate-100/80 px-2 py-1 text-[10px] text-slate-500 dark:bg-slate-800/50 dark:text-slate-500">
+                        {Object.entries(tc.args).map(([k, v]) => (
+                          <div key={k} className="truncate"><span className="font-medium">{k}:</span> {typeof v === 'string' ? v : JSON.stringify(v)}</div>
+                        ))}
+                      </div>
+                    )}
+                    {tc.resultSummary && (
+                      <div className="ml-4 whitespace-pre-wrap break-words rounded-lg bg-emerald-50/80 px-2 py-1 text-[10px] text-slate-600 dark:bg-emerald-900/20 dark:text-slate-400">
+                        {tc.resultSummary}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -2533,20 +2523,6 @@ export default function ChatRoom({
           )}
         </AnimatePresence>
 
-        {/* Dynamic suggestions area */}
-        <SuggestionBar
-          messages={messages}
-          isThinking={isThinking}
-          showSlashMenu={showSlashMenu}
-          showEmojiPicker={showEmojiPicker}
-          skillCount={skillCount}
-          connectionId={runtimeConnId}
-          onOpenSlashMenu={() => { setInputValue('/'); setShowSlashMenu(true); }}
-          onOpenContextViewer={() => setShowContextViewer(true)}
-          onSetInputValue={setInputValue}
-          onQuickSend={quickSend}
-        />
-
         {/* Edit bar */}
         {editingMsg && (
           <div className="flex items-center gap-2 px-4 py-2 mb-2 bg-amber-50 border border-amber-200 rounded-[16px]">
@@ -2603,19 +2579,6 @@ export default function ChatRoom({
                       {voiceInterimText && (
                         <span className="text-text/40 dark:text-text-inv/40">{voiceInterimText}</span>
                       )}
-                    </p>
-                  </motion.div>
-                )}
-                {voiceRefining && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 8 }}
-                    className="absolute bottom-full left-0 right-0 z-20 mx-1 mb-2 rounded-2xl border border-primary/30 bg-primary/6 px-4 py-3 shadow-lg dark:border-primary/20 dark:bg-primary/8"
-                  >
-                    <p className="text-[13px] text-primary font-medium flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" />
-                      {isChinese ? '正在优化文本...' : 'Refining text...'}
                     </p>
                   </motion.div>
                 )}

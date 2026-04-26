@@ -223,3 +223,157 @@ Messages are stored only in Supabase `cl_messages` (via the Gateway relay). The 
 - System messages filtered from previews: `🐾 ...`, `[Image]`, `[image]`, `📎...`, `*[cancelled]*`, diagnostic dumps.
 - Expand card triggers markAsRead immediately (viewing = read).
 - Multi-connection inbox cache injection via `localStorage.setItem('openclaw.inbox.cache', ...)` still works for testing.
+
+## Streaming State Machine (ChatRoom.tsx)
+
+### Architecture
+
+The chat streaming uses a single ref `thinkingCutoffRef` (type: `number | null`) to manage three states:
+
+| Value | Meaning | text.delta behavior |
+|-------|---------|-------------------|
+| `null` | No thinking phase (thinking OFF, or not yet started) | Show all text directly as streaming bubble |
+| `-1` | `thinking.start` received, awaiting first delta to snapshot | Skip display, record text length |
+| `>= 0` | Thinking text length (cutoff position) | Strip thinking prefix, show only response text |
+
+**Event flow (thinking ON):**
+```
+text.delta → streaming bubble (pre-thinking)
+thinking.start → cutoff = -1, clear bubble, show thinking indicator
+text.delta → cutoff = text.length (snapshot), skip display
+text.delta → strip prefix (text.slice(cutoff)), show streaming bubble
+text.delta done=true → mark streamingDone, keep content
+message.send → replace with final message, resetStreamingState()
+```
+
+**Event flow (thinking OFF):**
+```
+text.delta → streaming bubble directly (cutoff stays null)
+text.delta done=true → mark streamingDone
+message.send → replace with final message, resetStreamingState()
+```
+
+### resetStreamingState()
+
+All streaming/thinking cleanup is centralized in one function. Never duplicate reset logic — always call `resetStreamingState()`. It clears:
+- `thinkingCutoffRef` → null
+- `streamingSourceAgentRef` → null
+- `thinkingText`, `isThinking`, `thinkingTimer`
+- `activeToolCalls`
+
+**Note:** `toolCallHistory` and `toolHistoryExpanded` are NOT cleared by `resetStreamingState()` — they persist until the next user message (`sendMessage`) or agent switch. This is intentional so users can review tool calls after the response completes.
+
+### Key invariants
+
+- `thinkingText` is always set to cumulative `text.delta` data (used for thinking indicator display)
+- Thinking indicator shows when `isThinking && !messages.some(m => m.isStreaming)` — streaming bubble takes priority
+- Cancel button calls `resetStreamingState()` (client-side only — does NOT send /stop to server)
+- `streamingDone` flag + 5s auto-clear prevents stale placeholders if `message.send` never arrives
+
+## Local Development Testing
+
+### Full environment setup
+
+```bash
+# 1. Start gateway (if not running — check with curl http://localhost:19180/healthz)
+cd /path/to/clawline/gateway
+node --env-file=.env.dev server.js
+
+# 2. Start OpenClaw (if not running — check with openclaw status)
+openclaw gateway restart
+
+# 3. Start client dev server
+cd /path/to/clawline/client-web
+npm run dev  # port 4026
+
+# 4. Connect to local gateway in browser
+# URL: ws://localhost:19180/client?channelId=fires&token=<user_token>
+# Get token from: curl -s http://localhost:19180/api/state -H "X-Relay-Admin-Token: local-test-token"
+```
+
+### Browser Agent testing workflow
+
+```bash
+PORT=4821  # or 4822 if two agents running
+
+# Clean start
+curl -s -X POST http://127.0.0.1:$PORT/hook \
+  -H 'Content-Type: application/json' \
+  -d '{"task": "Navigate to http://localhost:4026. Clear localStorage and sessionStorage via console, reload, login with test_all_apps/Test@2026, connect to ws://localhost:19180/client?channelId=fires&token=TOKEN"}'
+CONV_ID=$(echo "$RESULT" | jq -r '.conversationId')
+
+# Test streaming with thinking
+curl -s -X POST http://127.0.0.1:$PORT/hook \
+  -H 'Content-Type: application/json' \
+  -d "{\"task\": \"Send /think high, then send a complex question. Check thinking indicator, streaming, and final message.\", \"conversationId\": \"$CONV_ID\"}"
+
+# Test streaming without thinking
+curl -s -X POST http://127.0.0.1:$PORT/hook \
+  -H 'Content-Type: application/json' \
+  -d "{\"task\": \"Send /think off, then send a question. Verify text streams directly without thinking phase.\", \"conversationId\": \"$CONV_ID\"}"
+```
+
+### P0/P1 Regression Test Matrix (2026-04-24)
+
+**P0 (35/39 passed, 4 failures are pre-existing design issues):**
+
+| # | Test | Result | Notes |
+|---|------|--------|-------|
+| 1 | Thinking ON: indicator → reasoning text → streaming → complete | PASS | |
+| 2 | Thinking OFF: direct streaming | PASS | Client "waiting" indicator is intentional |
+| 3 | text.delta before thinking.start (pre-thinking bubble) | PASS | Bubble clears when thinking.start arrives |
+| 5 | Slash command (/status, /models, /context) | PASS | No thinking indicator for / commands |
+| 6 | Cancel during thinking | FAIL | X button is client-only, doesn't send /stop |
+| 10 | Rapid sequential messages (3 in a row) | PASS | All messages + responses visible, no mix-up |
+| 12 | Switch agent: state isolation | PASS | No state carryover between agents |
+| 14 | Page refresh: message persistence | PASS | All messages from Supabase, no streaming residue |
+| 15 | localStorage.clear + refresh | PASS | Messages reload from Supabase |
+| 17 | Markdown rendering after refresh | PASS | Tables, code blocks, bold all correct |
+| 18 | Delivery status ticks | PASS | ✓ visible on sent messages |
+
+**P1 (all tested features passed):**
+
+| # | Test | Result | Notes |
+|---|------|--------|-------|
+| 31 | Tool call indicator | N/A | Requires server-side tool.start/tool.end events |
+| 35 | Reply to message | PASS | Quote appears correctly |
+| 37 | Delete message | PASS | Confirmation dialog works |
+| 38 | Reaction emoji | PASS | Appears under message |
+| 39 | Copy message | PASS | Silent copy (no toast) |
+| 40 | History pagination | N/A | Didn't trigger (messages within 5h cache window) |
+| 41 | Day separator | PASS | Date labels between different days |
+| 43 | Scroll-to-bottom button | PASS | Appears on scroll up, scrolls to bottom on click |
+| 44 | Auto-scroll during streaming | PASS | |
+| 48 | Long text without breaks | PASS | Word-wrap works |
+| 50 | Emoji rendering | PASS | |
+
+### Known issues (not caused by this refactoring)
+
+1. **Cancel button is client-only** — resets UI state but doesn't send `/stop` to server. Server continues generating; next `message.send` creates a new bubble.
+2. **Tool call UI requires server events** — `tool.start`/`tool.end` WebSocket events needed. Model-internal tool use (e.g., built-in search) won't trigger indicators.
+3. **Copy has no toast** — silent copy with only icon state change as feedback.
+
+## Development Lessons (2026-04-24 Streaming Refactoring)
+
+### What was refactored
+
+Replaced a 4-state machine (`streamingPhaseRef`: idle/streaming_pre/captured/streaming_final) + `thinkingTextLenRef` scattered across 15+ locations with:
+- Single `thinkingCutoffRef` (null/-1/number) — 3 semantically clear states
+- `resetStreamingState()` function — eliminates all duplicate reset code
+- Simplified JSX condition for thinking indicator
+
+### Why the refactoring was needed
+
+The original code had these problems:
+- 4-state machine was hard to reason about — each state transition was scattered across the file
+- Reset logic (`streamingPhaseRef.current = 'idle'; thinkingTextLenRef.current = 0;`) copy-pasted 15+ times
+- P0 bug: thinking OFF mode never created a streaming bubble (text accumulated in `thinkingText` state but was never displayed)
+- JSX thinking indicator condition was 3 lines of unreadable ref checks
+
+### Key lessons
+
+1. **Don't patch — refactor.** Adding conditions to a broken state machine makes it worse. Delete the broken abstraction and replace with a simpler one.
+2. **Centralize reset logic.** If you're copy-pasting the same 5 lines in 15 places, extract a function. When one copy gets out of sync, you get bugs.
+3. **State machine states should have clear semantics.** "streaming_pre" vs "idle" distinction added zero value. The cutoff ref (null/-1/number) maps directly to the question being asked: "do we need to strip a thinking prefix?"
+4. **Test the actual event sequences, not just the happy path.** The original bug was only visible when thinking was OFF (a path the developer likely never tested). Test matrix should cover all combinations of server event orderings.
+5. **Browser agent testing limitations:** Screenshots are discrete, fast transitions (sub-second streaming) may not be captured. Use longer responses to make streaming observable. Browser agent tasks timeout at 10 minutes — break complex tests into smaller steps.

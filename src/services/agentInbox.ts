@@ -9,7 +9,8 @@
 import { getConnections, type ServerConnection } from './connectionStore';
 import * as channel from './clawChannel';
 import type { AgentInfo } from './clawChannel';
-import { getMessages, appendMessage, warmCache, isWarmed } from '../stores/messageCache';
+import { getMessages, appendMessage, warmCache, isWarmed, hydrateFromDB } from '../stores/messageCache';
+import { notify } from './tauri';
 import { getUserId, getUserName } from '../App';
 import { playNewMessage } from '../hooks/useNotificationSound';
 import { isNotifActive } from '../hooks/useNotificationPermission';
@@ -356,12 +357,14 @@ function setupConnectionListeners(conn: ServerConnection) {
         playNewMessage();
       }
 
-      // Push notification: send when window is hidden or lacks focus (PC: unfocused tab/window)
+      // Push notification: send when window is hidden or lacks focus.
+      // notify() routes to native OS notification under Tauri, Web Notification otherwise.
       if (isNotifActive() && (document.hidden || !document.hasFocus())) {
-        new Notification(item.agentName || 'OpenClaw', {
+        void notify({
+          title: item.agentName || 'Clawline',
           body: trimmed.slice(0, 100),
-          icon: '/icon-192.png',
-          tag: `clawline-${connectionId}-${agentId}`, // collapse duplicate notifications
+          agentId,
+          chatId: typeof packet.data.chatId === 'string' ? packet.data.chatId : undefined,
         });
       }
 
@@ -483,7 +486,11 @@ export async function refreshInbox() {
     setupConnectionListeners(conn);
   }
 
-  // Warm message cache for each connection (one HTTP call per connection)
+  // 1) Hydrate from IndexedDB first — instant, no network
+  await Promise.all(connections.map((conn) => hydrateFromDB(conn.id)));
+
+  // 2) Warm message cache from network for each connection (one HTTP call per connection)
+  //    This catches up anything new since the last persist.
   await Promise.all(
     connections.map((conn) => warmCache(conn.id, conn.channelId))
   );

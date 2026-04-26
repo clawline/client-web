@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore, lazy, Suspense } from 'react';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { useLogto } from '@logto/react';
 import Onboarding from './screens/Onboarding';
-import Callback from './screens/Callback';
 import ChatList from './screens/ChatList';
 import BottomNav from './components/BottomNav';
 import UpdateBanner from './components/UpdateBanner';
@@ -25,12 +23,12 @@ import { useSwipeBack } from './hooks/useSwipeBack';
 import { usePWAUpdate } from './hooks/usePWAUpdate';
 import { useIOSPWA } from './hooks/useIOSPWA';
 import { cn } from './lib/utils';
-import { MessageCircle, LayoutDashboard, Search as SearchIcon, User, Inbox as InboxIcon } from 'lucide-react';
+import { MessageCircle, Search as SearchIcon, User, Inbox as InboxIcon } from 'lucide-react';
 import { initInbox, getUnreadTotal, subscribeInbox } from './services/agentInbox';
+import { checkForUpdates, primeNotificationPermission, wireUnreadAutoReset } from './services/tauri';
 
 // Lazy-loaded heavy screens
 const ChatRoom = lazy(() => import('./screens/ChatRoom'));
-const Dashboard = lazy(() => import('./screens/Dashboard'));
 const Profile = lazy(() => import('./screens/Profile'));
 const Search = lazy(() => import('./screens/Search'));
 const Preferences = lazy(() => import('./screens/Preferences'));
@@ -76,10 +74,8 @@ export function setUserName(name: string) {
 
 const SCREEN_TO_PATH: Record<Screen, string> = {
   onboarding: '/',
-  callback: '/callback',
   chats: '/chats',
   chat_room: '/chat',  // + /:agentId?chatId=...
-  dashboard: '/dashboard',
   inbox: '/inbox',
   profile: '/profile',
   search: '/search',
@@ -164,7 +160,6 @@ function useIsSplitViewport() {
 const SIDEBAR_NAV_ITEMS = [
   { id: 'chats', icon: MessageCircle, label: 'Chats' },
   { id: 'inbox', icon: InboxIcon, label: 'Inbox' },
-  { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { id: 'search', icon: SearchIcon, label: 'Search' },
   { id: 'profile', icon: User, label: 'Profile' },
 ] as const;
@@ -172,9 +167,8 @@ const SIDEBAR_NAV_ITEMS = [
 function AppShell() {
   const location = useLocation();
   const routerNavigate = useNavigate();
-  const { isAuthenticated, isLoading: isAuthLoading } = useLogto();
-
-  const effectivelyAuthenticated = isAuthenticated;
+  // Authentication removed — local-first app, no remote identity needed.
+  const effectivelyAuthenticated = false;
 
   // ── All hooks MUST be called before any conditional return ──
   // (React Rules of Hooks — Error #310 fix)
@@ -280,6 +274,14 @@ function AppShell() {
     if (initialFromUrl.agentId) setActiveAgentId(initialFromUrl.agentId);
     if (initialFromUrl.chatId) setActiveChatId(initialFromUrl.chatId);
     setActiveConnectionState(initialFromUrl.connectionId ?? getActiveConnectionId());
+
+    // Check for desktop app updates (no-op in browser)
+    void checkForUpdates();
+    // Pre-request OS notification permission so the prompt appears at startup,
+    // not at the first incoming message (which would otherwise be silently lost).
+    primeNotificationPermission();
+    // Reset unread badge whenever the window becomes focused/visible.
+    wireUnreadAutoReset();
 
     // Clean up the /connect URL — replace with /chats so the share link
     // doesn't stay in the address bar / browser history
@@ -501,20 +503,6 @@ function AppShell() {
 
   // ── Conditional returns AFTER all hooks ──
 
-  // Handle /callback route
-  if (location.pathname === '/callback') {
-    return <Callback />;
-  }
-
-  // Show loading while Logto initializes (skip in dev mode)
-  if (isAuthLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-surface dark:bg-surface-dark text-text dark:text-text-inv">
-        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
   const renderScreen = () => {
     // Initial-mount onboarding gate is handled by initialScreen + URL→Screen
     // useEffect (both call resolveScreen). No second redirect lives here.
@@ -522,14 +510,10 @@ function AppShell() {
       switch (currentScreen) {
         case 'onboarding':
           return <Onboarding onGetStarted={handleOnboardingComplete} />;
-        case 'callback':
-          return <Callback />;
         case 'chats':
           return <ChatList onOpenChat={(connectionId, agentId, chatId) => navigate('chat_room', agentId, chatId, connectionId)} onAddServer={() => navigate('pairing')} activeAgentId={activeAgentId} activeConnectionId={activeConnectionId} />;
         case 'chat_room':
           return <ChatRoom agentId={activeAgentId} chatId={activeChatId} connectionId={activeConnectionId} onBack={() => navigate('chats')} onOpenConversation={(nextChatId) => navigate('chat_room', activeAgentId || undefined, nextChatId, activeConnectionId || undefined)} />;
-        case 'dashboard':
-          return <Dashboard />;
         case 'inbox':
           return <AgentInbox />;
         case 'profile':
@@ -639,8 +623,6 @@ function AppShell() {
   const renderNonChatDesktopMain = () => {
     const content = (() => {
       switch (currentScreen) {
-        case 'dashboard':
-          return <Dashboard />;
         case 'inbox':
           return <AgentInbox />;
         case 'profile':
@@ -667,7 +649,7 @@ function AppShell() {
     return <Suspense fallback={<ScreenLoading />}>{content}</Suspense>;
   };
 
-  const showBottomNav = ['chats', 'dashboard', 'inbox', 'profile', 'search'].includes(currentScreen);
+  const showBottomNav = ['chats', 'inbox', 'profile', 'search'].includes(currentScreen);
 
   // ---- Desktop layout: sidebar + main ----
   // Onboarding gets a special full-width desktop layout without sidebar

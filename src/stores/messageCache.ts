@@ -1,16 +1,15 @@
 /**
- * In-memory message cache — populated once per connection on app startup,
- * then kept fresh by WebSocket events. NOT persisted.
+ * Message cache — in-memory Map for synchronous reads, backed by IndexedDB
+ * for persistence across page reloads and offline access.
  *
- * Architecture: Supabase is the source of truth. This cache avoids
- * repeated HTTP calls when navigating between agents/screens.
+ * Read path: synchronous from memory (zero-latency UI).
+ * Write path: memory immediately + async IndexedDB write (fire-and-forget).
+ * Boot path: hydrate memory from IndexedDB before app renders chats.
  *
- * Indexed by (connId, agentId). Each message carries an optional chatId so
- * multi-conversation agents can be filtered per-chat at read time without
- * fragmenting the bucket (HTTP/SyncMessage doesn't surface chat_id, so HTTP-
- * loaded messages stay un-tagged and remain visible in every chat for that
- * agent — see getMessages).
+ * Indexed by (connId, agentId). Each message carries an optional chatId for
+ * multi-conversation filtering at read time.
  */
+import { openDB, type IDBPDatabase } from 'idb';
 import { fetchOlderMessages, syncMessageToLocal, type SyncMessage } from '../services/suggestions';
 import { saveAgentPreview } from '../components/chat/utils';
 
@@ -26,11 +25,38 @@ export type CachedMessage = {
   meta?: Record<string, unknown>;
 };
 
+const DB_NAME = 'clawline';
+const DB_VERSION = 1;
+const STORE = 'messages';
+
 const cache = new Map<string, Map<string, CachedMessage[]>>();
 const warmedConnections = new Set<string>();
 
 const WARM_LIMIT = 500;
 const MAX_CACHED_PER_AGENT = 500;
+
+let dbPromise: Promise<IDBPDatabase> | null = null;
+
+function getDB(): Promise<IDBPDatabase> {
+  if (!dbPromise) {
+    dbPromise = openDB(DB_NAME, DB_VERSION, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains(STORE)) {
+          // Composite key: `${connId}|${agentId}|${id}` so we can query by prefix.
+          db.createObjectStore(STORE, { keyPath: 'key' });
+        }
+      },
+    }).catch((err) => {
+      console.warn('[messageCache] IndexedDB unavailable, falling back to in-memory only', err);
+      throw err;
+    });
+  }
+  return dbPromise;
+}
+
+function makeKey(connId: string, agentId: string, id: string): string {
+  return `${connId}|${agentId}|${id}`;
+}
 
 function bucket(connId: string, agentId: string): CachedMessage[] | undefined {
   return cache.get(connId)?.get(agentId);
@@ -44,9 +70,34 @@ function ensureBucket(connId: string, agentId: string): CachedMessage[] {
   return msgs;
 }
 
+/** Persist a message to IndexedDB. Fire-and-forget — failures don't block. */
+async function persistMessage(connId: string, agentId: string, msg: CachedMessage): Promise<void> {
+  try {
+    const db = await getDB();
+    await db.put(STORE, { key: makeKey(connId, agentId, msg.id), connId, agentId, ...msg });
+  } catch { /* IndexedDB write failed — in-memory copy still valid */ }
+}
+
+/** Trim oldest messages from IndexedDB when bucket exceeds cap. */
+async function trimPersistedBucket(connId: string, agentId: string): Promise<void> {
+  try {
+    const db = await getDB();
+    const all = await db.getAll(STORE);
+    const bucketEntries = all
+      .filter((e: { connId: string; agentId: string }) => e.connId === connId && e.agentId === agentId)
+      .sort((a: { timestamp: number }, b: { timestamp: number }) => a.timestamp - b.timestamp);
+    const excess = bucketEntries.length - MAX_CACHED_PER_AGENT;
+    if (excess <= 0) return;
+    const tx = db.transaction(STORE, 'readwrite');
+    for (let i = 0; i < excess; i++) {
+      await tx.store.delete(bucketEntries[i].key);
+    }
+    await tx.done;
+  } catch { /* ignore */ }
+}
+
 /** Read messages for an agent. If chatId is provided, returns only messages
- *  whose chatId matches OR is undefined (HTTP-loaded messages without a chatId
- *  stamp). */
+ *  whose chatId matches OR is undefined. */
 export function getMessages(connId: string, agentId: string, chatId?: string): CachedMessage[] {
   const msgs = bucket(connId, agentId);
   if (!msgs) return [];
@@ -56,13 +107,17 @@ export function getMessages(connId: string, agentId: string, chatId?: string): C
 
 export function appendMessage(connId: string, agentId: string, msg: CachedMessage): void {
   const msgs = ensureBucket(connId, agentId);
-  // Single dedup point — id is the conversation-wide unique key.
   if (msgs.some((m) => m.id === msg.id)) return;
-  // Stamp a sortable timestamp at insert (N1) so callers don't need to fall
-  // back to Date.now() at sort time.
   if (!msg.timestamp) msg.timestamp = Date.now();
   msgs.push(msg);
-  if (msgs.length > MAX_CACHED_PER_AGENT) msgs.splice(0, msgs.length - MAX_CACHED_PER_AGENT);
+  let trimmed = false;
+  if (msgs.length > MAX_CACHED_PER_AGENT) {
+    msgs.splice(0, msgs.length - MAX_CACHED_PER_AGENT);
+    trimmed = true;
+  }
+  // Persist async — never block UI
+  void persistMessage(connId, agentId, msg);
+  if (trimmed) void trimPersistedBucket(connId, agentId);
 }
 
 export function getLastMessage(connId: string, agentId: string): CachedMessage | undefined {
@@ -75,9 +130,19 @@ export function getAllAgentIds(connId: string): string[] {
   return connMap ? [...connMap.keys()] : [];
 }
 
-export function clearConnection(connId: string): void {
+export async function clearConnection(connId: string): Promise<void> {
   cache.delete(connId);
   warmedConnections.delete(connId);
+  // Also purge from IndexedDB
+  try {
+    const db = await getDB();
+    const all = await db.getAll(STORE);
+    const tx = db.transaction(STORE, 'readwrite');
+    for (const entry of all as Array<{ key: string; connId: string }>) {
+      if (entry.connId === connId) await tx.store.delete(entry.key);
+    }
+    await tx.done;
+  } catch { /* ignore */ }
 }
 
 export function isWarmed(connId: string): boolean {
@@ -85,9 +150,36 @@ export function isWarmed(connId: string): boolean {
 }
 
 /**
- * Bulk-load recent messages for a connection (all agents, no time filter).
- * Uses `before=now` to fetch the most recent N messages regardless of age,
- * ensuring every agent with history gets its last message for previews.
+ * Hydrate the in-memory cache from IndexedDB for a connection.
+ * Call this on app boot — it's the "instant load" path.
+ */
+export async function hydrateFromDB(connId: string): Promise<void> {
+  if (cache.has(connId)) return; // already loaded
+  try {
+    const db = await getDB();
+    const all = await db.getAll(STORE);
+    const byAgent = new Map<string, CachedMessage[]>();
+    for (const entry of all as Array<CachedMessage & { key: string; connId: string; agentId: string }>) {
+      if (entry.connId !== connId) continue;
+      const list = byAgent.get(entry.agentId);
+      const cleaned: CachedMessage = {
+        id: entry.id, sender: entry.sender, text: entry.text, timestamp: entry.timestamp,
+        mediaType: entry.mediaType, mediaUrl: entry.mediaUrl,
+        threadId: entry.threadId, chatId: entry.chatId, meta: entry.meta,
+      };
+      if (list) list.push(cleaned);
+      else byAgent.set(entry.agentId, [cleaned]);
+    }
+    for (const [agId, msgs] of byAgent) {
+      msgs.sort((a, b) => a.timestamp - b.timestamp);
+      ensureBucket(connId, agId).push(...msgs);
+      saveAgentPreview(agId, connId, msgs);
+    }
+  } catch { /* IndexedDB unavailable — warmCache will load from network */ }
+}
+
+/**
+ * Bulk-load recent messages from network. Call after hydrateFromDB to fill any gap.
  */
 export async function warmCache(connId: string, channelId: string): Promise<void> {
   if (warmedConnections.has(connId)) return;
@@ -106,8 +198,6 @@ export async function warmCache(connId: string, channelId: string): Promise<void
     for (const m of msgs) {
       appendMessage(connId, agId, syncMessageToLocal(m));
     }
-    // Keep timestamp order after merging warm-load with any WS messages that
-    // raced ahead.
     const merged = ensureBucket(connId, agId);
     merged.sort((a, b) => a.timestamp - b.timestamp);
     saveAgentPreview(agId, connId, merged);

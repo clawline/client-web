@@ -6,3 +6,8 @@ dist/
 .DS_Store
 test-results/
 .gstack/
+
+# Tauri
+src-tauri/target/
+src-tauri/.tauri-updater.key
+src-tauri/gen/
