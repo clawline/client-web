@@ -1,8 +1,63 @@
 /**
- * Message sync service — fetches messages from Gateway HTTP API.
+ * AI-powered suggestion service — calls Gateway POST /api/suggestions
+ *
+ * Primary: Gateway endpoint (derives HTTP URL from active WS connection)
+ * Fallback: Local LLM API if configured in localStorage
  */
 
 import { getActiveConnection, getConnectionById } from './connectionStore';
+
+let lastContextHash = '';
+let lastSuggestions: string[] = [];
+let pendingRequest: Promise<string[]> | null = null;
+
+const SUGGESTION_ENABLED_KEY = 'clawline.suggestions.enabled';
+const SUGGESTION_PROMPT_KEY = 'clawline.suggestions.prompt';
+const REPLY_DRAFT_PROMPT_KEY = 'clawline.replyDraft.prompt';
+const VOICE_REFINE_ENABLED_KEY = 'clawline.voiceRefine.enabled';
+const VOICE_REFINE_PROMPT_KEY = 'clawline.voiceRefine.prompt';
+
+// ── Preferences helpers ──
+
+export function isSuggestionsEnabled(): boolean {
+  return localStorage.getItem(SUGGESTION_ENABLED_KEY) !== 'false'; // default: enabled
+}
+
+export function setSuggestionsEnabled(enabled: boolean): void {
+  localStorage.setItem(SUGGESTION_ENABLED_KEY, enabled ? 'true' : 'false');
+}
+
+export function getSuggestionCustomPrompt(): string {
+  return localStorage.getItem(SUGGESTION_PROMPT_KEY) || '';
+}
+
+export function setSuggestionCustomPrompt(prompt: string): void {
+  localStorage.setItem(SUGGESTION_PROMPT_KEY, prompt);
+}
+
+export function getReplyDraftPrompt(): string {
+  return localStorage.getItem(REPLY_DRAFT_PROMPT_KEY) || '';
+}
+
+export function setReplyDraftPrompt(prompt: string): void {
+  localStorage.setItem(REPLY_DRAFT_PROMPT_KEY, prompt);
+}
+
+export function isVoiceRefineEnabled(): boolean {
+  return localStorage.getItem(VOICE_REFINE_ENABLED_KEY) !== 'false'; // default: enabled
+}
+
+export function setVoiceRefineEnabled(enabled: boolean): void {
+  localStorage.setItem(VOICE_REFINE_ENABLED_KEY, enabled ? 'true' : 'false');
+}
+
+export function getVoiceRefineCustomPrompt(): string {
+  return localStorage.getItem(VOICE_REFINE_PROMPT_KEY) || '';
+}
+
+export function setVoiceRefineCustomPrompt(prompt: string): void {
+  localStorage.setItem(VOICE_REFINE_PROMPT_KEY, prompt);
+}
 
 // ── Gateway URL derivation ──
 
@@ -13,6 +68,7 @@ function getGatewayHttpUrl(connectionId?: string): string | null {
   try {
     const wsUrl = new URL(conn.serverUrl);
     const protocol = wsUrl.protocol === 'wss:' ? 'https:' : 'http:';
+    // Strip /client path (relay WS endpoint) to get base
     const basePath = wsUrl.pathname.replace(/\/client\/?$/, '');
     return `${protocol}//${wsUrl.host}${basePath}`;
   } catch {
@@ -26,6 +82,7 @@ function getAuthHeaders(connectionId?: string): Record<string, string> {
   if (conn?.token) {
     headers['Authorization'] = `Bearer ${conn.token}`;
   }
+  // Extract token from serverUrl query params as fallback
   if (!conn?.token && conn?.serverUrl) {
     try {
       const url = new URL(conn.serverUrl);
@@ -36,13 +93,169 @@ function getAuthHeaders(connectionId?: string): Record<string, string> {
   return headers;
 }
 
-// ── Stub for legacy callers ──
+// ── Suggestion API ──
 
-export async function draftReply(_messages: Array<{ sender: string; text: string }>, _connectionId?: string): Promise<string | null> {
-  return null;
+function hashContext(text: string): string {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) {
+    h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+  }
+  return String(h);
 }
 
-// ── Message Sync API ──
+async function fetchSuggestionsFromGateway(
+  messages: Array<{ role: string; text: string }>,
+  signal?: AbortSignal,
+  connectionId?: string,
+): Promise<string[]> {
+  const baseUrl = getGatewayHttpUrl(connectionId);
+  if (!baseUrl) return [];
+
+  const res = await fetch(`${baseUrl}/api/suggestions`, {
+    method: 'POST',
+    headers: getAuthHeaders(connectionId),
+    body: JSON.stringify({
+      messages: messages.slice(-6).map(m => ({ role: m.role, text: m.text.slice(0, 300) })),
+      prompt: getSuggestionCustomPrompt() || undefined,
+    }),
+    signal,
+  });
+
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data.suggestions) ? data.suggestions.filter((s: unknown): s is string => typeof s === 'string') : [];
+}
+
+export async function getSuggestions(
+  messages: { sender: string; text?: string }[],
+  signal?: AbortSignal,
+  connectionId?: string,
+): Promise<string[]> {
+  if (!isSuggestionsEnabled()) return [];
+
+  const conversationMsgs = messages
+    .filter(m => m.text && m.text.length > 0)
+    .map(m => ({
+      role: m.sender === 'user' ? 'user' : 'assistant',
+      text: m.text!,
+    }));
+
+  if (conversationMsgs.length === 0) return [];
+
+  const contextStr = conversationMsgs.slice(-6).map(m => `${m.role}: ${m.text.slice(0, 300)}`).join('\n');
+  const hash = hashContext(contextStr);
+
+  if (hash === lastContextHash && lastSuggestions.length > 0) {
+    return lastSuggestions;
+  }
+
+  if (pendingRequest) return pendingRequest;
+
+  pendingRequest = fetchSuggestionsFromGateway(conversationMsgs, signal, connectionId)
+    .then(suggestions => {
+      if (suggestions.length > 0) {
+        lastContextHash = hash;
+        lastSuggestions = suggestions;
+      }
+      return suggestions;
+    })
+    .catch(() => [] as string[])
+    .finally(() => { pendingRequest = null; });
+
+  return pendingRequest;
+}
+
+export function isSuggestionServiceAvailable(connectionId?: string): boolean {
+  return !!getGatewayHttpUrl(connectionId);
+}
+
+export function clearSuggestionCache(): void {
+  lastContextHash = '';
+  lastSuggestions = [];
+  pendingRequest = null;
+}
+
+// ── Draft Reply API (Inbox) ──
+
+export async function draftReply(
+  messages: { sender: string; text?: string }[],
+  connectionId?: string,
+): Promise<string> {
+  const baseUrl = getGatewayHttpUrl(connectionId);
+  if (!baseUrl) {
+    console.warn('[draftReply] no gateway URL for connection:', connectionId);
+    return '';
+  }
+
+  const conversationMsgs = messages
+    .filter((m) => m.text)
+    .slice(-10)
+    .map((m) => ({
+      role: m.sender === 'user' ? 'user' : 'assistant',
+      text: m.text!.slice(0, 300),
+    }));
+
+  if (conversationMsgs.length === 0) {
+    console.warn('[draftReply] no messages to send');
+    return '';
+  }
+
+  try {
+    const res = await fetch(`${baseUrl}/api/suggestions`, {
+      method: 'POST',
+      headers: getAuthHeaders(connectionId),
+      body: JSON.stringify({ mode: 'reply', messages: conversationMsgs, prompt: getReplyDraftPrompt() || undefined }),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error(`[draftReply] API error ${res.status}:`, errText.slice(0, 200));
+      return '';
+    }
+    const data = await res.json();
+    return typeof data.reply === 'string' ? data.reply : '';
+  } catch (err) {
+    console.error('[draftReply] fetch failed:', err);
+    return '';
+  }
+}
+
+// ── Voice Refine API ──
+
+export async function refineVoiceText(
+  text: string,
+  messages?: { sender: string; text?: string }[],
+  connectionId?: string,
+): Promise<string> {
+  if (!isVoiceRefineEnabled() || !text.trim()) return text;
+
+  const baseUrl = getGatewayHttpUrl(connectionId);
+  if (!baseUrl) return text;
+
+  const conversationMsgs = (messages || [])
+    .filter(m => m.text && m.text.length > 0)
+    .slice(-20)
+    .map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', text: m.text!.slice(0, 300) }));
+
+  try {
+    const res = await fetch(`${baseUrl}/api/voice-refine`, {
+      method: 'POST',
+      headers: getAuthHeaders(connectionId),
+      body: JSON.stringify({
+        text,
+        messages: conversationMsgs,
+        prompt: getVoiceRefineCustomPrompt() || undefined,
+      }),
+    });
+
+    if (!res.ok) return text;
+    const data = await res.json();
+    return typeof data.refined === 'string' && data.refined.trim() ? data.refined.trim() : text;
+  } catch {
+    return text;
+  }
+}
+
+// ── Message Sync API (pull missed messages from DB) ──
 
 export type SyncMessage = {
   id: string;
@@ -93,6 +306,10 @@ export async function syncMissedMessages(
   }
 }
 
+/**
+ * Fetch older messages from Supabase for backward pagination (scrolling up).
+ * Uses `before` timestamp to get messages older than the given point.
+ */
 export async function fetchOlderMessages(
   channelId: string,
   beforeTimestamp: number,
@@ -124,7 +341,14 @@ export async function fetchOlderMessages(
   }
 }
 
+/**
+ * Convert a remote SyncMessage to the local message format used by React state.
+ *
+ * Direction mapping:
+ * 'outbound' = server-to-client = AI response; 'inbound' = client-to-server = user message
+ */
 export function syncMessageToLocal(msg: SyncMessage) {
+  // Parse meta from JSON string (stored as text in DB)
   let parsedMeta: Record<string, unknown> | undefined;
   if (msg.meta) {
     try { parsedMeta = JSON.parse(msg.meta) as Record<string, unknown>; } catch { /* ignore */ }

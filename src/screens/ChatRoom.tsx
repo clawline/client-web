@@ -25,7 +25,7 @@ import {
   getConnectionDisplayName, getSkillDescription,
   PREVIEW_KEY_PREFIX, MESSAGE_PREVIEW_UPDATED_EVENT,
 } from '../components/chat';
-import { DeliveryTicks, MessageItem, ActionSheet, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadPanel } from '../components/chat';
+import { DeliveryTicks, MessageItem, ActionSheet, SuggestionBar, HistoryDrawer, HeaderMenu, ConnectionBanner, ChatHeader, AgentDetailSheet, ThreadPanel } from '../components/chat';
 import ModelPicker, { type ModelsData } from '../components/chat/ModelPicker';
 import { useThreadStore, subscribeThreadEvents } from '../stores/threadStore';
 
@@ -2558,6 +2558,20 @@ export default function ChatRoom({
             </motion.button>
           </div>
         )}
+
+        {/* Dynamic suggestions area */}
+        <SuggestionBar
+          messages={messages}
+          isThinking={isThinking}
+          showSlashMenu={showSlashMenu}
+          showEmojiPicker={showEmojiPicker}
+          skillCount={skillCount}
+          connectionId={runtimeConnId}
+          onOpenSlashMenu={() => { setInputValue('/'); setShowSlashMenu(true); }}
+          onOpenContextViewer={() => setShowContextViewer(true)}
+          onSetInputValue={setInputValue}
+          onQuickSend={quickSend}
+        />
 
         {/* Reply bar */}
         <AnimatePresence>

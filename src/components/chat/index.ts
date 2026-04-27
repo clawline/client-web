@@ -35,3 +35,4 @@ export { AgentDetailSheet } from './AgentDetailSheet';
 export { ThreadPanel } from './ThreadPanel';
 export { ThreadPreviewBar } from './ThreadPreviewBar';
 export { ThreadListView } from './ThreadListView';
+export { SuggestionBar } from './SuggestionBar';
