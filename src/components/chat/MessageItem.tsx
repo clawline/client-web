@@ -137,11 +137,13 @@ function MessageItemInner({
                   {agentInfo.model.split('/').pop()}
                 </span>
               )}
-              {/* API direct connection badge */}
               {msg.meta?.source === 'api' && (
                 <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 tracking-wide">
                   <Zap size={8} />
                   API
+                  {typeof msg.meta.senderId === 'string' && msg.meta.senderId && (
+                    <span className="ml-0.5 font-normal opacity-75">{msg.meta.senderId}</span>
+                  )}
                 </span>
               )}
               {/* Inline reply reference — uses quotedText from message payload */}

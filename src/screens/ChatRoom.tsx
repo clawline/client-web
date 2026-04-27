@@ -737,6 +737,10 @@ export default function ChatRoom({
               quotedText: (packet.data.quotedText as string) || undefined,
               timestamp: ts,
               deliveryStatus: 'delivered' as DeliveryStatus,
+              meta: {
+                ...(packet.data.meta as Record<string, unknown> | undefined),
+                ...(echoSenderId ? { senderId: echoSenderId } : {}),
+              },
             }];
           });
           appendMessage(connId, agentId || '', { id: msgId, sender: 'user', text: content, timestamp: ts, chatId: (packet.data.chatId as string) || chatId || undefined });
@@ -787,7 +791,10 @@ export default function ChatRoom({
               mediaUrl,
               mediaType,
               threadId: (packet.data.threadId as string) || undefined,
-              meta: packet.data.meta as Record<string, unknown> | undefined,
+              meta: {
+                ...(packet.data.meta as Record<string, unknown> | undefined),
+                ...(typeof packet.data.senderId === 'string' && packet.data.senderId ? { senderId: packet.data.senderId } : {}),
+              },
             },
           ];
         });
@@ -936,7 +943,10 @@ export default function ChatRoom({
             mediaType,
             replyTo: m.replyTo,
             quotedText: m.quotedText,
-            meta: (m as { meta?: Record<string, unknown> }).meta,
+            meta: {
+              ...(m as { meta?: Record<string, unknown> }).meta,
+              ...(m.senderId ? { senderId: m.senderId } : {}),
+            },
             threadId: m.threadId,
           };
         });
