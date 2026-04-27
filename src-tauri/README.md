@@ -39,14 +39,70 @@ Outputs:
 
 ## Releasing
 
-The `release-desktop.yml` workflow runs on tag push:
+发布桌面新版本的完整流程（**不要跳步**）：
+
+### 1. Bump 版本号（3 处必须一致）
 
 ```bash
-git tag desktop-v0.1.0
-git push origin desktop-v0.1.0
+# 假设要发 0.2.0
+NEW_VERSION=0.2.0
+
+# a) src-tauri/tauri.conf.json  →  "version": "0.2.0"
+# b) src-tauri/Cargo.toml       →  version = "0.2.0"
+# c) Cargo.lock 同步
+cd src-tauri && cargo update -p clawline --offline && cd ..
 ```
 
-This builds for macOS (arm64 + x86_64), Windows, and Linux, then creates a draft GitHub Release with all installers + the `latest.json` updater manifest.
+> ⚠️ 不 bump 版本号 → 打包出来还是旧版本号 → updater 比对 `latest.json` 时永远认为"已是最新"，热更新失效。
+
+### 2. Commit & push 到 dev
+
+```bash
+git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+git commit -m "chore(desktop): bump version to ${NEW_VERSION}"
+git push origin dev
+```
+
+### 3. 打 tag 触发 CI（**tag 名必须 `desktop-v` 前缀**）
+
+```bash
+git tag desktop-v${NEW_VERSION}
+git push origin desktop-v${NEW_VERSION}
+```
+
+`release-desktop.yml` 只匹配 `desktop-v*`。写错前缀（比如 `desktop-0.2.0` 没 `v`）CI 不会跑，会留下一个空 tag 污染 `releases/latest`，导致所有用户的 updater 拉到 404。
+
+CI 会跑约 8-10 分钟，4 个 matrix 并行：macOS arm64 / macOS x64 / Linux / Windows。产物：
+- `Clawline_*.dmg` (mac)、`*-setup.exe` (Win)、`*.AppImage` (Linux)
+- `latest.json` —— updater 用的签名 manifest
+
+### 4. **手动 publish draft release（最关键的一步）**
+
+CI 配置了 `releaseDraft: true`，跑完只产生 **draft**。draft release **不会**被 `releases/latest/download/latest.json` 解析到，所以：
+
+- 用户的桌面 app **不会收到热更新提示**
+- 新装用户从 release 页拿不到包
+
+必须去 https://github.com/clawline/client-web/releases 找到刚生成的 draft → 编辑 → 点 **"Publish release"**（确认勾上 "Set as the latest release"）。
+
+### 5. 验证
+
+```bash
+curl -sL https://github.com/clawline/client-web/releases/latest/download/latest.json | jq .version
+# 应该输出 "0.2.0"
+```
+
+打开一个旧版桌面 app，应该能弹出更新提示。
+
+### 删除错发的 release / tag
+
+如果不小心发了空 release 或 tag 名写错：
+
+```bash
+gh release delete <tag> -R clawline/client-web --cleanup-tag --yes
+# 如果 release 已经被删但 tag 还在：
+git push origin :refs/tags/<tag>
+```
 
 ### Required GitHub secrets
 
@@ -92,7 +148,7 @@ chmod +x Clawline_*.AppImage
 
 ## Auto-updater
 
-The app checks `https://github.com/restry/clawline/releases/latest/download/latest.json` on startup. The `tauri-action` workflow generates this manifest automatically when releasing.
+The app checks `https://github.com/clawline/client-web/releases/latest/download/latest.json` on startup. The `tauri-action` workflow generates this manifest automatically when releasing.
 
 The updater payload is signed by our private key (kept off-repo). The public key is embedded in the app, so even on an unsigned installer, **updates can't be tampered with** — they would fail signature verification.
 
