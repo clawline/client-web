@@ -1,11 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { ChevronLeft, User, Sliders, Bell, Volume2, Download, Upload, Check } from 'lucide-react';
+import { ChevronLeft, User, Sliders, Bell, Volume2, Download, Upload, Check, Info, RefreshCw } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
 import { getUserName, setUserName } from '../App';
 import { getSoundEnabled, setSoundEnabled } from '../hooks/useNotificationSound';
 import { useNotificationPermission } from '../hooks/useNotificationPermission';
+import { inTauri, getCurrentVersion, checkForUpdates } from '../services/tauri';
 
 const STREAMING_OUTPUT_KEY = 'clawline.streaming.enabled';
 
@@ -94,6 +95,44 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
       if (importInputRef.current) importInputRef.current.value = '';
     };
     reader.readAsText(file);
+  };
+
+  // ── About / Updates ──────────────────────────────────────
+  const [version, setVersion] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatusText, setUpdateStatusText] = useState<string>('点击按钮检查更新');
+  const isDesktop = inTauri();
+
+  useEffect(() => {
+    void getCurrentVersion().then((v) => setVersion(v));
+  }, []);
+
+  const handleCheckUpdate = async () => {
+    if (checkingUpdate) return;
+    setCheckingUpdate(true);
+    setUpdateStatusText('检查中...');
+    try {
+      const result = await checkForUpdates({ interactive: true });
+      switch (result.status) {
+        case 'no-update':
+          setUpdateStatusText(`已是最新版本${result.version ? `（${result.version}）` : ''}`);
+          break;
+        case 'updated':
+          setUpdateStatusText(`已下载新版本 ${result.version}，请重启应用`);
+          break;
+        case 'declined':
+          setUpdateStatusText(`发现新版本 ${result.version}，已取消`);
+          break;
+        case 'error':
+          setUpdateStatusText(`检查失败：${result.error}`);
+          break;
+        case 'not-tauri':
+          setUpdateStatusText('仅桌面端支持更新检查');
+          break;
+      }
+    } finally {
+      setCheckingUpdate(false);
+    }
   };
 
   return (
@@ -229,6 +268,40 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
               </motion.button>
               <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImportFile} />
             </div>
+          </Card>
+        </section>
+
+        <section>
+          <h3 className="text-sm font-semibold text-text/50 dark:text-text-inv/50 mb-4 uppercase tracking-wider flex items-center gap-2">
+            <Info size={16} /> 关于
+          </h3>
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-medium text-text dark:text-text-inv">当前版本</p>
+                <p className="text-[12px] text-text/50 dark:text-text-inv/40 mt-0.5">{version ?? 'Web 版'}</p>
+              </div>
+            </div>
+            {isDesktop && (
+              <>
+                <div className="h-px bg-border/40 dark:bg-border-dark/40" />
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] font-medium text-text dark:text-text-inv">检查更新</p>
+                    <p className="text-[12px] text-text/50 dark:text-text-inv/40 mt-0.5">{updateStatusText}</p>
+                  </div>
+                  <motion.button
+                    whileTap={{ scale: 0.93 }}
+                    onClick={handleCheckUpdate}
+                    disabled={checkingUpdate}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium bg-primary/10 text-primary dark:bg-primary/15 hover:bg-primary/20 transition-colors shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <RefreshCw size={14} className={checkingUpdate ? 'animate-spin' : ''} />
+                    {checkingUpdate ? '检查中' : '检查更新'}
+                  </motion.button>
+                </div>
+              </>
+            )}
           </Card>
         </section>
 

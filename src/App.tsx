@@ -275,8 +275,11 @@ function AppShell() {
     if (initialFromUrl.chatId) setActiveChatId(initialFromUrl.chatId);
     setActiveConnectionState(initialFromUrl.connectionId ?? getActiveConnectionId());
 
-    // Check for desktop app updates (no-op in browser)
+    // Check for desktop app updates (no-op in browser). Then re-check every 4h.
     void checkForUpdates();
+    const updateInterval = window.setInterval(() => {
+      void checkForUpdates();
+    }, 4 * 60 * 60 * 1000);
     // Pre-request OS notification permission so the prompt appears at startup,
     // not at the first incoming message (which would otherwise be silently lost).
     primeNotificationPermission();
@@ -288,6 +291,10 @@ function AppShell() {
     if (location.pathname === '/connect') {
       routerNavigate('/chats', { replace: true });
     }
+
+    return () => {
+      window.clearInterval(updateInterval);
+    };
   }, []);
 
   // Unread message badge for BottomNav
