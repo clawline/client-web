@@ -157,9 +157,6 @@ export default function ChatRoom({
   const [toolCallHistory, setToolCallHistory] = useState<{ toolCallId: string; toolName: string; args?: Record<string, unknown>; startTime: number; endTime: number; resultSummary?: string }[]>([]);
   const [toolHistoryExpanded, setToolHistoryExpanded] = useState(false);
   const [thinkingText, setThinkingText] = useState('');
-  // Thinking cutoff: null = no thinking phase, -1 = thinking.start received (awaiting snapshot),
-  // >= 0 = thinking text length (strip this prefix from cumulative text.delta for display)
-  const thinkingCutoffRef = useRef<number | null>(null);
   const retryingRef = useRef<Set<string>>(new Set()); // B1: prevent double-tap retry
   const [voiceMode, setVoiceMode] = useState(() => localStorage.getItem('clawline:voiceMode') === 'true');
   const [voiceListening, setVoiceListening] = useState(false);
@@ -195,7 +192,6 @@ export default function ChatRoom({
   // Single function to reset all streaming/thinking state — eliminates scattered duplicate resets
   // Note: does NOT clear toolCallHistory — history persists until next user message
   const resetStreamingState = useCallback(() => {
-    thinkingCutoffRef.current = null;
     streamingSourceAgentRef.current = null;
     setThinkingText('');
     setIsThinking(false);
@@ -879,8 +875,6 @@ export default function ChatRoom({
         if (packet.data.threadId) return;
         const thinkAgentId = (packet.data as { agentId?: string }).agentId;
         if (!thinkAgentId || !agentId || thinkAgentId === agentId) {
-          // Mark cutoff as pending — first text.delta after this will snapshot the thinking length
-          thinkingCutoffRef.current = -1;
           // Clear any pre-thinking streaming bubble — content moves to thinking indicator
           setMessages((prev) => prev.filter((m) => !m.isStreaming));
           setIsThinking(true);
@@ -995,7 +989,6 @@ export default function ChatRoom({
         setAgentPresence({ status: 'online' });
       } else if (packet.type === 'stream.resume') {
         // Stream resume after reconnection — restore accumulated streaming text
-        thinkingCutoffRef.current = null;
         setThinkingText('');
         const resumeData = packet.data as { chatId?: string; agentId?: string; text?: string; isComplete?: boolean; startTime?: number };
         const resumeAgentId = resumeData.agentId;
@@ -1041,12 +1034,11 @@ export default function ChatRoom({
         if (packet.data.threadId) return;
         // Message isolation: only accept streaming for current agent
         const packetAgentId = (packet.data.agentId as string | undefined) || undefined;
-        const deltaData = packet.data as { chatId?: string; text?: string; done?: boolean; timestamp?: number };
+        const deltaData = packet.data as { chatId?: string; text?: string; done?: boolean; timestamp?: number; phase?: 'thinking' | 'answer' };
         
         if (deltaData.done) {
           // Streaming finished — clear state but keep content visible for message.send to replace
           streamingSourceAgentRef.current = null;
-          thinkingCutoffRef.current = null;
           setThinkingText('');
           setIsThinking(false);
           if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
@@ -1104,27 +1096,15 @@ export default function ChatRoom({
           };
 
           if (typeof deltaData.text === 'string') {
-            setThinkingText(deltaData.text);
-
-            const cutoff = thinkingCutoffRef.current;
-            if (cutoff === -1) {
-              // First delta after thinking.start — snapshot thinking text length, skip display
-              thinkingCutoffRef.current = deltaData.text.length;
+            const phase = deltaData.phase;
+            if (phase === 'thinking') {
+              setThinkingText(deltaData.text);
               if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null; }
               return;
             }
-            if (cutoff !== null && cutoff >= 0) {
-              // Strip thinking prefix from cumulative text
-              const displayText = deltaData.text.length > cutoff
-                ? deltaData.text.slice(cutoff).replace(/^\n+/, '')
-                : '';
-              if (!displayText) return;
-              _updateStreamingMsg(displayText, deltaData.timestamp);
-            } else {
-              // No thinking phase (cutoff is null) — show all text directly.
-              // If thinking.start arrives later, it clears this bubble.
-              _updateStreamingMsg(deltaData.text, deltaData.timestamp);
-            }
+            // phase === 'answer' or absent (legacy/no-thinking) — render to streaming bubble.
+            // Do NOT touch thinkingText here; let thinking.end / message.send clear it.
+            _updateStreamingMsg(deltaData.text, deltaData.timestamp);
           }
         }
       }
@@ -1505,7 +1485,6 @@ export default function ChatRoom({
       // Immediately show thinking state after sending (unless it's a slash command)
       if (!text.startsWith('/')) {
         setThinkingText('');
-        thinkingCutoffRef.current = null;
         // Clear previous round's tool history when starting a new conversation turn
         setToolCallHistory([]);
         setToolHistoryExpanded(false);
@@ -1677,7 +1656,6 @@ export default function ChatRoom({
       setVoiceInterimText('');
       setVoiceMode(false);
       setThinkingText('');
-      thinkingCutoffRef.current = null;
       setToolCallHistory([]);
       setToolHistoryExpanded(false);
       setIsThinking(true);
