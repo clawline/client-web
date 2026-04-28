@@ -11,7 +11,7 @@
  * which can silently fail in the webview.
  */
 
-import { check as updaterCheck } from '@tauri-apps/plugin-updater';
+import { check as updaterCheck, type Update } from '@tauri-apps/plugin-updater';
 import { getVersion } from '@tauri-apps/api/app';
 
 interface TauriInternals {
@@ -97,33 +97,54 @@ export async function getCurrentVersion(): Promise<string | null> {
   }
 }
 
+// ── Updater (two-phase: check → install) ──
+
 export type UpdateCheckResult =
   | { status: 'no-update'; version: string }
-  | { status: 'updated'; version: string }
-  | { status: 'declined'; version: string }
+  | { status: 'update-available'; id: string; version: string; currentVersion: string; body: string }
   | { status: 'error'; error: string }
   | { status: 'not-tauri' };
 
-interface CheckOptions {
-  /** When true, prompt user via confirm() and return structured result. Default: false (silent). */
-  interactive?: boolean;
+export type UpdateProgressEvent =
+  | { event: 'Started'; contentLength?: number }
+  | { event: 'Progress'; downloaded: number; contentLength?: number }
+  | { event: 'Finished' };
+
+export const UPDATE_AVAILABLE_EVENT = 'clawline:update-available';
+
+export interface UpdateAvailableDetail {
+  id: string;
+  version: string;
+  currentVersion: string;
+  body: string;
+}
+
+const pendingUpdates = new Map<string, Update>();
+
+export function getPendingUpdate(id: string): Update | undefined {
+  return pendingUpdates.get(id);
+}
+
+export function clearPendingUpdate(id: string): void {
+  const u = pendingUpdates.get(id);
+  if (u) {
+    pendingUpdates.delete(id);
+    void u.close().catch(() => { /* ignore */ });
+  }
 }
 
 let checkInFlight: Promise<UpdateCheckResult> | null = null;
 
 /**
- * Check for updates (Tauri only).
+ * Phase 1: check for an update without prompting. Returns metadata + an id
+ * that can be used with {@link performUpdate} to download and install.
  *
- * - Silent mode (default): startup-style check. Prompts user if an update is found,
- *   otherwise silently returns. Errors are logged, not surfaced.
- * - Interactive mode: returns a structured result so the UI can show feedback
- *   ("已是最新版" / "发现新版" / "出错了").
+ * The Update instance is held in a module-level Map so React components can
+ * reference it by id (the instance has a non-serialisable Tauri resource id).
  */
-export async function checkForUpdates(opts: CheckOptions = {}): Promise<UpdateCheckResult> {
+export async function checkForUpdate(): Promise<UpdateCheckResult> {
   if (!tauriInternals) return { status: 'not-tauri' };
   if (checkInFlight) return checkInFlight;
-
-  const interactive = opts.interactive === true;
 
   checkInFlight = (async (): Promise<UpdateCheckResult> => {
     try {
@@ -132,29 +153,17 @@ export async function checkForUpdates(opts: CheckOptions = {}): Promise<UpdateCh
         const current = await getCurrentVersion();
         return { status: 'no-update', version: current ?? '' };
       }
-
-      const newVersion = update.version;
-      const current = update.currentVersion;
-      const promptMsg = `发现新版本 ${newVersion}（当前 ${current}）\n\n${update.body || ''}\n\n是否立即更新？`;
-      const ok = window.confirm(promptMsg);
-      if (!ok) {
-        return { status: 'declined', version: newVersion };
-      }
-
-      await update.downloadAndInstall((event) => {
-        if (event.event === 'Started' || event.event === 'Finished') {
-          console.info('[tauri] update', event);
-        }
-      });
-      // After install on most platforms the app process exits; user manually relaunches.
-      // (We deliberately avoid plugin-process to keep the Rust side lean.)
-      window.alert('更新已下载安装。请手动重启应用以完成更新。');
-      return { status: 'updated', version: newVersion };
+      const id = `update-${update.version}-${Date.now()}`;
+      pendingUpdates.set(id, update);
+      return {
+        status: 'update-available',
+        id,
+        version: update.version,
+        currentVersion: update.currentVersion,
+        body: update.body || '',
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (interactive) {
-        return { status: 'error', error: msg };
-      }
       console.warn('[tauri] update check failed', err);
       return { status: 'error', error: msg };
     } finally {
@@ -163,6 +172,55 @@ export async function checkForUpdates(opts: CheckOptions = {}): Promise<UpdateCh
   })();
 
   return checkInFlight;
+}
+
+/**
+ * Phase 2: download and install the update referenced by `id`.
+ * Progress is forwarded with cumulative `downloaded` bytes (the underlying
+ * Tauri event reports per-chunk lengths; we accumulate here for the UI).
+ */
+export async function performUpdate(
+  id: string,
+  onProgress: (event: UpdateProgressEvent) => void,
+): Promise<void> {
+  const update = pendingUpdates.get(id);
+  if (!update) throw new Error('Update no longer available — please re-check.');
+
+  let contentLength: number | undefined;
+  let downloaded = 0;
+
+  await update.downloadAndInstall((event) => {
+    if (event.event === 'Started') {
+      contentLength = event.data.contentLength;
+      onProgress({ event: 'Started', contentLength });
+    } else if (event.event === 'Progress') {
+      downloaded += event.data.chunkLength;
+      onProgress({ event: 'Progress', downloaded, contentLength });
+    } else if (event.event === 'Finished') {
+      onProgress({ event: 'Finished' });
+    }
+  });
+}
+
+/**
+ * Silent startup-style check. Dispatches a `clawline:update-available`
+ * CustomEvent on `window` when an update is found so the React layer
+ * (UpdateModal) can take over. Errors are logged, never surfaced.
+ *
+ * Kept for the existing 4h interval + initial mount call sites.
+ */
+export async function checkForUpdates(): Promise<UpdateCheckResult> {
+  const result = await checkForUpdate();
+  if (result.status === 'update-available' && typeof window !== 'undefined') {
+    const detail: UpdateAvailableDetail = {
+      id: result.id,
+      version: result.version,
+      currentVersion: result.currentVersion,
+      body: result.body,
+    };
+    window.dispatchEvent(new CustomEvent<UpdateAvailableDetail>(UPDATE_AVAILABLE_EVENT, { detail }));
+  }
+  return result;
 }
 
 /**

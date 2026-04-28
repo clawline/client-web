@@ -6,7 +6,7 @@ import { Card } from '../components/ui/card';
 import { getUserName, setUserName } from '../App';
 import { getSoundEnabled, setSoundEnabled } from '../hooks/useNotificationSound';
 import { useNotificationPermission } from '../hooks/useNotificationPermission';
-import { inTauri, getCurrentVersion, checkForUpdates } from '../services/tauri';
+import { inTauri, getCurrentVersion, checkForUpdate, UPDATE_AVAILABLE_EVENT, type UpdateAvailableDetail } from '../services/tauri';
 
 const STREAMING_OUTPUT_KEY = 'clawline.streaming.enabled';
 
@@ -112,17 +112,22 @@ export default function Preferences({ onBack }: { onBack: () => void }) {
     setCheckingUpdate(true);
     setUpdateStatusText('检查中...');
     try {
-      const result = await checkForUpdates({ interactive: true });
+      const result = await checkForUpdate();
       switch (result.status) {
         case 'no-update':
           setUpdateStatusText(`已是最新版本${result.version ? `（${result.version}）` : ''}`);
           break;
-        case 'updated':
-          setUpdateStatusText(`已下载新版本 ${result.version}，请重启应用`);
+        case 'update-available': {
+          setUpdateStatusText(`发现新版本 ${result.version}`);
+          const detail: UpdateAvailableDetail = {
+            id: result.id,
+            version: result.version,
+            currentVersion: result.currentVersion,
+            body: result.body,
+          };
+          window.dispatchEvent(new CustomEvent<UpdateAvailableDetail>(UPDATE_AVAILABLE_EVENT, { detail }));
           break;
-        case 'declined':
-          setUpdateStatusText(`发现新版本 ${result.version}，已取消`);
-          break;
+        }
         case 'error':
           setUpdateStatusText(`检查失败：${result.error}`);
           break;

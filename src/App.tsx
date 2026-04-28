@@ -5,6 +5,7 @@ import Onboarding from './screens/Onboarding';
 import ChatList from './screens/ChatList';
 import BottomNav from './components/BottomNav';
 import UpdateBanner from './components/UpdateBanner';
+import UpdateModal from './components/UpdateModal';
 import IOSInstallPrompt from './components/IOSInstallPrompt';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useNavigationStore, type Screen, type SplitPane } from './stores/navigationStore';
@@ -820,6 +821,7 @@ export default function App() {
     <BrowserRouter>
       <ErrorBoundary>
         <AppShell />
+        <UpdateModal />
       </ErrorBoundary>
     </BrowserRouter>
   );
