@@ -342,12 +342,31 @@ export async function fetchOlderMessages(
 }
 
 /**
+ * Determine whether a message belongs to the local user or to "the other side".
+ * Prefer comparing senderId to the active connection's senderId — this is the
+ * only fact-of-the-message identifier and is correct across clients.
+ * Direction is a per-client viewpoint and is unreliable cross-device.
+ */
+export function determineSenderRole(
+  msg: { senderId?: string | null; direction?: string | null },
+  mySenderId?: string | null,
+): 'user' | 'ai' {
+  if (msg.senderId && mySenderId) {
+    return msg.senderId === mySenderId ? 'user' : 'ai';
+  }
+  // Fallback when senderId is missing on either side (legacy data / pre-D8 frames).
+  // 'inbound' (client→server) and 'sent' (legacy SDK frame) both denote a user-authored msg.
+  if (msg.direction === 'inbound' || msg.direction === 'sent') return 'user';
+  return 'ai';
+}
+
+/**
  * Convert a remote SyncMessage to the local message format used by React state.
  *
- * Direction mapping:
- * 'outbound' = server-to-client = AI response; 'inbound' = client-to-server = user message
+ * Pass `mySenderId` (the active connection's senderId) to correctly attribute
+ * messages across devices. If omitted, falls back to direction-based judgement.
  */
-export function syncMessageToLocal(msg: SyncMessage) {
+export function syncMessageToLocal(msg: SyncMessage, mySenderId?: string | null) {
   // Parse meta from JSON string (stored as text in DB)
   let parsedMeta: Record<string, unknown> | undefined;
   if (msg.meta) {
@@ -355,12 +374,18 @@ export function syncMessageToLocal(msg: SyncMessage) {
   }
   return {
     id: msg.message_id || msg.id,
-    sender: (msg.direction === 'outbound' ? 'ai' : 'user') as 'user' | 'ai',
+    sender: determineSenderRole(
+      { senderId: msg.sender_id, direction: msg.direction },
+      mySenderId,
+    ),
     text: msg.content || '',
     timestamp: msg.timestamp,
     mediaType: msg.content_type !== 'text' ? msg.content_type : undefined,
     mediaUrl: msg.media_url || undefined,
-    meta: parsedMeta,
+    meta: {
+      ...(parsedMeta || {}),
+      ...(msg.sender_id ? { senderId: msg.sender_id } : {}),
+    },
     threadId: msg.thread_id || undefined,
   };
 }

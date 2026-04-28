@@ -181,7 +181,7 @@ export async function hydrateFromDB(connId: string): Promise<void> {
 /**
  * Bulk-load recent messages from network. Call after hydrateFromDB to fill any gap.
  */
-export async function warmCache(connId: string, channelId: string): Promise<void> {
+export async function warmCache(connId: string, channelId: string, mySenderId?: string | null): Promise<void> {
   if (warmedConnections.has(connId)) return;
 
   const result = await fetchOlderMessages(channelId, Date.now() + 1, undefined, WARM_LIMIT, connId);
@@ -196,7 +196,7 @@ export async function warmCache(connId: string, channelId: string): Promise<void
 
   for (const [agId, msgs] of byAgent) {
     for (const m of msgs) {
-      appendMessage(connId, agId, syncMessageToLocal(m));
+      appendMessage(connId, agId, syncMessageToLocal(m, mySenderId));
     }
     const merged = ensureBucket(connId, agId);
     merged.sort((a, b) => a.timestamp - b.timestamp);

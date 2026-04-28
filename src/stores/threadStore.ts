@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import * as channel from '../services/clawChannel';
 import type { InboundPacket } from '../services/clawChannel';
 import type { Message } from '../components/chat/types';
+import { determineSenderRole } from '../services/suggestions';
 
 // ── Thread types (mirrored from channel/src/generic/thread-types.ts) ──
 
@@ -475,6 +476,7 @@ export function subscribeThreadEvents(connectionId?: string): () => void {
   const handlePacket = (packet: InboundPacket) => {
     const store = useThreadStore.getState();
     const data = packet.data as Record<string, unknown>;
+    const mySenderId = channel.getSenderId(connectionId);
 
     switch (packet.type) {
       case 'thread.updated': {
@@ -547,7 +549,10 @@ export function subscribeThreadEvents(connectionId?: string): () => void {
           if (messages && messages.length > 0) {
             const mapped: Message[] = messages.map((m) => ({
               id: m.messageId || m.id,
-              sender: (m.direction === 'outbound' ? 'ai' : 'user') as 'user' | 'ai',
+              sender: determineSenderRole(
+                { senderId: m.senderId, direction: m.direction },
+                mySenderId,
+              ),
               text: m.content || '',
               timestamp: m.timestamp,
               threadId: m.threadId || thread.id,
@@ -649,7 +654,10 @@ export function subscribeThreadEvents(connectionId?: string): () => void {
         if (searchMessages) {
           const mapped: Message[] = searchMessages.map((m) => ({
             id: m.messageId || m.id,
-            sender: (m.direction === 'outbound' ? 'ai' : 'user') as 'user' | 'ai',
+            sender: determineSenderRole(
+              { senderId: m.senderId, direction: m.direction },
+              mySenderId,
+            ),
             text: m.content || '',
             timestamp: m.timestamp,
             threadId: (m.threadId || data.threadId) as string,

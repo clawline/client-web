@@ -517,7 +517,7 @@ class ChannelManager {
       if (result.messages.length === 0) return;
       // Dispatch each missed message as a message.send packet through listeners
       for (const msg of result.messages) {
-        const local = syncMessageToLocal(msg);
+        const local = syncMessageToLocal(msg, instance.currentSenderId);
         const packet: InboundPacket = {
           type: 'message.send',
           data: {

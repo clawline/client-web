@@ -492,7 +492,7 @@ export async function refreshInbox() {
   // 2) Warm message cache from network for each connection (one HTTP call per connection)
   //    This catches up anything new since the last persist.
   await Promise.all(
-    connections.map((conn) => warmCache(conn.id, conn.channelId))
+    connections.map((conn) => warmCache(conn.id, conn.channelId, conn.senderId || getUserId()))
   );
 
   // Populate agent data from cached agent lists and message history

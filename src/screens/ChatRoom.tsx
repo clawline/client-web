@@ -14,7 +14,7 @@ import MarkdownRenderer from '../components/MarkdownRenderer';
 import MemorySheet from '../components/MemorySheet';
 import FileGallery from '../components/FileGallery';
 import * as outbox from '../services/outbox';
-import { fetchOlderMessages, syncMessageToLocal } from '../services/suggestions';
+import { fetchOlderMessages, syncMessageToLocal, determineSenderRole } from '../services/suggestions';
 import { getMessages as getCachedMessages, appendMessage, isWarmed } from '../stores/messageCache';
 import {
   type DeliveryStatus, type Message, type AgentInfo,
@@ -107,6 +107,7 @@ export default function ChatRoom({
 }) {
   const activeConn = connectionId ? getConnectionById(connectionId) : getActiveConnection();
   const connId = activeConn?.id || '';
+  const mySenderId = activeConn?.senderId || getUserId();
   const runtimeConnId = channelConnectionId || connId;
   const [messages, setMessages] = useState<Message[]>([]);
 
@@ -461,7 +462,7 @@ export default function ChatRoom({
       // Cache not warmed yet (deep link / before warmCache ran) — HTTP fallback
       void fetchOlderMessages(channelId, Date.now(), agentId, INITIAL_PAGE, connId).then(({ messages: remote, hasMore }) => {
         if (cancelled) return;
-        const localMsgs = remote.map((m) => syncMessageToLocal(m));
+        const localMsgs = remote.map((m) => syncMessageToLocal(m, mySenderId));
         // Hydrate cache from HTTP so subsequent agent switches hit the warm path.
         for (const m of localMsgs) appendMessage(connId, agentId, m);
         setMessages((currentMessages) => mergeMessages(localMsgs, currentMessages));
@@ -930,7 +931,10 @@ export default function ChatRoom({
           }
           return {
             id: m.messageId || Date.now().toString(),
-            sender: (m.direction === 'sent' ? 'user' : 'ai') as 'user' | 'ai',
+            sender: determineSenderRole(
+              { senderId: m.senderId, direction: m.direction },
+              mySenderId,
+            ),
             text: m.content || (mediaType === 'image' ? '[Image]' : mediaType === 'file' ? '📎 File' : ''),
             timestamp: m.timestamp || Date.now(),
             mediaUrl: m.mediaUrl,
@@ -1278,7 +1282,14 @@ export default function ChatRoom({
           const newMsgs = page.filter((m) => !existingIds.has(m.id));
           return [...newMsgs, ...prev];
         });
-        setHasMoreHistory(olderCached.length > LOAD_MORE_PAGE);
+        // Don't lock out future loads when cache is running low — leave the
+        // hasMore flag optimistic; HTTP will set it to false once the server
+        // confirms there's nothing older. Only flip it off here when we know
+        // for sure the cache covers the entire history (i.e. the cache has not
+        // been capped at WARM_LIMIT).
+        if (olderCached.length <= LOAD_MORE_PAGE && cached.length < 500) {
+          setHasMoreHistory(false);
+        }
         return;
       }
       // Cache exhausted — fall back to HTTP
@@ -1286,7 +1297,7 @@ export default function ChatRoom({
       if (!channelId) { setLoadingMoreHistory(false); return; }
       const { messages: older, hasMore } = await fetchOlderMessages(channelId, oldest.timestamp, agentId, LOAD_MORE_PAGE, connId);
       if (older.length > 0) {
-        const localMsgs = older.map((m) => syncMessageToLocal(m));
+        const localMsgs = older.map((m) => syncMessageToLocal(m, mySenderId));
         setMessages((prev) => {
           const existingIds = new Set(prev.map((m) => m.id));
           const newMsgs = localMsgs.filter((m) => !existingIds.has(m.id));
@@ -1302,12 +1313,23 @@ export default function ChatRoom({
   }, [loadingMoreHistory, hasMoreHistory, agentId, connId, chatId, activeConn, messages]);
 
   const scrollBtnRafRef = useRef<number>(0);
+  // Stable refs to break the listener's dependency on `messages`/`loadMoreHistory`.
+  // Without this, the scroll listener rebinds on every messages update — and
+  // since the rebind fires only on user scroll, a top-anchored container can
+  // miss the threshold cross.
+  const loadMoreHistoryRef = useRef(loadMoreHistory);
+  const hasMoreHistoryRef = useRef(hasMoreHistory);
+  const loadingMoreHistoryRef = useRef(loadingMoreHistory);
+  useEffect(() => { loadMoreHistoryRef.current = loadMoreHistory; }, [loadMoreHistory]);
+  useEffect(() => { hasMoreHistoryRef.current = hasMoreHistory; }, [hasMoreHistory]);
+  useEffect(() => { loadingMoreHistoryRef.current = loadingMoreHistory; }, [loadingMoreHistory]);
+
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
     const handleScroll = () => {
-      if (container.scrollTop < 80 && hasMoreHistory && !loadingMoreHistory) {
-        loadMoreHistory();
+      if (container.scrollTop < 80 && hasMoreHistoryRef.current && !loadingMoreHistoryRef.current) {
+        loadMoreHistoryRef.current();
       }
       // Throttle scroll-to-bottom detection with rAF to avoid jank
       cancelAnimationFrame(scrollBtnRafRef.current);
@@ -1318,7 +1340,18 @@ export default function ChatRoom({
     };
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => { container.removeEventListener('scroll', handleScroll); cancelAnimationFrame(scrollBtnRafRef.current); };
-  }, [hasMoreHistory, loadingMoreHistory, loadMoreHistory]);
+  }, []);
+
+  // After history loads, if the container is short enough that a top-anchored
+  // user can't scroll up to trigger another load, fire one proactively.
+  useEffect(() => {
+    if (loadingMoreHistory || !hasMoreHistory) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    if (container.scrollHeight <= container.clientHeight + 80) {
+      loadMoreHistory();
+    }
+  }, [hasMoreHistory, loadingMoreHistory, loadMoreHistory, messages.length]);
 
   // Preserve scroll position when prepending older messages
   useEffect(() => {
@@ -2055,7 +2088,7 @@ export default function ChatRoom({
                     setHasMoreHistory(cached.length > RETRY_PAGE);
                   } else {
                     void fetchOlderMessages(channelId, Date.now(), agentId, RETRY_PAGE, connId).then(({ messages: remote, hasMore }) => {
-                      const localMsgs = remote.map((m) => syncMessageToLocal(m));
+                      const localMsgs = remote.map((m) => syncMessageToLocal(m, mySenderId));
                       setMessages((currentMessages) => mergeMessages(localMsgs, currentMessages));
                       setHasMoreHistory(hasMore);
                       setHasLoadedMessages(true);
