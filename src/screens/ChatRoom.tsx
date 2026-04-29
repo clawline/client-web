@@ -457,7 +457,10 @@ export default function ChatRoom({
         setMessages(mergeMessages(page, []));
       }
       setHasLoadedMessages(true);
-      setHasMoreHistory(cached.length > INITIAL_PAGE);
+      // Optimistic: trust HTTP to definitively set hasMore=false if server has nothing older.
+      // Cache being short of a page doesn't mean server is empty — warmCache fetches a
+      // bounded window, so the cache may simply not contain everything.
+      setHasMoreHistory(true);
     } else {
       // Cache not warmed yet (deep link / before warmCache ran) — HTTP fallback
       void fetchOlderMessages(channelId, Date.now(), agentId, INITIAL_PAGE, connId).then(({ messages: remote, hasMore }) => {
@@ -1340,7 +1343,10 @@ export default function ChatRoom({
     };
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => { container.removeEventListener('scroll', handleScroll); cancelAnimationFrame(scrollBtnRafRef.current); };
-  }, []);
+    // Re-bind when the underlying scroll container ref becomes available — otherwise
+    // a null ref on first render leaves the listener permanently detached.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollContainerRef.current, agentId, chatId]);
 
   // After history loads, if the container is short enough that a top-anchored
   // user can't scroll up to trigger another load, fire one proactively.

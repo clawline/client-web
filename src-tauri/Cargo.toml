@@ -1,6 +1,6 @@
 [package]
 name = "clawline"
-version = "0.5.2"
+version = "0.5.3"
 description = "Clawline desktop client"
 authors = ["Restry"]
 edition = "2021"
