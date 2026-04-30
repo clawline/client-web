@@ -282,6 +282,7 @@ export async function syncMissedMessages(
   afterTimestamp: number,
   limit = 100,
   connectionId?: string,
+  chatId?: string,
 ): Promise<SyncResult> {
   const baseUrl = getGatewayHttpUrl(connectionId);
   if (!baseUrl) return { messages: [], hasMore: false };
@@ -292,6 +293,7 @@ export async function syncMissedMessages(
       after: String(afterTimestamp),
       limit: String(limit),
     });
+    if (chatId) params.set('chatId', chatId);
     const res = await fetch(`${baseUrl}/api/messages/sync?${params}`, {
       headers: getAuthHeaders(connectionId),
     });
@@ -316,6 +318,7 @@ export async function fetchOlderMessages(
   agentId?: string,
   limit = 20,
   connectionId?: string,
+  chatId?: string,
 ): Promise<SyncResult> {
   const baseUrl = getGatewayHttpUrl(connectionId);
   if (!baseUrl) return { messages: [], hasMore: false };
@@ -327,6 +330,7 @@ export async function fetchOlderMessages(
       limit: String(limit),
     });
     if (agentId) params.set('agentId', agentId);
+    if (chatId) params.set('chatId', chatId);
     const res = await fetch(`${baseUrl}/api/messages/sync?${params}`, {
       headers: getAuthHeaders(connectionId),
     });

@@ -463,7 +463,7 @@ export default function ChatRoom({
       setHasMoreHistory(true);
     } else {
       // Cache not warmed yet (deep link / before warmCache ran) — HTTP fallback
-      void fetchOlderMessages(channelId, Date.now(), agentId, INITIAL_PAGE, connId).then(({ messages: remote, hasMore }) => {
+      void fetchOlderMessages(channelId, Date.now(), agentId, INITIAL_PAGE, connId, chatId || undefined).then(({ messages: remote, hasMore }) => {
         if (cancelled) return;
         const localMsgs = remote.map((m) => syncMessageToLocal(m, mySenderId));
         // Hydrate cache from HTTP so subsequent agent switches hit the warm path.
@@ -1275,7 +1275,10 @@ export default function ChatRoom({
     if (!oldest?.timestamp) return;
     setLoadingMoreHistory(true);
     try {
-      // Try loading from in-memory cache first
+      // Try loading from in-memory cache first. The cache is bounded
+      // (WARM_LIMIT + 5h window), so its size tells us nothing about whether
+      // the server has even older messages. HTTP is the only authority on
+      // hasMore — never flip the flag off based on cache state.
       const cached = getCachedMessages(connId, agentId, chatId || undefined);
       const olderCached = cached.filter((m) => m.timestamp < oldest.timestamp);
       if (olderCached.length > 0) {
@@ -1285,20 +1288,12 @@ export default function ChatRoom({
           const newMsgs = page.filter((m) => !existingIds.has(m.id));
           return [...newMsgs, ...prev];
         });
-        // Don't lock out future loads when cache is running low — leave the
-        // hasMore flag optimistic; HTTP will set it to false once the server
-        // confirms there's nothing older. Only flip it off here when we know
-        // for sure the cache covers the entire history (i.e. the cache has not
-        // been capped at WARM_LIMIT).
-        if (olderCached.length <= LOAD_MORE_PAGE && cached.length < 500) {
-          setHasMoreHistory(false);
-        }
         return;
       }
       // Cache exhausted — fall back to HTTP
       const channelId = activeConn?.channelId;
       if (!channelId) { setLoadingMoreHistory(false); return; }
-      const { messages: older, hasMore } = await fetchOlderMessages(channelId, oldest.timestamp, agentId, LOAD_MORE_PAGE, connId);
+      const { messages: older, hasMore } = await fetchOlderMessages(channelId, oldest.timestamp, agentId, LOAD_MORE_PAGE, connId, chatId || undefined);
       if (older.length > 0) {
         const localMsgs = older.map((m) => syncMessageToLocal(m, mySenderId));
         setMessages((prev) => {
@@ -2093,7 +2088,7 @@ export default function ChatRoom({
                     setHasLoadedMessages(true);
                     setHasMoreHistory(cached.length > RETRY_PAGE);
                   } else {
-                    void fetchOlderMessages(channelId, Date.now(), agentId, RETRY_PAGE, connId).then(({ messages: remote, hasMore }) => {
+                    void fetchOlderMessages(channelId, Date.now(), agentId, RETRY_PAGE, connId, chatId || undefined).then(({ messages: remote, hasMore }) => {
                       const localMsgs = remote.map((m) => syncMessageToLocal(m, mySenderId));
                       setMessages((currentMessages) => mergeMessages(localMsgs, currentMessages));
                       setHasMoreHistory(hasMore);

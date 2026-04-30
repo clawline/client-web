@@ -513,6 +513,7 @@ class ChannelManager {
         instance.lastMessageTimestamp,
         500,
         instance.connectionId,
+        instance.currentChatId || undefined,
       );
       if (result.messages.length === 0) return;
       // Dispatch each missed message as a message.send packet through listeners
