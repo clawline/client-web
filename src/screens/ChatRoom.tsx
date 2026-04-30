@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, type ChangeEvent } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, ChevronRight, Smile, Mic, Send, ArrowUp, Code, FileText, Zap, SmilePlus, Wifi, WifiOff, Loader2, HelpCircle, Database, Activity, User, Plus, RotateCcw, Cpu, Server, MessageSquare, LayoutDashboard, Square, Image, CornerDownLeft, X, Pencil, Trash2, Paperclip, Puzzle, Copy, Check, Shield, Keyboard, ArrowDown } from 'lucide-react';
 import { SpeechRecognitionSession } from '../services/volcASR';
@@ -1268,6 +1268,11 @@ export default function ChatRoom({
   }, [activeConn, agentId, chatId, requestConversationList, runtimeConnId, showHistoryDrawer, wsStatus]);
 
   // ── Load more history on scroll to top (cache first, then HTTP) ──
+  // Snapshot scrollHeight before prepending so we can restore scrollTop after
+  // React commits the new DOM (scroll-anchor pattern). Without this, prepended
+  // nodes push the user's view downward — they have to scroll up again to see
+  // the messages they just loaded.
+  const prevScrollHeightRef = useRef<number | null>(null);
   const LOAD_MORE_PAGE = 30;
   const loadMoreHistory = useCallback(async () => {
     if (loadingMoreHistory || !hasMoreHistory || !agentId || !connId) return;
@@ -1275,14 +1280,12 @@ export default function ChatRoom({
     if (!oldest?.timestamp) return;
     setLoadingMoreHistory(true);
     try {
-      // Try loading from in-memory cache first. The cache is bounded
-      // (WARM_LIMIT + 5h window), so its size tells us nothing about whether
-      // the server has even older messages. HTTP is the only authority on
-      // hasMore — never flip the flag off based on cache state.
       const cached = getCachedMessages(connId, agentId, chatId || undefined);
       const olderCached = cached.filter((m) => m.timestamp < oldest.timestamp);
       if (olderCached.length > 0) {
         const page = olderCached.slice(-LOAD_MORE_PAGE);
+        const container = scrollContainerRef.current;
+        if (container) prevScrollHeightRef.current = container.scrollHeight;
         setMessages((prev) => {
           const existingIds = new Set(prev.map((m) => m.id));
           const newMsgs = page.filter((m) => !existingIds.has(m.id));
@@ -1290,12 +1293,13 @@ export default function ChatRoom({
         });
         return;
       }
-      // Cache exhausted — fall back to HTTP
       const channelId = activeConn?.channelId;
       if (!channelId) { setLoadingMoreHistory(false); return; }
       const { messages: older, hasMore } = await fetchOlderMessages(channelId, oldest.timestamp, agentId, LOAD_MORE_PAGE, connId, chatId || undefined);
       if (older.length > 0) {
         const localMsgs = older.map((m) => syncMessageToLocal(m, mySenderId));
+        const container = scrollContainerRef.current;
+        if (container) prevScrollHeightRef.current = container.scrollHeight;
         setMessages((prev) => {
           const existingIds = new Set(prev.map((m) => m.id));
           const newMsgs = localMsgs.filter((m) => !existingIds.has(m.id));
@@ -1354,13 +1358,15 @@ export default function ChatRoom({
     }
   }, [hasMoreHistory, loadingMoreHistory, loadMoreHistory, messages.length]);
 
-  // Preserve scroll position when prepending older messages
-  useEffect(() => {
+  // Restore scroll position after older messages are prepended. Runs in the
+  // commit phase before the browser paints, so the user never sees the jump.
+  useLayoutEffect(() => {
     const container = scrollContainerRef.current;
-    if (!container || !loadingMoreHistory) return;
-    // After messages update + loadingMoreHistory becomes false, scroll will auto-adjust
-    // because React inserts at top — we rely on browser's scroll anchoring
-  }, [messages, loadingMoreHistory]);
+    if (!container || prevScrollHeightRef.current == null) return;
+    const delta = container.scrollHeight - prevScrollHeightRef.current;
+    if (delta > 0) container.scrollTop = container.scrollTop + delta;
+    prevScrollHeightRef.current = null;
+  }, [messages]);
 
 
   const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {

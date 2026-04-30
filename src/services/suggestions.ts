@@ -68,8 +68,9 @@ function getGatewayHttpUrl(connectionId?: string): string | null {
   try {
     const wsUrl = new URL(conn.serverUrl);
     const protocol = wsUrl.protocol === 'wss:' ? 'https:' : 'http:';
-    // Strip /client path (relay WS endpoint) to get base
-    const basePath = wsUrl.pathname.replace(/\/client\/?$/, '');
+    // Strip the /client relay suffix and any trailing slashes so callers can
+    // safely concatenate `/api/...` without producing `//api/...`.
+    const basePath = wsUrl.pathname.replace(/\/client\/?$/, '').replace(/\/+$/, '');
     return `${protocol}//${wsUrl.host}${basePath}`;
   } catch {
     return null;
