@@ -485,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "clawline"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "dashmap",
  "futures-util",

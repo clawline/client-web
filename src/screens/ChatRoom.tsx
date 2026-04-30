@@ -538,10 +538,18 @@ export default function ChatRoom({
 
   // Auto-scroll: use instant scroll during streaming or initial load to avoid jitter/flash.
   // Smooth scroll only for incremental new messages after the initial load.
+  // Skip auto-scroll when only older messages were prepended (last message id
+  // unchanged) — otherwise scrollIntoView fights the prepend scroll-anchor and
+  // drifts the user's view down to the bottom over ~500ms.
   const scrollRafRef = useRef<number | null>(null);
+  const lastSeenLastIdRef = useRef<string | null>(null);
   useEffect(() => {
+    const lastId = messages.length ? messages[messages.length - 1].id : null;
+    const lastChanged = lastId !== lastSeenLastIdRef.current;
+    lastSeenLastIdRef.current = lastId;
     const hasStreaming = messages.some((m) => m.isStreaming);
     const isInitial = initialScrollRef.current;
+    if (!lastChanged && !hasStreaming && !isInitial) return;
     if (hasStreaming || isInitial) {
       // Streaming or initial load: instant jump to bottom (no animation flash)
       if (scrollRafRef.current) return;
@@ -2040,12 +2048,14 @@ export default function ChatRoom({
       <div className="relative flex flex-1 flex-col min-h-0">
       <div
         ref={scrollContainerRef}
-        className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-white px-4 pt-4 pb-4 overscroll-contain dark:bg-surface-dark"
+        className="relative flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-white px-4 pt-4 pb-4 overscroll-contain dark:bg-surface-dark"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        {/* Load more indicator */}
+        {/* Load more indicator — absolute overlay so toggling visibility never
+            changes scrollHeight (which would otherwise jump the user's view
+            when the spinner mounts/unmounts around a prepend). */}
         {loadingMoreHistory && (
-          <div className="flex justify-center py-3">
+          <div className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex justify-center py-3">
             <Loader2 size={18} className="text-primary animate-spin" />
           </div>
         )}
@@ -2053,7 +2063,7 @@ export default function ChatRoom({
           <button
             type="button"
             onClick={loadMoreHistory}
-            className="text-[12px] text-primary/70 hover:text-primary text-center py-2"
+            className="absolute left-0 right-0 top-0 z-10 text-[12px] text-primary/70 hover:text-primary text-center py-2"
           >
             Load earlier messages…
           </button>
