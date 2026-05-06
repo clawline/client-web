@@ -1,3 +1,5 @@
+> ⚠️ **DEPRECATED** — moved to https://github.com/clawline/platform/tree/main/apps/client-web on 2026-05-06
+
 # OpenClaw Prototype + Mini Program
 
 这个仓库同时包含两部分：
