@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { useLogto } from '@logto/react';
 import Onboarding from './screens/Onboarding';
-import Callback from './screens/Callback';
 import ChatList from './screens/ChatList';
 import BottomNav from './components/BottomNav';
 import UpdateBanner from './components/UpdateBanner';
@@ -76,7 +74,6 @@ export function setUserName(name: string) {
 
 const SCREEN_TO_PATH: Record<Screen, string> = {
   onboarding: '/',
-  callback: '/callback',
   chats: '/chats',
   chat_room: '/chat',  // + /:agentId?chatId=...
   dashboard: '/dashboard',
@@ -159,9 +156,6 @@ const SIDEBAR_NAV_ITEMS = [
 function AppShell() {
   const location = useLocation();
   const routerNavigate = useNavigate();
-  const { isAuthenticated, isLoading: isAuthLoading } = useLogto();
-
-  const effectivelyAuthenticated = isAuthenticated;
 
   // ── All hooks MUST be called before any conditional return ──
   // (React Rules of Hooks — Error #310 fix)
@@ -175,7 +169,7 @@ function AppShell() {
       return Array.isArray(arr) && arr.length > 0;
     } catch { return false; }
   })();
-  const initialScreen: Screen = (effectivelyAuthenticated || hasLocalConnections) ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
+  const initialScreen: Screen = hasLocalConnections ? (initialFromUrl.screen === 'onboarding' && location.pathname === '/' ? 'chats' : initialFromUrl.screen) : 'onboarding';
 
   // Navigation state from Zustand store
   const currentScreen = useNavigationStore((s) => s.currentScreen);
@@ -418,23 +412,8 @@ function AppShell() {
 
   // ── Conditional returns AFTER all hooks ──
 
-  // Handle /callback route
-  if (location.pathname === '/callback') {
-    return <Callback />;
-  }
-
-  // Show loading while Logto initializes (skip in dev mode)
-  if (isAuthLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] bg-surface dark:bg-surface-dark text-text dark:text-text-inv">
-        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
   const renderScreen = () => {
-    // Redirect unauthenticated users to onboarding (except callback)
-    // Skip onboarding for returning users (have connections saved locally)
+    // Show onboarding for new users (no connections saved)
     const hasExistingConnections = (() => {
       try {
         const raw = localStorage.getItem('openclaw.connections');
@@ -443,15 +422,13 @@ function AppShell() {
         return Array.isArray(arr) && arr.length > 0;
       } catch { return false; }
     })();
-    if (!effectivelyAuthenticated && !hasExistingConnections && currentScreen !== 'onboarding' && currentScreen !== 'callback') {
+    if (!hasExistingConnections && currentScreen !== 'onboarding') {
       return <Onboarding onGetStarted={() => navigate('chats')} />;
     }
     const content = (() => {
       switch (currentScreen) {
         case 'onboarding':
           return <Onboarding onGetStarted={() => navigate('chats')} />;
-        case 'callback':
-          return <Callback />;
         case 'chats':
           return <ChatList onOpenChat={(connectionId, agentId, chatId) => navigate('chat_room', agentId, chatId, connectionId)} onAddServer={() => navigate('pairing')} activeAgentId={activeAgentId} activeConnectionId={activeConnectionId} />;
         case 'chat_room':

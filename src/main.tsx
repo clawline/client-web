@@ -1,7 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
-import SafeLogtoProvider from './components/SafeLogtoProvider.tsx';
 import App from './App.tsx';
 import './index.css';
 
@@ -24,7 +23,7 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e)
 if (typeof console !== 'undefined') {
   console.log(
     '%c🐾 Clawline %cv' + (import.meta.env.VITE_APP_VERSION || 'dev'),
-    'font-size:18px;font-weight:bold;color:#EF5A23;',
+    'font-size:18px;font-weight:bold;color:#F5A623;',
     'font-size:12px;color:#888;margin-left:4px;',
   );
   console.log(
@@ -33,17 +32,10 @@ if (typeof console !== 'undefined') {
   );
 }
 
-const logtoConfig = {
-  endpoint: 'https://logto.dr.restry.cn',
-  appId: 'j760nuoz0h3jr5g9ysogi',
-};
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <SafeLogtoProvider config={logtoConfig}>
-        <App />
-      </SafeLogtoProvider>
+      <App />
     </ErrorBoundary>
   </StrictMode>,
 );
