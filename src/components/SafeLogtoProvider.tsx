@@ -81,7 +81,7 @@ class LogtoCrashBoundary extends Component<CatcherProps, CatcherState> {
         }}>
           <div style={{
             width: 56, height: 56, borderRadius: 16,
-            background: 'linear-gradient(135deg, #EF5A23, #D04A1A)',
+            background: 'linear-gradient(135deg, #F5A623, #D4911A)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             marginBottom: 24, fontSize: 28,
           }}>
@@ -97,7 +97,7 @@ class LogtoCrashBoundary extends Component<CatcherProps, CatcherState> {
             onClick={() => window.location.reload()}
             style={{
               padding: '10px 24px', borderRadius: 12, border: 'none',
-              background: '#EF5A23', color: 'white', fontWeight: 600,
+              background: '#F5A623', color: 'white', fontWeight: 600,
               fontSize: 14, cursor: 'pointer',
             }}
           >

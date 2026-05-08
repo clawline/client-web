@@ -12,8 +12,8 @@
   --color-text-inv: #e2e8f0;
   --color-border: #E5E9ED;
   --color-border-dark: #30363D;
-  --color-primary: #EF5A23;
-  --color-primary-deep: #D04A1A;
+  --color-primary: #F5A623;
+  --color-primary-deep: #D4911A;
   --color-info: #5B8DEF;
   --color-accent: #8B5CF6;
   --color-warn: #F59E0B;
@@ -48,7 +48,7 @@
   --text-secondary: #4D5561;
   --text-muted: #7D8590;
   --border-color: #E5E9ED;
-  --primary: #EF5A23;
+  --primary: #F5A623;
 }
 
 /* Dark mode */
@@ -61,7 +61,7 @@
   --text-secondary: #C9D1D9;
   --text-muted: #8B949E;
   --border-color: #30363D;
-  --primary: #EF5A23;
+  --primary: #F5A623;
 }
 
 .dark body,
@@ -282,7 +282,7 @@ pre {
 }
 
 .ios-toggle:checked {
-  background: #EF5A23;
+  background: #F5A623;
 }
 
 .ios-toggle:checked::after {

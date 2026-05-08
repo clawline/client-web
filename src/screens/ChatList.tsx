@@ -213,7 +213,7 @@ function TypingDots() {
 }
 
 const AVATAR_PALETTES = [
-  { from: '#EF5A23', to: '#D04A1A' },
+  { from: '#F5A623', to: '#D4911A' },
   { from: '#5B8DEF', to: '#3b6fd0' },
   { from: '#8B5CF6', to: '#6D28D9' },
   { from: '#F59E0B', to: '#D97706' },
@@ -765,7 +765,7 @@ export default function ChatList({
               'focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
               isDisabled && 'opacity-40 cursor-not-allowed',
               !isDisabled && 'cursor-pointer active:bg-text/[0.06] dark:active:bg-text-inv/[0.06]',
-              isActive ? 'bg-primary/12 dark:bg-primary/15 shadow-[inset_2px_0_0_0_#EF5A23]'
+              isActive ? 'bg-primary/12 dark:bg-primary/15 shadow-[inset_2px_0_0_0_#F5A623]'
                 : isSplitActive ? 'bg-info/8 dark:bg-info/12 shadow-[inset_2px_0_0_0_#5B8DEF]'
                 : 'hover:bg-text/[0.05] dark:hover:bg-text-inv/[0.05] hover:shadow-sm'
             )}>
